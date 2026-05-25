@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="780" viewBox="0 0 1280 780" role="img" aria-label="USB Restoration Tool main window">
+  <rect width="1280" height="780" fill="#101419"/>
+  <rect x="1" y="1" width="1278" height="778" rx="10" fill="#101419" stroke="#26313d" stroke-width="2"/>
+  <text x="50" y="86" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">USB Restoration Tool</text>
+  <text x="50" y="122" fill="#a8b3c2" font-family="Segoe UI, Arial, sans-serif" font-size="19">Restore ISO-written USB drives to one clean exFAT volume</text>
+  <rect x="982" y="54" width="145" height="70" rx="16" fill="#0f3935"/>
+  <text x="1012" y="98" fill="#7ee0d1" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">ADMIN MODE</text>
+  <rect x="1142" y="66" width="96" height="48" rx="8" fill="#0f766e"/>
+  <text x="1174" y="97" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Refresh</text>
+  <rect x="45" y="170" width="575" height="555" rx="12" fill="#151b23" stroke="#26313d"/>
+  <rect x="65" y="194" width="535" height="46" fill="#0f141a"/>
+  <text x="65" y="226" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700">USB disks</text>
+  <rect x="65" y="260" width="535" height="420" fill="#0f141a"/>
+  <text x="100" y="320" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="19">Disk 2 - USB SanDisk 3.2Gen1</text>
+  <text x="100" y="350" fill="#e8edf4" font-family="Segoe UI, Arial, sans-serif" font-size="18">57.28 GB | GPT | E:</text>
+  <rect x="650" y="170" width="585" height="555" rx="12" fill="#151b23" stroke="#26313d"/>
+  <rect x="670" y="194" width="545" height="46" fill="#0f141a"/>
+  <text x="670" y="226" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700">Disk 2 - USB SanDisk 3.2Gen1</text>
+  <rect x="670" y="260" width="545" height="66" rx="8" fill="#102724" stroke="#1d4f49"/>
+  <text x="690" y="302" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18">Restore target: GPT + exFAT, label USB</text>
+  <rect x="670" y="348" width="545" height="52" rx="8" fill="#0f141a" stroke="#26313d"/>
+  <text x="690" y="381" fill="#a8b3c2" font-family="Segoe UI, Arial, sans-serif" font-size="18">Type RESTORE DISK 2</text>
+  <rect x="670" y="430" width="545" height="56" rx="8" fill="#0f766e"/>
+  <text x="887" y="465" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Restore USB</text>
+  <rect x="670" y="515" width="545" height="165" fill="#0f141a"/>
+  <text x="690" y="555" fill="#ffffff" font-family="Consolas, monospace" font-size="18">Verifying selected USB</text>
+  <text x="690" y="583" fill="#ffffff" font-family="Consolas, monospace" font-size="18">Clearing old MBR/GPT/ISO signatures</text>
+  <text x="690" y="611" fill="#ffffff" font-family="Consolas, monospace" font-size="18">Formatting as exFAT</text>
+</svg>

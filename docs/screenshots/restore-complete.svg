@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="780" viewBox="0 0 1280 780" role="img" aria-label="USB Restoration Tool restore complete log">
+  <rect width="1280" height="780" fill="#101419"/>
+  <rect x="1" y="1" width="1278" height="778" rx="10" fill="#101419" stroke="#26313d" stroke-width="2"/>
+  <text x="50" y="86" fill="#f4f7fb" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700">USB Restoration Tool</text>
+  <text x="50" y="122" fill="#a8b3c2" font-family="Segoe UI, Arial, sans-serif" font-size="19">Restore ISO-written USB drives to one clean exFAT volume</text>
+  <rect x="45" y="170" width="1190" height="555" rx="12" fill="#151b23" stroke="#26313d"/>
+  <rect x="75" y="210" width="1130" height="455" fill="#0f141a"/>
+  <text x="105" y="260" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Starting restore for disk 2</text>
+  <text x="105" y="294" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Verifying selected USB</text>
+  <text x="105" y="328" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Refreshing Windows disk metadata</text>
+  <text x="105" y="362" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Detaching existing drive letters</text>
+  <text x="105" y="396" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Clearing old MBR/GPT/ISO signatures</text>
+  <text x="105" y="430" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Creating one GPT data partition</text>
+  <text x="105" y="464" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Assigning a drive letter</text>
+  <text x="105" y="498" fill="#ffffff" font-family="Consolas, monospace" font-size="21">Formatting as exFAT</text>
+  <text x="105" y="532" fill="#7ee0d1" font-family="Consolas, monospace" font-size="23" font-weight="700">Restore complete</text>
+  <rect x="830" y="570" width="300" height="58" rx="8" fill="#0f3935" stroke="#1d4f49"/>
+  <text x="876" y="607" fill="#7ee0d1" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700">USB restored as E:\</text>
+</svg>
