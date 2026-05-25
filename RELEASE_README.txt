@@ -21,8 +21,8 @@ Only continue when you are certain the selected disk is disposable or backed up.
 
 This build restores drives to one GPT + exFAT volume labeled USB.
 
-Signing
--------
+Publisher signature
+-------------------
 
-This portable build may be unsigned unless the release notes say otherwise.
-Unsigned builds can trigger Windows SmartScreen warnings.
+Some release channels distribute unsigned builds. Windows SmartScreen may show
+a warning for unsigned executables. Verify the release hash before running.

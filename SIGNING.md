@@ -1,6 +1,6 @@
 # Code Signing
 
-USB Restoration Tool requests Administrator permissions and should be signed before public distribution.
+USB Restoration Tool requests Administrator permissions. Authenticode signing is supported for release channels that require publisher identity and reduced SmartScreen friction.
 
 ## Check for a Code-Signing Certificate
 
@@ -21,4 +21,4 @@ Get-ChildItem Cert:\LocalMachine\My -CodeSigningCert
 
 The release script signs `USBRestorationTool.exe`, verifies the Authenticode status, deploys Qt/runtime dependencies, and writes `SHA256SUMS.txt` for every file in the release folder.
 
-Without a trusted certificate, Windows SmartScreen may warn users even when the ZIP hash matches.
+Unsigned builds are reproducible from source and include full-bundle hashes, but Windows may show publisher warnings.

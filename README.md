@@ -69,7 +69,7 @@ release\USB-Restoration-Tool-v0.1.0-windows-x64.zip
 
 The release folder includes a `SHA256SUMS.txt` file covering every bundled file.
 
-For public releases, sign the executable:
+Release builds can be Authenticode-signed when a certificate is available:
 
 ```powershell
 .\scripts\package-release.ps1 `
@@ -79,7 +79,7 @@ For public releases, sign the executable:
   -RequireSignature
 ```
 
-See [SIGNING.md](SIGNING.md).
+Use `-RequireSignature` for release pipelines that must fail on unsigned output. See [SIGNING.md](SIGNING.md).
 
 ## VS Code
 
@@ -101,6 +101,8 @@ ctest --test-dir build -C Release --output-on-failure
 
 The automated tests cover pure safety and layout logic. Do not run a real restore unless you are using a known disposable USB drive.
 
-## Project Status
+## Release Notes
 
-Version `0.1.0` has been manually validated on a disposable USB that had previously contained a Linux installer image. A trusted code-signing certificate is still required for polished public distribution.
+Version `0.1.0` is the first Windows x64 release. It has been validated with an ISO-written USB drive and includes the current safety model, portable Qt/MSVC packaging, and full-bundle SHA256 hashes.
+
+The Windows executable can be distributed unsigned or signed, depending on the release channel. Unsigned builds may trigger SmartScreen warnings; signed builds can be produced with the packaging options documented in [SIGNING.md](SIGNING.md).
