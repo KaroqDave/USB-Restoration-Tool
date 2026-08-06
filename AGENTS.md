@@ -8,16 +8,23 @@ lives in `src/`:
 
 - `src/core/` — `disk.*` (the `DiskInfo` model and formatting), `safety.*`
   (every rule that decides whether a disk may be erased, plus the layout
-  arithmetic) and `partition_table.*` (GPT and MBR bytes, including GPT's
-  CRC-32). **No OS headers.** This is the half that is tested, and new safety
-  rules belong here rather than inline in a backend.
+  arithmetic), `partition_table.*` (GPT and MBR bytes, including GPT's CRC-32)
+  and `restore_protocol.*` (the GUI-to-helper line protocol, whose argument half
+  is a trust boundary). **No OS headers.** This is the half that is tested, and
+  new safety rules belong here rather than inline in a backend.
 - `src/platform/` — `disk_service.h`, the interface both backends implement;
   `restore_worker.*`, which adapts a backend's progress calls into Qt signals;
   `logger.*`; `startup.h`.
 - `src/win/` — WMI (`wmi.*`), `DeviceIoControl` on `\\.\PhysicalDriveN`
   (`raw_disk.*`), enumeration, volumes, and `windows_disk_service.*`.
 - `src/linux/` — sysfs and `/proc/self/mountinfo` (`sysfs.*`), raw block I/O
-  (`block_device.*`), and `linux_disk_service.*`.
+  (`block_device.*`), read-only enumeration (`linux_enumerate.*`), the
+  privileged restore sequence (`linux_restore.*`) and the thin `DiskService`
+  over both (`linux_disk_service.*`). The split is so the helper can link the
+  restore without the service; keep it that way.
+- `src/helper/` — `main.cpp` for `usb-restoration-helper`, the Linux-only
+  privileged binary. Qt Core only, no widgets, and nothing it is told is
+  trusted. See `docs/polkit-helper.md`.
 - `src/gui/` — `main.cpp`, `main_window.*`, `theme.*`, `app_settings.*`.
 
 Tests live in `tests/test_core.cpp`. `tools/partition_dump.cpp` backs
@@ -81,15 +88,25 @@ verified on, when the change touches a backend.
 
 The destructive path is gated by the acknowledgement dialog and an identity
 check on the open device handle. Do not add a way to bypass either, do not add a
-command-line flag that starts a restore, and do not widen the bus-type check.
-Read `SECURITY.md` before changing anything under `src/win` or `src/linux`.
+command-line flag to the GUI that starts a restore, and do not widen the
+bus-type check. Read `SECURITY.md` before changing anything under `src/win` or
+`src/linux`.
+
+`usb-restoration-helper` is the one deliberate exception to the command-line
+rule, and it earns it by re-deriving every fact rather than accepting one: it
+enumerates the disk itself, builds its own `RestoreGuard`, and re-runs
+`isSafeRestoreTarget()` before anything is opened. Arguments are claims it may
+only refuse on. Any change that lets an argument decide something instead —
+above all the bus type — removes the reason the binary is allowed to exist.
 
 Adding a platform means implementing `DiskService` and nothing else. If a change
 needs the GUI or `src/core` to know which platform it is on, the abstraction is
 in the wrong place.
 
-The Linux app runs entirely as root today. `docs/polkit-helper.md` describes the
-privilege split planned for 1.3.0; read it before restructuring `src/linux`.
+The Linux GUI still runs entirely as root, and `usb-restoration-helper` is built
+and installed but not yet invoked by anything. `docs/polkit-helper.md` describes
+the privilege split planned for 1.3.0 and tracks which of its steps are done;
+read it before restructuring `src/linux`.
 
 `PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version.
 Tagging `vX.Y.Z` triggers `release.yml`, which fails unless the tag matches that

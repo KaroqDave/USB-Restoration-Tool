@@ -141,7 +141,7 @@ jobs:
 
       - name: Build and test
         run: |
-          cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests usb-partition-dump
+          cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests usb-partition-dump usb-restoration-helper
           ctest --test-dir build-linux --output-on-failure
 
       # A release must not ship a partition table the system tools reject.

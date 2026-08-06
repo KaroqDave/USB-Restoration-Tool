@@ -26,6 +26,12 @@ set(CMAKE_AUTORCC ON)
 
 option(USBRESTORE_BUILD_TESTS "Build the USB Restoration Tool C++ tests" ON)
 
+# On by default because a real install — .deb, .rpm, AUR — is where the polkit
+# privilege split can actually work. The AppImage turns it off: polkit reads its
+# policies from system directories, so a self-contained bundle cannot register
+# one, and a helper it could never obtain privilege through is dead weight.
+option(USBRESTORE_INSTALL_HELPER "Install the privileged Linux restore helper" ON)
+
 # Fallback Qt discovery: when configuring without a preset or CMAKE_PREFIX_PATH
 # (straight from an IDE, say), locate the newest Qt MSVC kit under C:/Qt so
 # find_package(Qt6) works out of the box.
@@ -55,6 +61,8 @@ set(USBRESTORE_CORE_SOURCES
     src/core/disk.h
     src/core/partition_table.cpp
     src/core/partition_table.h
+    src/core/restore_protocol.cpp
+    src/core/restore_protocol.h
     src/core/safety.cpp
     src/core/safety.h
 )
@@ -87,15 +95,47 @@ set(USBRESTORE_WIN_SOURCES
     src/win/wmi.h
 )
 
-set(USBRESTORE_LINUX_SOURCES
+# Everything a restore needs and nothing that presents one. This is the set the
+# privileged helper links: no DiskService, no worker, no widgets.
+set(USBRESTORE_LINUX_RESTORE_SOURCES
     src/linux/block_device.cpp
     src/linux/block_device.h
-    src/linux/linux_disk_service.cpp
-    src/linux/linux_disk_service.h
+    src/linux/linux_enumerate.cpp
+    src/linux/linux_enumerate.h
+    src/linux/linux_restore.cpp
+    src/linux/linux_restore.h
     src/linux/linux_startup.cpp
     src/linux/sysfs.cpp
     src/linux/sysfs.h
 )
+
+set(USBRESTORE_LINUX_SOURCES
+    ${USBRESTORE_LINUX_RESTORE_SOURCES}
+    src/linux/linux_disk_service.cpp
+    src/linux/linux_disk_service.h
+)
+
+# Applied to every target that ends up holding privilege, which since the
+# helper was split out is more than one of them. A flag list that lives in one
+# place is a flag list the two binaries cannot drift apart on.
+function(usbrestore_harden target)
+    if(MSVC)
+        # An elevated process is worth compiling defensively: /sdl promotes the
+        # security-relevant warnings to errors, /guard:cf adds control-flow
+        # guard, and /CETCOMPAT opts into hardware shadow stacks where the CPU
+        # has them. /utf-8 so the check marks and separators in the UI strings
+        # are compiled as the UTF-8 that QStringLiteral expects.
+        target_compile_options(${target} PRIVATE /utf-8 /W4 /permissive- /sdl /guard:cf)
+        target_link_options(${target} PRIVATE /guard:cf /CETCOMPAT /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # The same intent as the MSVC flags above: a process running as root
+        # should be built with the hardening its toolchain offers.
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wpedantic
+            -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE)
+        target_link_options(${target} PRIVATE -pie -Wl,-z,relro,-z,now,-z,noexecstack)
+    endif()
+endfunction()
 
 set(USBRESTORE_GUI_SOURCES
     src/gui/app_settings.cpp
@@ -146,26 +186,31 @@ if(WIN32)
     target_link_options(usb-restoration-tool PRIVATE "/MANIFEST:NO")
 endif()
 
-if(MSVC)
-    # An elevated process is worth compiling defensively: /sdl promotes the
-    # security-relevant warnings to errors, /guard:cf adds control-flow guard,
-    # and /CETCOMPAT opts into hardware shadow stacks where the CPU has them.
-    # /utf-8 so the check marks and separators in the UI strings are compiled as
-    # the UTF-8 that QStringLiteral expects.
-    target_compile_options(usb-restoration-tool PRIVATE /utf-8 /W4 /permissive- /sdl /guard:cf)
-    target_link_options(usb-restoration-tool PRIVATE /guard:cf /CETCOMPAT /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # The same intent as the MSVC flags above: a process running as root should
-    # be built with the hardening its toolchain offers.
-    target_compile_options(usb-restoration-tool PRIVATE
-        -Wall -Wextra -Wpedantic
-        -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE)
-    target_link_options(usb-restoration-tool PRIVATE -pie -Wl,-z,relro,-z,now,-z,noexecstack)
-endif()
+usbrestore_harden(usb-restoration-tool)
 
 set_target_properties(usb-restoration-tool PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:usb-restoration-tool>"
 )
+
+# The privileged half, on Linux only: one restore per invocation, no GUI.
+# Qt6::Core and nothing else, so that none of the widget, theming, image-format
+# or input-method machinery the GUI drags in is ever loaded as root. Windows
+# gets no equivalent — see the "Not in scope" section of docs/polkit-helper.md.
+if(NOT WIN32)
+    add_executable(usb-restoration-helper
+        ${USBRESTORE_CORE_SOURCES}
+        ${USBRESTORE_LINUX_RESTORE_SOURCES}
+        src/platform/disk_service.h
+        src/platform/startup.h
+        src/helper/main.cpp
+    )
+    target_include_directories(usb-restoration-helper PRIVATE src)
+    target_compile_definitions(usb-restoration-helper PRIVATE
+        USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
+    )
+    target_link_libraries(usb-restoration-helper PRIVATE Qt6::Core)
+    usbrestore_harden(usb-restoration-helper)
+endif()
 
 if(WIN32)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_INSTALL_PREFIX}/bin")
@@ -225,7 +270,17 @@ if(WIN32)
         ")
     endif()
 else()
+    include(GNUInstallDirs)
     install(TARGETS usb-restoration-tool RUNTIME DESTINATION bin)
+
+    # libexecdir rather than bin: this is not a command anyone runs, and the
+    # polkit action that will authorise it names an absolute path. It installs
+    # inert — without that .policy file nothing can obtain privilege through it,
+    # and the GUI does not invoke it yet.
+    if(USBRESTORE_INSTALL_HELPER)
+        install(TARGETS usb-restoration-helper RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
+    endif()
+
     install(FILES resources/usb-restoration-tool.desktop DESTINATION share/applications)
     install(FILES resources/icons/app.svg DESTINATION share/icons/hicolor/scalable/apps
             RENAME usb-restoration-tool.svg)

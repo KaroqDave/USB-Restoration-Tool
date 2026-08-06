@@ -79,8 +79,13 @@ jobs:
       # usb-partition-dump is part of this list because the verification step
       # below runs it. Leaving it out is what made this job fail while the
       # release workflow, which does build it, passed.
+      #
+      # usb-restoration-helper is here for the opposite reason: nothing runs it
+      # yet, so an explicit target is the only thing that stops it rotting.
       - name: Build
-        run: cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests usb-partition-dump
+        run: >
+          cmake --build build-linux --target
+          usb-restoration-tool usb-restoration-tool-tests usb-partition-dump usb-restoration-helper
 
       - name: Test
         run: ctest --test-dir build-linux --output-on-failure

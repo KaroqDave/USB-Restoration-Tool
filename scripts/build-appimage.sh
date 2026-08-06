@@ -150,7 +150,12 @@ echo "  Build type: $CMAKE_BUILD_TYPE"
 echo "  Output    : $OutputRoot/$AppName-$Version-x86_64.AppImage"
 
 step "Configuring CMake"
-cmake_args=(-S "$RepoRoot" -B "$BuildDir" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE")
+# The AppImage stays on the run-as-root path. polkit reads its policies from
+# system directories, which a self-contained bundle cannot write to, so
+# usb-restoration-helper is left out rather than shipped as something that could
+# never obtain privilege. See docs/polkit-helper.md.
+cmake_args=(-S "$RepoRoot" -B "$BuildDir" -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
+    -DUSBRESTORE_INSTALL_HELPER=OFF)
 if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
     cmake_args+=(-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH")
 fi

@@ -50,7 +50,9 @@ The helper must not trust anything it is told. Everything the GUI sends is a
 *request*, and the helper re-derives the facts itself:
 
 ```
-GUI  -> helper   device path, partition style, volume label
+GUI  -> helper   device path, partition style, volume label,
+                 and the identity the user was shown: size, sector size,
+                 serial, unique id, sysfs path, model name
 helper           re-enumerates the disk from sysfs
 helper           re-evaluates isSafeRestoreTarget() against its own RestoreGuard
 helper           re-runs isSameRestoreTarget() against what it found
@@ -58,18 +60,46 @@ helper           opens O_EXCL and verifies identity through the descriptor
 helper -> GUI    progress lines on stdout, errors on stderr, exit code
 ```
 
-This is the part to get right. A helper that erases whatever path it is handed
-is a privilege escalation with extra steps: any local process could invoke it.
-Re-running the full safety evaluation inside the helper is what makes the
-boundary meaningful, and it is nearly free — `src/core` is already pure and
-already does exactly this.
+More crosses than the three fields this document first assumed, because
+`isSameRestoreTarget()` compares seven. Sending them costs nothing in safety:
+each one is a claim the helper can only *refuse* on, never act on, so an extra
+field can only narrow what gets through. The one field deliberately not sent is
+the bus type — the caller does not get to assert that its target is USB, and a
+`DiskInfo` assembled from arguments alone fails `isSafeRestoreTarget()` for
+exactly that reason.
 
-The protocol should be line-oriented and dull: progress as `step/total message`
-on stdout, one error line on stderr, and an exit code. Media Writer's helper
-prints bare percentages; ours already has a step model worth preserving.
-`RestoreReporter` is the existing seam — the helper implements it by writing
-lines, and the GUI's `RestoreWorker` parses them back into the same signals it
-emits today, so `MainWindow` does not change at all.
+The two checks defend against different things, and it is worth being precise
+about which:
+
+- `isSafeRestoreTarget()`, run against what sysfs says right now, is the defence
+  against a *malicious* caller. It is the only one. Any local process can invoke
+  the helper, so this is what stops one asking for the system disk.
+- `isSameRestoreTarget()` is the defence against an *honest* caller whose disk
+  changed underneath it. The polkit prompt takes seconds — long enough to unplug
+  one stick and plug in another. It is no defence against a malicious caller,
+  who could simply describe the disk accurately.
+
+Confusing the two would lead to the mistake of trusting the identity fields
+because they "were verified".
+
+The protocol is line-oriented and dull: `version <n>` first, then
+`step <n>/<total> <message>` and `detail <message>` on stdout, one error line on
+stderr, and an exit code — 0 restored, 1 refused or failed, 2 the two binaries
+disagreeing about their arguments. Media Writer's helper prints bare
+percentages; ours already has a step model worth preserving. `RestoreReporter`
+is the existing seam — the helper implements it by writing lines, and the GUI's
+`RestoreWorker` parses them back into the same signals it emits today, so
+`MainWindow` does not change at all.
+
+Message text is stripped of control characters before it is written. mkfs
+output goes into the log verbatim, and a newline in it would arrive at the GUI
+as a line the helper never sent — a `result` line, say. Each source line
+becomes its own `detail` line instead.
+
+Cancellation travels the other way, as the word `cancel` on the helper's stdin,
+honoured only where an in-process cancel would be. End of input is not a
+cancel: if the GUI dies mid-restore, finishing is better than leaving a
+half-written partition table behind.
 
 ### The polkit policy
 
@@ -114,18 +144,36 @@ not.
 
 ## Rough order of work
 
-1. Extract the restore sequence in `LinuxDiskService::restore()` behind a
-   `RestoreReporter` that writes protocol lines, so it runs unchanged in either
-   process. Little more than a rename today.
-2. Add the `usb-restoration-helper` target: `main.cpp`, argument parsing, the
-   re-validation described above, protocol output. No Qt Widgets.
+1. **Done.** Extract the restore sequence in `LinuxDiskService::restore()`
+   behind a `RestoreReporter` that writes protocol lines, so it runs unchanged
+   in either process. Little more than a rename today.
+
+   It was. `src/linux/linux_enumerate.*` holds the read-only half and
+   `src/linux/linux_restore.*` the privileged sequence, both moved verbatim;
+   `LinuxDiskService` is now a hundred lines of adapter over them. The protocol
+   itself went to `src/core/restore_protocol.*` rather than `src/linux`, because
+   the argument half is a safety rule and belongs where the tests are.
+2. **Done.** Add the `usb-restoration-helper` target: `main.cpp`, argument
+   parsing, the re-validation described above, protocol output. No Qt Widgets.
+
+   `ldd` on the result lists `libQt6Core` and nothing else, against the GUI's
+   Core, Gui, Widgets and DBus. That is the entire point of the exercise,
+   visible in one command.
 3. Teach the Linux `DiskService` to spawn the helper through `pkexec` and parse
    its output back into `RestoreReporter` calls.
-4. Install the `.policy` file and the helper to `libexecdir` from CMake.
+4. Install the `.policy` file from CMake. The helper already installs to
+   `libexecdir`, and does so inert: without the policy there is no way to obtain
+   privilege through it.
 5. Drop the root check from the GUI on Linux; keep it in the helper, where a
    non-root invocation is now genuinely an error.
 6. Keep the AppImage on the run-as-root path, and say which is which in the
    README.
+
+Steps 1 and 2 changed nothing about how the tool runs: the GUI still performs
+its own restores as root, and the helper it now ships alongside is not yet
+invoked by anything. That was deliberate — it is the part that can land before
+the hardware verification below, because it cannot regress a path it does not
+touch. Step 3 is where that stops being true.
 
 ## Not in scope
 

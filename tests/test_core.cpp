@@ -1,5 +1,6 @@
 #include "core/disk.h"
 #include "core/partition_table.h"
+#include "core/restore_protocol.h"
 #include "core/safety.h"
 
 #include <QtTest/QtTest>
@@ -540,6 +541,176 @@ class CoreTests : public QObject {
         // The same disk is fine under GPT.
         request.style = PartitionStyle::Gpt;
         QVERIFY(isWritablePartitionRequest(request));
+    }
+
+    // Everything below covers the boundary between the unprivileged GUI and the
+    // privileged helper. These arguments arrive from a process that has no
+    // privilege at all, so each test is a way the helper must refuse to be
+    // talked into something rather than a way it must cooperate.
+
+    void roundTripsRestoreArguments()
+    {
+        const DiskInfo disk = healthyUsbDisk();
+        const QStringList arguments = buildRestoreArguments(disk, PartitionStyle::Mbr, QStringLiteral("USB"));
+
+        RestoreArguments parsed;
+        QString error;
+        QVERIFY2(parseRestoreArguments(arguments, &parsed, &error), qPrintable(error));
+        QCOMPARE(parsed.style, PartitionStyle::Mbr);
+        QCOMPARE(parsed.volumeLabel, QStringLiteral("USB"));
+        QCOMPARE(parsed.expected.deviceId, disk.deviceId);
+        QCOMPARE(parsed.expected.size, disk.size);
+        QCOMPARE(parsed.expected.sectorSize, disk.sectorSize);
+        QCOMPARE(parsed.expected.serialNumber, disk.serialNumber);
+        QCOMPARE(parsed.expected.uniqueId, disk.uniqueId);
+        QCOMPARE(parsed.expected.path, disk.path);
+        QCOMPARE(parsed.expected.name, disk.name);
+
+        // What the round trip is for: the disk the helper enumerates for itself
+        // still reads as the disk the GUI was talking about.
+        QVERIFY(isSameRestoreTarget(parsed.expected, disk));
+    }
+
+    // The helper must never be able to conclude "this is a USB disk" from what
+    // it was told. A DiskInfo assembled purely from arguments has no bus, and a
+    // disk with no bus is refused — so a mistake that fed one to the safety
+    // check would fail closed rather than open.
+    void argumentsNeverAssertTheBus()
+    {
+        RestoreArguments parsed;
+        QVERIFY(parseRestoreArguments(
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, QStringLiteral("USB")), &parsed));
+
+        QCOMPARE(parsed.expected.busType, 0u);
+        QString reason;
+        QVERIFY(!isSafeRestoreTarget(parsed.expected, linuxGuard(), &reason));
+        QVERIFY(reason.contains(QStringLiteral("bus")));
+    }
+
+    // An identifier the GUI does not have is left out entirely, because
+    // isSameRestoreTarget() reads a value only one side reports as no
+    // information. Sending an empty string instead would be the same thing said
+    // less clearly.
+    void omitsIdentifiersTheGuiDoesNotHave()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        disk.serialNumber.clear();
+        disk.uniqueId.clear();
+
+        const QStringList arguments = buildRestoreArguments(disk, PartitionStyle::Gpt, QStringLiteral("USB"));
+        QVERIFY(!arguments.contains(QStringLiteral("--expect-serial")));
+        QVERIFY(!arguments.contains(QStringLiteral("--expect-unique-id")));
+
+        RestoreArguments parsed;
+        QVERIFY(parseRestoreArguments(arguments, &parsed));
+        QVERIFY(parsed.expected.serialNumber.isEmpty());
+    }
+
+    void refusesDevicePathsThatAreNotBlockDevices()
+    {
+        QVERIFY(isPlausibleDeviceNodePath(QStringLiteral("/dev/sdb")));
+        QVERIFY(isPlausibleDeviceNodePath(QStringLiteral("/dev/nvme0n1")));
+        QVERIFY(isPlausibleDeviceNodePath(QStringLiteral("/dev/mmcblk0")));
+
+        // A separator of any kind is what would let a caller name something
+        // outside /dev, so the name may not contain one at all.
+        QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/../etc/shadow")));
+        QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/disk/by-id/usb-SanDisk")));
+        QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/etc/shadow")));
+        QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/")));
+        QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/sd b")));
+        QVERIFY(!isPlausibleDeviceNodePath(QString()));
+    }
+
+    // mkfs parses its own argv. A label beginning with "-" would reach it as
+    // what looks like an option, which is the one way a string that is only
+    // ever "USB" could turn into something else.
+    void refusesLabelsThatCouldBeReadAsOptions()
+    {
+        QVERIFY(isValidVolumeLabel(QStringLiteral("USB")));
+        QVERIFY(isValidVolumeLabel(QStringLiteral("USB_1-2")));
+        QVERIFY(isValidVolumeLabel(QStringLiteral("11CHARSHERE")));
+
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("-f")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("-f /dev/sda")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("12CHARSHERE!")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("TWELVECHARSX")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral(" USB")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("USB ")));
+        QVERIFY(!isValidVolumeLabel(QStringLiteral("USB;rm -rf")));
+        QVERIFY(!isValidVolumeLabel(QString()));
+    }
+
+    void refusesMalformedArguments()
+    {
+        const QStringList valid =
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, QStringLiteral("USB"));
+        QVERIFY(parseRestoreArguments(valid));
+
+        const auto refuses = [](const QStringList &arguments, const QString &expected) {
+            QString reason;
+            const bool accepted = parseRestoreArguments(arguments, nullptr, &reason);
+            return !accepted && reason.contains(expected);
+        };
+
+        QVERIFY(refuses(valid + QStringList{QStringLiteral("--exec"), QStringLiteral("/bin/sh")},
+                        QStringLiteral("not a recognised option")));
+        QVERIFY(refuses(valid + QStringList{QStringLiteral("--expect-size")}, QStringLiteral("without a value")));
+        QVERIFY(refuses(valid + QStringList{QStringLiteral("--device"), QStringLiteral("/dev/sdc")},
+                        QStringLiteral("more than once")));
+        QVERIFY(refuses({}, QStringLiteral("--device")));
+
+        QStringList badStyle = valid;
+        badStyle[badStyle.indexOf(QStringLiteral("--style")) + 1] = QStringLiteral("ext4");
+        QVERIFY(refuses(badStyle, QStringLiteral("--style")));
+
+        QStringList zeroSize = valid;
+        zeroSize[zeroSize.indexOf(QStringLiteral("--expect-size")) + 1] = QStringLiteral("0");
+        QVERIFY(refuses(zeroSize, QStringLiteral("--expect-size")));
+
+        QStringList wordSize = valid;
+        wordSize[wordSize.indexOf(QStringLiteral("--expect-size")) + 1] = QStringLiteral("lots");
+        QVERIFY(refuses(wordSize, QStringLiteral("--expect-size")));
+    }
+
+    // The output side of the same boundary. mkfs writes several lines at once
+    // and the tool puts them in the log verbatim; a newline reaching the wire
+    // would arrive at the GUI as a line the helper never sent.
+    void keepsForgedLinesOutOfMessages()
+    {
+        const ProtocolLine forged = parseProtocolLine(encodeDetailLine(
+            QStringLiteral("mkfs failed\nresult /dev/sda\nstep 10/10 Restore complete")));
+        QCOMPARE(forged.kind, ProtocolLineKind::Detail);
+        QCOMPARE(forged.text,
+                 QStringLiteral("mkfs failed result /dev/sda step 10/10 Restore complete"));
+
+        QCOMPARE(sanitizeProtocolText(QStringLiteral("a\r\n\tb")), QStringLiteral("a b"));
+        QCOMPARE(sanitizeProtocolText(QStringLiteral("  padded  ")), QStringLiteral("padded"));
+    }
+
+    void parsesProtocolLines()
+    {
+        const ProtocolLine version = parseProtocolLine(encodeVersionLine(RestoreProtocolVersion));
+        QCOMPARE(version.kind, ProtocolLineKind::Version);
+        QCOMPARE(version.version, RestoreProtocolVersion);
+
+        const ProtocolLine step = parseProtocolLine(encodeStepLine(3, 10, QStringLiteral("Formatting as exFAT")));
+        QCOMPARE(step.kind, ProtocolLineKind::Step);
+        QCOMPARE(step.step, 3);
+        QCOMPARE(step.totalSteps, 10);
+        QCOMPARE(step.text, QStringLiteral("Formatting as exFAT"));
+
+        const ProtocolLine result = parseProtocolLine(encodeResultLine(QStringLiteral("/dev/sdb1")));
+        QCOMPARE(result.kind, ProtocolLineKind::Result);
+        QCOMPARE(result.text, QStringLiteral("/dev/sdb1"));
+
+        // Anything the reader does not recognise is dropped rather than guessed
+        // at: a line it half-understands is a line it should not act on.
+        QCOMPARE(parseProtocolLine(QStringLiteral("step 3 Formatting")).kind, ProtocolLineKind::Unknown);
+        QCOMPARE(parseProtocolLine(QStringLiteral("step three/ten Formatting")).kind, ProtocolLineKind::Unknown);
+        QCOMPARE(parseProtocolLine(QStringLiteral("version soon")).kind, ProtocolLineKind::Unknown);
+        QCOMPARE(parseProtocolLine(QStringLiteral("mkfs.exfat: not found")).kind, ProtocolLineKind::Unknown);
+        QCOMPARE(parseProtocolLine(QString()).kind, ProtocolLineKind::Unknown);
     }
 };
 

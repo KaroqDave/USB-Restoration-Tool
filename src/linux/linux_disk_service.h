@@ -8,9 +8,14 @@ namespace usbrestore {
 // a plain file descriptor on /dev/sdX for the raw work, and mkfs.exfat for the
 // filesystem.
 //
-// It deliberately does not talk to udisks2. The tool already requires root, so
-// the daemon would add a runtime dependency and a polkit round trip without
-// answering any question sysfs cannot.
+// Almost nothing happens here. Enumeration lives in linux_enumerate.* and the
+// restore sequence in linux_restore.*, because the privileged helper described
+// in docs/polkit-helper.md needs both of those and none of this class. What is
+// left is the DiskService interface bolted onto them.
+//
+// It deliberately does not talk to udisks2. The daemon would add a runtime
+// dependency and a polkit round trip without answering any question sysfs
+// cannot, and the privilege split this tool wants is one it can make itself.
 class LinuxDiskService : public DiskService {
   public:
     bool isPrivileged() const override;
@@ -24,11 +29,6 @@ class LinuxDiskService : public DiskService {
                  RestoreResult *result,
                  QString *error) override;
     QString restoredLocationNoun() const override;
-
-  private:
-    bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error) const;
-    bool formatExFat(const QString &partitionPath, const QString &label, RestoreReporter &reporter,
-                     QString *error) const;
 };
 
 } // namespace usbrestore
