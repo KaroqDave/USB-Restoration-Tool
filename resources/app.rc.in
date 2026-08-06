@@ -2,9 +2,9 @@
 
 #define IDI_APPICON 101
 
-IDI_APPICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/app.ico"
+IDI_APPICON ICON "@USBRESTORE_APP_ICON@"
 
-1 RT_MANIFEST "@CMAKE_CURRENT_SOURCE_DIR@/resources/app.manifest"
+1 RT_MANIFEST "@USBRESTORE_APP_MANIFEST@"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
@@ -19,11 +19,12 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "USB Restoration Tool"
+            VALUE "CompanyName", "KaroqDave"
             VALUE "FileDescription", "USB Restoration Tool"
             VALUE "FileVersion", "@PROJECT_VERSION@"
-            VALUE "InternalName", "USBRestorationTool"
-            VALUE "OriginalFilename", "USBRestorationTool.exe"
+            VALUE "InternalName", "usb-restoration-tool"
+            VALUE "LegalCopyright", "MIT Licensed"
+            VALUE "OriginalFilename", "usb-restoration-tool.exe"
             VALUE "ProductName", "USB Restoration Tool"
             VALUE "ProductVersion", "@PROJECT_VERSION@"
         END

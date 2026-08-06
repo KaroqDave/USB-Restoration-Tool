@@ -4,41 +4,42 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  windows:
-    name: Windows x64
+  build-windows:
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.10.1'
+          version: "6.8.*"
           host: windows
           target: desktop
           arch: win64_msvc2022_64
-          dir: ${{ github.workspace }}\.deps
+          cache: true
 
-      - name: Build release
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build --config Release --target usb-restoration-tool usb-restoration-tool-tests
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build standalone bundle
         shell: pwsh
-        run: .\scripts\build-release.ps1 -QtDir ".\.deps\Qt\6.10.1\msvc2022_64"
+        run: ./scripts/build-standalone.ps1 -BuildDir build
 
-      - name: Run tests
-        shell: cmd
-        run: |
-          set "PATH=%CD%\.deps\Qt\6.10.1\msvc2022_64\bin;%PATH%"
-          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe" --test-dir build -C Release --output-on-failure
-
-      - name: Package
-        shell: pwsh
-        run: .\scripts\package-release.ps1 -QtDir ".\.deps\Qt\6.10.1\msvc2022_64"
-
-      - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v7
         with:
-          name: USB-Restoration-Tool-windows-x64
-          path: release/USB-Restoration-Tool-v0.1.0-windows-x64.zip
+          name: usb-restoration-tool-windows
+          path: standalone/*.zip
+          if-no-files-found: error

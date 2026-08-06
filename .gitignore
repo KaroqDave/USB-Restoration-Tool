@@ -1,11 +1,40 @@
-build/
+# Editor / language-server artifacts
+.cache/
+.vscode/
+compile_commands.json
+compile_flags.txt
+
+# C++ / CMake build output
+build*/
+out/
 dist/
 release/
-.deps/
-*.user
-*.suo
-*.vcxproj*
+standalone/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+CMakeUserPresets.json
+
+# Visual Studio / MSVC
+.vs/
 *.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Binaries and local Qt kits
+*.exe
+*.dll
+.deps/
+
+# Local scratch
 *.log
 *.tmp
 *.bak

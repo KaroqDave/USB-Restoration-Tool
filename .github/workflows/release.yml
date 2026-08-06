@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Both gates run before the build so a bad tag fails in seconds rather than
+  # after several minutes of compiling.
+  preflight:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The packaging script names its artifact from PROJECT_VERSION, not from
+      # the tag. Without this gate, tagging v1.1.0 without bumping
+      # CMakeLists.txt would publish a "v1.1.0" release containing 1.0.0 files.
+      - name: Verify tag matches project version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project=$(grep -oEm1 'VERSION[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          echo "Tag version:     $tag"
+          echo "Project version: $project"
+          if [ -z "$project" ]; then
+            echo "::error::Could not read PROJECT_VERSION from CMakeLists.txt."
+            exit 1
+          fi
+          if [ "$tag" != "$project" ]; then
+            echo "::error::Tag v$tag does not match PROJECT_VERSION $project in CMakeLists.txt. Bump the project version or retag."
+            exit 1
+          fi
+
+      # The release body comes from the README so the two cannot drift. Both
+      # heading forms are accepted: a release re-run after the README has moved
+      # on to a later version finds its notes demoted to "Previously, in X.Y.Z".
+      - name: Extract release notes from the README
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v cur="## What's New in ${version}" -v prev="### Previously, in ${version}" '
+            !capture && ($0 == cur || $0 == prev) { capture = 1; next }
+            capture && /^```/         { fence = !fence }
+            capture && !fence && /^#/ { exit }
+            capture                   { buf = buf $0 "\n" }
+            END { sub(/^\n+/, "", buf); sub(/\n+$/, "\n", buf); printf "%s", buf }
+          ' README.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "::error::README.md has no \"What's New in $version\" section. Write the release notes before tagging."
+            exit 1
+          fi
+
+          # README-relative anchors resolve to nothing on a release page.
+          sed -i "s|](#|](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}#|g" release-notes.md
+
+          echo "Release notes for $version:"
+          echo "---"
+          cat release-notes.md
+          echo "---"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  build-windows:
+    needs: preflight
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build and test
+        run: |
+          cmake --build build --config Release --target usb-restoration-tool usb-restoration-tool-tests
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build standalone bundle
+        shell: pwsh
+        run: ./scripts/build-standalone.ps1 -BuildDir build
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-release
+          path: standalone/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build-windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/windows-release/**
+          # The README notes become the body; generate_release_notes appends the
+          # commit list and compare link underneath.
+          body_path: artifacts/release-notes/release-notes.md
+          generate_release_notes: true

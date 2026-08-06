@@ -1,60 +1,45 @@
 {
-  "version": 6,
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
   "configurePresets": [
     {
-      "name": "vs2026-x64",
-      "displayName": "Visual Studio 2026 x64",
-      "generator": "Visual Studio 18 2026",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/vscode",
+      "name": "windows",
+      "displayName": "Windows (Release)",
+      "description": "Visual Studio build. Set the CMAKE_PREFIX_PATH environment variable to your Qt msvc kit (for example C:\\Qt\\6.11.1\\msvc2022_64) if Qt is not auto-detected.",
+      "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "${sourceDir}/.deps/Qt/6.10.1/msvc2022_64"
-      }
-    },
-    {
-      "name": "vs2022-x64",
-      "displayName": "Visual Studio 2022 x64",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/vscode-2022",
-      "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "${sourceDir}/.deps/Qt/6.10.1/msvc2022_64"
+        "CMAKE_CONFIGURATION_TYPES": "Release;Debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "debug",
-      "configurePreset": "vs2026-x64",
-      "configuration": "Debug"
+      "name": "windows",
+      "configurePreset": "windows",
+      "configuration": "Release"
     },
     {
-      "name": "release",
-      "configurePreset": "vs2026-x64",
-      "configuration": "Release"
+      "name": "windows-debug",
+      "configurePreset": "windows",
+      "configuration": "Debug"
     }
   ],
   "testPresets": [
     {
-      "name": "debug",
-      "configurePreset": "vs2026-x64",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      },
-      "environment": {
-        "PATH": "${sourceDir}/.deps/Qt/6.10.1/msvc2022_64/bin;$penv{PATH}"
-      }
-    },
-    {
-      "name": "release",
-      "configurePreset": "vs2026-x64",
+      "name": "windows",
+      "configurePreset": "windows",
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
-      },
-      "environment": {
-        "PATH": "${sourceDir}/.deps/Qt/6.10.1/msvc2022_64/bin;$penv{PATH}"
       }
     }
   ]
