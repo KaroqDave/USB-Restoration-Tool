@@ -24,6 +24,8 @@ Built with C++ and Qt 6.
 - **The log lives beside the executable,** so a portable copy carries its own history and leaves nothing behind on the machines it is plugged into. It falls back to per-user application data only when the application folder is read-only, such as an AppImage's mount or an install under Program Files.
 - **The partition tables are verified against the tools that read them.** `scripts/verify-partition-tables.sh` writes what a restore would produce into a sparse image and hands it to `sgdisk` and `fdisk`; CI runs it on every push. See [Testing](#testing).
 
+> **The Linux build has not been tested on real hardware.** It compiles clean, passes the test suite, and every partition table it can write has been validated with `sgdisk` and `fdisk` — but no restore has run against a physical USB stick on Linux. The checks that stop it touching the wrong disk are the well-covered part; the sequence that erases the right one is not. Treat 1.1.0 on Linux as a first cut and use a drive you can afford to lose. The Windows path is unchanged from 1.0.0 and has been verified on hardware.
+
 ### Previously, in 1.0.0
 
 - **The disk is identified through the open handle, not just by number.** Windows reuses disk numbers as soon as a device is unplugged, so everything before that point described a disk that `\\.\PhysicalDriveN` might no longer name. The restore re-reads device number, bus type, byte length, sector size, serial number and writability from the handle it is about to write through.

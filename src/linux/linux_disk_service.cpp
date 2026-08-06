@@ -480,9 +480,31 @@ bool LinuxDiskService::restore(const RestoreRequest &request,
     // O_EXCL is the real gate: the kernel refuses it while any partition of the
     // disk is still mounted or claimed, so reaching this point proves nothing
     // is live underneath the write that follows.
+    //
+    // The retry is for the desktop automounter. Unmounting a stick is exactly
+    // the event that prompts GNOME or KDE to mount it straight back, and it can
+    // win the race between the umount above and the open below. Fedora Media
+    // Writer does not have this problem because UDisks2 both unmounts and holds
+    // the device; doing it directly means handling the race directly.
     reporter.step(QStringLiteral("Opening the device exclusively"));
     BlockDevice device(disk.deviceId);
-    if (!device.open(BlockDevice::Access::Exclusive, error)) {
+    QString openError;
+    bool opened = false;
+    for (int attempt = 0; attempt < 3 && !opened; ++attempt) {
+        if (attempt > 0) {
+            reporter.detail(QStringLiteral("Device was busy; unmounting again and retrying the exclusive open"));
+            if (!unmountDisk(disk, reporter, error)) {
+                return false;
+            }
+            QThread::msleep(500);
+        }
+        openError.clear();
+        opened = device.open(BlockDevice::Access::Exclusive, &openError);
+    }
+    if (!opened) {
+        if (error) {
+            *error = openError;
+        }
         return false;
     }
     if (!device.verifyIdentity(disk, error)) {
@@ -562,6 +584,14 @@ bool LinuxDiskService::restore(const RestoreRequest &request,
                          .arg(partitionPath)
                          .arg(NewPartitionTimeoutMs / 1000);
         }
+        return false;
+    }
+
+    // A brand new partition on a removable disk is precisely what a desktop
+    // automounter jumps on, and mkfs.exfat refuses a mounted device. Give udev
+    // a moment to do whatever it is going to do, then undo it.
+    QThread::msleep(500);
+    if (!unmountDisk(disk, reporter, error)) {
         return false;
     }
 

@@ -54,6 +54,13 @@ Linux support, a choice of partition style, and a shorter window.
 
 ### Fixed
 
+- The desktop automounter could win two races on Linux, both found by comparing
+  against Fedora Media Writer — which is immune to them only because UDisks2
+  both unmounts the device and holds it. Unmounting a stick is exactly the event
+  that prompts GNOME or KDE to mount it straight back, so the exclusive open now
+  retries with a fresh unmount; and a newly published partition is exactly what
+  an automounter grabs, so it is unmounted again before `mkfs.exfat`, which
+  refuses a mounted device.
 - `readMounts()` returned nothing at all. procfs reports every file as zero
   bytes and `QTextStream::atEnd()` believes it, so the read loop exited before
   the first line. Every mount point was therefore invisible and the guard that
