@@ -213,6 +213,10 @@ The platform backends drive real hardware and have no automated coverage. **Do n
 
 ## Project Layout
 
+On Linux the whole app currently runs as root, which is more privilege than the
+work needs. Splitting the privileged part into a polkit helper is planned for
+1.3.0 — see [docs/polkit-helper.md](docs/polkit-helper.md).
+
 ```text
 src/core      Safety policy, layout arithmetic, GPT/MBR serialisation — no OS headers
 src/platform  The DiskService interface, the restore worker, the log

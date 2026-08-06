@@ -60,7 +60,9 @@ jobs:
             libxkbcommon-dev \
             libfuse2 \
             file \
-            exfatprogs
+            exfatprogs \
+            gdisk \
+            fdisk
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -74,8 +76,11 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
 
+      # usb-partition-dump is part of this list because the verification step
+      # below runs it. Leaving it out is what made this job fail while the
+      # release workflow, which does build it, passed.
       - name: Build
-        run: cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests
+        run: cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests usb-partition-dump
 
       - name: Test
         run: ctest --test-dir build-linux --output-on-failure
@@ -84,9 +89,7 @@ jobs:
       # tools that will have to read them. A wrong byte here is a disk that no
       # longer mounts, and nothing else in CI can touch a real disk.
       - name: Verify generated partition tables
-        run: |
-          sudo apt-get install -y gdisk fdisk
-          ./scripts/verify-partition-tables.sh build-linux
+        run: ./scripts/verify-partition-tables.sh build-linux
 
       - name: Build AppImage
         run: |

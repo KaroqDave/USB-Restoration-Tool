@@ -88,6 +88,9 @@ Adding a platform means implementing `DiskService` and nothing else. If a change
 needs the GUI or `src/core` to know which platform it is on, the abstraction is
 in the wrong place.
 
+The Linux app runs entirely as root today. `docs/polkit-helper.md` describes the
+privilege split planned for 1.3.0; read it before restructuring `src/linux`.
+
 `PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version.
 Tagging `vX.Y.Z` triggers `release.yml`, which fails unless the tag matches that
 version and the README has a `## What's New in X.Y.Z` section to use as the
