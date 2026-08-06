@@ -1,5 +1,7 @@
 #include "win/admin.h"
 
+#include "platform/startup.h"
+
 #include <Windows.h>
 
 namespace usbrestore {
@@ -19,7 +21,7 @@ bool isProcessElevated()
     return isAdmin == TRUE;
 }
 
-bool enableSecureDllSearch()
+void hardenProcessStartup()
 {
     // System32, the directory the executable was loaded from, and directories
     // added explicitly. Notably not the current directory and not %PATH%,
@@ -29,9 +31,8 @@ bool enableSecureDllSearch()
                                   LOAD_LIBRARY_SEARCH_USER_DIRS)) {
         // Older systems without SetDefaultDllDirectories still honour this,
         // which at least takes the current directory out of the search.
-        return SetDllDirectoryW(L"") != 0;
+        SetDllDirectoryW(L"");
     }
-    return true;
 }
 
 } // namespace usbrestore

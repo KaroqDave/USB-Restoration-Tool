@@ -9,10 +9,4 @@ namespace usbrestore {
 // disk operation.
 bool isProcessElevated();
 
-// Removes the current directory and the PATH from the DLL search order, so a
-// planted DLL sitting next to a data file cannot be loaded into a process that
-// runs as Administrator. Must be called before any other DLL is loaded, which
-// means before the Qt application object exists.
-bool enableSecureDllSearch();
-
 } // namespace usbrestore

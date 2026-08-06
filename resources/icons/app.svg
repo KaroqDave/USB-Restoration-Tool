@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Matches resources/icons/app.ico so the Windows and Linux builds carry
+       the same mark: a rounded square outline with a USB plug inside. -->
+  <rect x="26" y="26" width="204" height="204" rx="46" ry="46"
+        fill="none" stroke="#0f766e" stroke-width="26"/>
+  <!-- Plug prongs -->
+  <path d="M108 62 v26 M148 62 v26"
+        fill="none" stroke="#0f766e" stroke-width="13" stroke-linecap="butt"/>
+  <!-- Plug body -->
+  <rect x="98" y="86" width="60" height="66" rx="26" ry="26" fill="#0f766e"/>
+  <!-- Cable stub -->
+  <ellipse cx="128" cy="168" rx="13" ry="18" fill="#0f766e"/>
+</svg>

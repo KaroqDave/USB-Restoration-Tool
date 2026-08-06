@@ -7,13 +7,13 @@
 
 namespace usbrestore {
 
-// MSFT_Disk.BusType for USB. Every other bus is a disk this tool must not
-// touch, so the value appears in the WQL filter, in the safety check, and in
-// the post-open check against the device the handle actually points at.
+// The bus code for USB. On Windows this is MSFT_Disk.BusType; the Linux
+// backend reports the same value when the device sits behind a USB controller,
+// so the safety rules do not have to know which platform they are running on.
 inline constexpr quint32 UsbBusType = 7;
 
-// MSFT_Disk.PartitionStyle and MSFT_Disk.HealthStatus are uint16 enums, not
-// strings; Windows reports the code and the caller names it.
+// How a disk's partitions are described. Doubles as the style a restore is
+// asked to produce, minus Unknown.
 enum class PartitionStyle : quint16 {
     Unknown = 0,
     Mbr = 1,
@@ -27,7 +27,22 @@ enum class HealthStatus : quint16 {
 };
 
 struct DiskInfo {
+    // The device the restore reopens and re-verifies against:
+    // "\\\\.\\PhysicalDrive2" on Windows, "/dev/sdb" on Linux. This is the
+    // disk's identity as far as the core is concerned; everything else is
+    // corroboration.
+    QString deviceId;
+
+    // What the disk is called on screen: "Disk 2" on Windows, "/dev/sdb" on
+    // Linux. Windows disk numbers are meaningful to users because that is what
+    // Disk Management shows; Linux has no equivalent number, and inventing one
+    // would be inventing a number that changes when another stick is unplugged.
+    QString displayId;
+
+    // Windows disk number, used by the Windows backend for its IOCTLs and WQL
+    // filters. Not meaningful on Linux and never used by the core.
     quint32 number = 0;
+
     quint32 busType = 0;
     QString name;
     QString uniqueId;
@@ -37,8 +52,12 @@ struct DiskInfo {
     quint32 sectorSize = 512;
     quint16 health = static_cast<quint16>(HealthStatus::Healthy);
     quint16 partitionStyle = static_cast<quint16>(PartitionStyle::Unknown);
-    QStringList driveLetters;
+
+    // Where the disk's volumes are currently reachable: "E:" on Windows,
+    // "/run/media/dave/USB" on Linux.
+    QStringList mountPoints;
     QStringList labels;
+
     bool isBoot = false;
     bool isSystem = false;
     bool isReadOnly = false;
@@ -47,6 +66,7 @@ struct DiskInfo {
 
 QString formatByteSize(std::uint64_t bytes);
 QString partitionStyleName(quint16 style);
+QString partitionStyleLabel(PartitionStyle style);
 QString healthStatusName(quint16 status);
 QString busTypeName(quint32 busType);
 

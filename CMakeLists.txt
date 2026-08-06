@@ -1,18 +1,20 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(USBRestorationTool
-    VERSION 1.0.0
+    VERSION 1.1.0
     DESCRIPTION "Restore ISO-written USB drives to one clean exFAT volume"
     LANGUAGES CXX
 )
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     message(FATAL_ERROR
-        "USB Restoration Tool targets Windows only: it drives the Windows storage stack "
-        "directly through DeviceIoControl and the MSFT_Storage WMI classes.")
+        "USB Restoration Tool supports Windows and Linux only: each backend drives its "
+        "platform's storage stack directly.")
 endif()
 
-enable_language(RC)
+if(WIN32)
+    enable_language(RC)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,7 +29,7 @@ option(USBRESTORE_BUILD_TESTS "Build the USB Restoration Tool C++ tests" ON)
 # Fallback Qt discovery: when configuring without a preset or CMAKE_PREFIX_PATH
 # (straight from an IDE, say), locate the newest Qt MSVC kit under C:/Qt so
 # find_package(Qt6) works out of the box.
-if(NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
+if(WIN32 AND NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
     file(GLOB _usbrestore_qt_configs "C:/Qt/*/msvc*_64/lib/cmake/Qt6/Qt6Config.cmake")
     if(_usbrestore_qt_configs)
         list(SORT _usbrestore_qt_configs COMPARE NATURAL)
@@ -45,13 +47,27 @@ if(USBRESTORE_BUILD_TESTS)
 endif()
 get_filename_component(QT_INSTALL_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 
-# Pure policy and formatting, with no Windows headers behind it, so the safety
-# rules that decide whether a disk may be erased are testable on their own.
+# Policy, formatting and partition-table bytes, with no OS headers behind any
+# of it. This is the half that decides whether a disk may be erased and what
+# gets written to it, and the half the tests cover.
 set(USBRESTORE_CORE_SOURCES
     src/core/disk.cpp
     src/core/disk.h
+    src/core/partition_table.cpp
+    src/core/partition_table.h
     src/core/safety.cpp
     src/core/safety.h
+)
+
+# The platform-agnostic half of the platform layer: the interface each backend
+# implements, the worker that drives one, and the log.
+set(USBRESTORE_PLATFORM_SOURCES
+    src/platform/disk_service.h
+    src/platform/logger.cpp
+    src/platform/logger.h
+    src/platform/restore_worker.cpp
+    src/platform/restore_worker.h
+    src/platform/startup.h
 )
 
 set(USBRESTORE_WIN_SOURCES
@@ -59,18 +75,26 @@ set(USBRESTORE_WIN_SOURCES
     src/win/admin.h
     src/win/disk_enumerator.cpp
     src/win/disk_enumerator.h
-    src/win/logger.cpp
-    src/win/logger.h
     src/win/raw_disk.cpp
     src/win/raw_disk.h
-    src/win/restore_worker.cpp
-    src/win/restore_worker.h
     src/win/volume_manager.cpp
     src/win/volume_manager.h
+    src/win/windows_disk_service.cpp
+    src/win/windows_disk_service.h
     src/win/windows_util.cpp
     src/win/windows_util.h
     src/win/wmi.cpp
     src/win/wmi.h
+)
+
+set(USBRESTORE_LINUX_SOURCES
+    src/linux/block_device.cpp
+    src/linux/block_device.h
+    src/linux/linux_disk_service.cpp
+    src/linux/linux_disk_service.h
+    src/linux/linux_startup.cpp
+    src/linux/sysfs.cpp
+    src/linux/sysfs.h
 )
 
 set(USBRESTORE_GUI_SOURCES
@@ -84,65 +108,75 @@ set(USBRESTORE_GUI_SOURCES
     resources/resources.qrc
 )
 
-# The version resource is generated so PROJECT_VERSION stays the only place a
-# release is bumped.
-set(USBRESTORE_APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app.ico")
-set(USBRESTORE_APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.manifest")
-configure_file(resources/app.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app.rc" @ONLY)
+if(WIN32)
+    # The version resource is generated so PROJECT_VERSION stays the only place
+    # a release is bumped.
+    set(USBRESTORE_APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app.ico")
+    set(USBRESTORE_APP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.manifest")
+    configure_file(resources/app.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app.rc" @ONLY)
 
-add_executable(usb-restoration-tool WIN32
-    ${USBRESTORE_CORE_SOURCES}
-    ${USBRESTORE_WIN_SOURCES}
-    ${USBRESTORE_GUI_SOURCES}
-    "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
-)
+    add_executable(usb-restoration-tool WIN32
+        ${USBRESTORE_CORE_SOURCES}
+        ${USBRESTORE_PLATFORM_SOURCES}
+        ${USBRESTORE_WIN_SOURCES}
+        ${USBRESTORE_GUI_SOURCES}
+        "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
+    )
+else()
+    add_executable(usb-restoration-tool
+        ${USBRESTORE_CORE_SOURCES}
+        ${USBRESTORE_PLATFORM_SOURCES}
+        ${USBRESTORE_LINUX_SOURCES}
+        ${USBRESTORE_GUI_SOURCES}
+    )
+endif()
 
 target_include_directories(usb-restoration-tool PRIVATE src)
 target_compile_definitions(usb-restoration-tool PRIVATE
-    UNICODE
-    _UNICODE
-    NOMINMAX
-    WIN32_LEAN_AND_MEAN
     USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
 )
-target_link_libraries(usb-restoration-tool PRIVATE
-    Qt6::Core
-    Qt6::Widgets
-    ole32
-    oleaut32
-    wbemuuid
-    advapi32
-    shell32
-    uuid
-)
+target_link_libraries(usb-restoration-tool PRIVATE Qt6::Core Qt6::Widgets)
 
-# The manifest is embedded through the .rc file, so the linker must not add one
-# of its own.
-target_link_options(usb-restoration-tool PRIVATE "/MANIFEST:NO")
+if(WIN32)
+    target_compile_definitions(usb-restoration-tool PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(usb-restoration-tool PRIVATE ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
+
+    # The manifest is embedded through the .rc file, so the linker must not add
+    # one of its own.
+    target_link_options(usb-restoration-tool PRIVATE "/MANIFEST:NO")
+endif()
 
 if(MSVC)
     # An elevated process is worth compiling defensively: /sdl promotes the
     # security-relevant warnings to errors, /guard:cf adds control-flow guard,
     # and /CETCOMPAT opts into hardware shadow stacks where the CPU has them.
     # /utf-8 so the check marks and separators in the UI strings are compiled as
-    # the UTF-8 that QStringLiteral expects, rather than as whatever the build
-    # machine's active code page happens to be.
+    # the UTF-8 that QStringLiteral expects.
     target_compile_options(usb-restoration-tool PRIVATE /utf-8 /W4 /permissive- /sdl /guard:cf)
     target_link_options(usb-restoration-tool PRIVATE /guard:cf /CETCOMPAT /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # The same intent as the MSVC flags above: a process running as root should
+    # be built with the hardening its toolchain offers.
+    target_compile_options(usb-restoration-tool PRIVATE
+        -Wall -Wextra -Wpedantic
+        -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE)
+    target_link_options(usb-restoration-tool PRIVATE -pie -Wl,-z,relro,-z,now,-z,noexecstack)
 endif()
 
 set_target_properties(usb-restoration-tool PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:usb-restoration-tool>"
 )
 
-find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_INSTALL_PREFIX}/bin")
-if(WINDEPLOYQT_EXECUTABLE)
-    add_custom_command(
-        TARGET usb-restoration-tool
-        POST_BUILD
-        COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations "$<TARGET_FILE:usb-restoration-tool>"
-        COMMENT "Deploying Qt runtime files"
-    )
+if(WIN32)
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_INSTALL_PREFIX}/bin")
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(
+            TARGET usb-restoration-tool
+            POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations "$<TARGET_FILE:usb-restoration-tool>"
+            COMMENT "Deploying Qt runtime files"
+        )
+    endif()
 endif()
 
 if(USBRESTORE_BUILD_TESTS)
@@ -153,22 +187,48 @@ if(USBRESTORE_BUILD_TESTS)
         tests/test_core.cpp
     )
     target_include_directories(usb-restoration-tool-tests PRIVATE src)
-    target_compile_definitions(usb-restoration-tool-tests PRIVATE UNICODE _UNICODE NOMINMAX)
+    target_link_libraries(usb-restoration-tool-tests PRIVATE Qt6::Core Qt6::Test)
     if(MSVC)
+        target_compile_definitions(usb-restoration-tool-tests PRIVATE UNICODE _UNICODE NOMINMAX)
         target_compile_options(usb-restoration-tool-tests PRIVATE /utf-8)
     endif()
-    target_link_libraries(usb-restoration-tool-tests PRIVATE Qt6::Core Qt6::Test)
 
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
-    set_tests_properties(usb-restoration-tool-tests PROPERTIES
-        ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+    if(WIN32)
+        set_tests_properties(usb-restoration-tool-tests PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+    endif()
+
+    # Writes a partition table into a sparse image so sgdisk and fdisk can be
+    # asked whether they accept it. The unit tests check the bytes against the
+    # specification; scripts/verify-partition-tables.sh checks them against the
+    # tools that will have to read a restored disk.
+    add_executable(usb-partition-dump
+        ${USBRESTORE_CORE_SOURCES}
+        tools/partition_dump.cpp
+    )
+    target_include_directories(usb-partition-dump PRIVATE src)
+    target_link_libraries(usb-partition-dump PRIVATE Qt6::Core)
+    if(MSVC)
+        target_compile_definitions(usb-partition-dump PRIVATE UNICODE _UNICODE NOMINMAX)
+        target_compile_options(usb-partition-dump PRIVATE /utf-8)
+    endif()
 endif()
 
-install(TARGETS usb-restoration-tool RUNTIME DESTINATION ".")
-if(WINDEPLOYQT_EXECUTABLE)
-    install(CODE "
-        execute_process(COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
-            --no-translations --no-compiler-runtime
-            \"\${CMAKE_INSTALL_PREFIX}/usb-restoration-tool.exe\")
-    ")
+if(WIN32)
+    install(TARGETS usb-restoration-tool RUNTIME DESTINATION ".")
+    if(WINDEPLOYQT_EXECUTABLE)
+        install(CODE "
+            execute_process(COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
+                --no-translations --no-compiler-runtime
+                \"\${CMAKE_INSTALL_PREFIX}/usb-restoration-tool.exe\")
+        ")
+    endif()
+else()
+    install(TARGETS usb-restoration-tool RUNTIME DESTINATION bin)
+    install(FILES resources/usb-restoration-tool.desktop DESTINATION share/applications)
+    install(FILES resources/icons/app.svg DESTINATION share/icons/hicolor/scalable/apps
+            RENAME usb-restoration-tool.svg)
+    install(FILES resources/icons/app.png DESTINATION share/icons/hicolor/256x256/apps
+            RENAME usb-restoration-tool.png)
 endif()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
+#include "core/safety.h"
 
 #include <QString>
 
@@ -40,9 +41,17 @@ class RawDisk {
     bool clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSize, QString *error = nullptr);
 
     bool setRaw(QString *error = nullptr);
-    bool createSingleGptPartition(std::uint64_t diskSize, quint32 sectorSize, QString *error = nullptr);
+
+    // Lays down one data partition spanning the disk under the requested
+    // partition style. Windows writes the table itself from this description,
+    // so unlike the Linux backend there are no partition-table bytes here.
+    bool createSinglePartition(PartitionStyle style,
+                               std::uint64_t diskSize,
+                               quint32 sectorSize,
+                               QString *error = nullptr);
 
   private:
+    bool createSingleMbrPartition(const GptLayout &layout, quint32 sectorSize, QString *error);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
     QString lastError(const QString &context) const;
 

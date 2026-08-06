@@ -1,0 +1,191 @@
+#include "win/windows_disk_service.h"
+
+#include "win/admin.h"
+#include "win/raw_disk.h"
+#include "win/volume_manager.h"
+#include "win/windows_util.h"
+
+#include <memory>
+
+namespace usbrestore {
+
+namespace {
+
+// How long Windows is given to publish the volume it has just been told to
+// create. Slow flash media on a busy machine can take well over ten seconds.
+constexpr int NewVolumeTimeoutMs = 60 * 1000;
+
+} // namespace
+
+std::unique_ptr<DiskService> DiskService::create()
+{
+    return std::make_unique<WindowsDiskService>();
+}
+
+bool WindowsDiskService::isPrivileged() const
+{
+    return isProcessElevated();
+}
+
+QString WindowsDiskService::privilegeHint() const
+{
+    return QStringLiteral("USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
+                          "window and start the app again, approving the Windows permission prompt.");
+}
+
+QVector<DiskInfo> WindowsDiskService::listUsbDisks(QString *error) const
+{
+    return m_enumerator.listUsbDisks(error);
+}
+
+bool WindowsDiskService::refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error) const
+{
+    return m_enumerator.diskByNumber(disk.number, current, error);
+}
+
+RestoreGuard WindowsDiskService::restoreGuard() const
+{
+    RestoreGuard guard;
+    guard.mountPoints = protectedSystemDriveLetters();
+    if (!guard.mountPoints.contains(QStringLiteral("C"))) {
+        guard.mountPoints.append(QStringLiteral("C"));
+    }
+    return guard;
+}
+
+int WindowsDiskService::totalRestoreSteps() const
+{
+    return 14;
+}
+
+QString WindowsDiskService::restoredLocationNoun() const
+{
+    return QStringLiteral("drive letter");
+}
+
+bool WindowsDiskService::restore(const RestoreRequest &request,
+                                 RestoreReporter &reporter,
+                                 RestoreResult *result,
+                                 QString *error)
+{
+    DiskInfo disk = request.disk;
+    QString reason;
+    if (!isSafeRestoreTarget(disk, request.guard, &reason)) {
+        if (error) {
+            *error = reason;
+        }
+        return false;
+    }
+
+    VolumeManager volumes;
+
+    reporter.step(QStringLiteral("Verifying the selected USB disk"));
+    DiskInfo currentDisk;
+    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, error)) {
+        return false;
+    }
+    if (!isSameRestoreTarget(disk, currentDisk, &reason) ||
+        !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
+        if (error) {
+            *error = reason;
+        }
+        return false;
+    }
+    disk = currentDisk;
+
+    // The handle is opened and checked before anything is changed, and it stays
+    // open for the rest of the restore. Every raw operation below therefore
+    // acts on the device object this check passed on, not on whatever
+    // \\.\PhysicalDriveN happens to name later.
+    reporter.step(QStringLiteral("Opening and identifying the physical drive"));
+    RawDisk rawDisk(disk.number);
+    if (!rawDisk.open(error) || !rawDisk.verifyIdentity(disk, error)) {
+        return false;
+    }
+
+    if (reporter.cancelRequested()) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Refreshing Windows disk metadata"));
+    if (!volumes.refreshDisk(disk.number, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Detaching existing drive letters"));
+    if (!volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Deleting existing partition records"));
+    if (!volumes.deletePartitionsForDisk(disk.number, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Locking the physical drive"));
+    QString lockError;
+    if (!rawDisk.lock(&lockError)) {
+        reporter.detail(QStringLiteral("Physical-drive lock skipped: %1").arg(lockError));
+    }
+    if (!rawDisk.allowExtendedIo(&lockError)) {
+        reporter.detail(QStringLiteral("Extended disk I/O hint skipped: %1").arg(lockError));
+    }
+    rawDisk.refreshLayout(nullptr);
+
+    if (reporter.cancelRequested()) {
+        return false;
+    }
+
+    // Last chance to stop. Everything above this line is reversible; nothing
+    // below it is, so the identity check is repeated one final time rather
+    // than trusting the one from before the WMI calls.
+    if (!rawDisk.verifyIdentity(disk, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
+    if (!rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Resetting the disk to RAW"));
+    if (!rawDisk.setRaw(error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Creating one %1 data partition").arg(partitionStyleLabel(request.style)));
+    if (!rawDisk.createSinglePartition(request.style, disk.size, disk.sectorSize, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Waiting for Windows to discover the new volume"));
+    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error);
+    if (volumeName.isEmpty()) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Refreshing Windows disk metadata"));
+    if (!volumes.refreshDisk(disk.number, error) ||
+        !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Assigning a drive letter"));
+    const QString driveRoot = volumes.mountVolume(volumeName, error);
+    if (driveRoot.isEmpty()) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Formatting as exFAT"));
+    if (!volumes.formatExFat(volumeName, driveRoot, disk.number, request.volumeLabel, error)) {
+        return false;
+    }
+
+    reporter.step(QStringLiteral("Restore complete"));
+    if (result) {
+        result->location = driveRoot;
+    }
+    return true;
+}
+
+} // namespace usbrestore

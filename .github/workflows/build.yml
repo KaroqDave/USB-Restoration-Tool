@@ -43,3 +43,61 @@ jobs:
           name: usb-restoration-tool-windows
           path: standalone/*.zip
           if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            curl \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libfuse2 \
+            file \
+            exfatprogs
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests
+
+      - name: Test
+        run: ctest --test-dir build-linux --output-on-failure
+
+      # The partition tables the Linux backend writes are checked against the
+      # tools that will have to read them. A wrong byte here is a disk that no
+      # longer mounts, and nothing else in CI can touch a real disk.
+      - name: Verify generated partition tables
+        run: |
+          sudo apt-get install -y gdisk fdisk
+          ./scripts/verify-partition-tables.sh build-linux
+
+      - name: Build AppImage
+        run: |
+          chmod +x ./scripts/build-appimage.sh
+          CMAKE_PREFIX_PATH="$QT_ROOT_DIR" ./scripts/build-appimage.sh
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v7
+        with:
+          name: usb-restoration-tool-appimage
+          path: |
+            standalone/*.AppImage
+            standalone/*.AppImage.sha256
+          if-no-files-found: error

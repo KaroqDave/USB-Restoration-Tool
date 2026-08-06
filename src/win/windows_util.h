@@ -19,6 +19,11 @@ QString windowsErrorMessage(const QString &context, DWORD error);
 // inferred from any name.
 bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber);
 
+// The first free drive letter at or after D:. C: is never offered, and A:/B:
+// are left to floppy-era device naming. Windows-only by nature: Linux has no
+// equivalent question.
+QString firstAvailableDriveLetter(quint32 logicalDrivesMask);
+
 // Opens \\.\X: for querying only. No read or write access is requested,
 // because everything this tool asks of a drive letter it does not own is a
 // query — and asking for write access to C: is not a thing worth doing by

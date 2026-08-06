@@ -25,6 +25,9 @@ QString tokenReplace(QString tpl, const Palette &p)
     tpl.replace(QStringLiteral("@dangerHover"), hex(p.dangerHover));
     tpl.replace(QStringLiteral("@dangerPressed"), hex(p.dangerPressed));
     tpl.replace(QStringLiteral("@danger"), hex(p.danger));
+    tpl.replace(
+        QStringLiteral("@chevron"),
+        p.isDark ? QStringLiteral(":/icons/chevron-down-dark.svg") : QStringLiteral(":/icons/chevron-down-light.svg"));
     return tpl;
 }
 
@@ -167,6 +170,48 @@ QLineEdit {
 }
 QLineEdit:focus { border: 1px solid @accent; background: @surface; }
 QLineEdit:disabled { color: @mutedText; }
+
+QComboBox {
+    background: @surfaceAlt;
+    border: 1px solid @border;
+    border-radius: 8px;
+    padding: 7px 10px;
+    min-height: 20px;
+    combobox-popup: 0;
+}
+QComboBox:hover { border: 1px solid @accent; }
+QComboBox:focus { border: 1px solid @accent; }
+QComboBox:disabled { color: @mutedText; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 30px;
+    border: none;
+}
+QComboBox::down-arrow {
+    image: url(@chevron);
+    width: 14px;
+    height: 14px;
+    margin-right: 10px;
+}
+QComboBox QAbstractItemView {
+    background: @surface;
+    border: 1px solid @border;
+    border-radius: 8px;
+    padding: 4px;
+    outline: none;
+    selection-background-color: transparent;
+    selection-color: @accentText;
+}
+QComboBox QAbstractItemView::item {
+    padding: 0px 10px;
+    min-height: 30px;
+    border: none;
+    border-radius: 6px;
+    color: @text;
+}
+QComboBox QAbstractItemView::item:hover { background: @surfaceAlt; color: @text; }
+QComboBox QAbstractItemView::item:selected { background: @accent; color: @accentText; }
 
 QListWidget {
     background: @surfaceAlt;

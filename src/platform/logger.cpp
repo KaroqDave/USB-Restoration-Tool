@@ -1,5 +1,6 @@
-#include "win/logger.h"
+#include "platform/logger.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -11,6 +12,8 @@ namespace usbrestore {
 
 namespace {
 
+constexpr auto LogFileName = "usb-restoration-tool.log";
+
 // Past this the log is rolled over to a single .1 backup. A restore writes a
 // couple of dozen lines, so this holds a long history without the file growing
 // without bound on a machine that restores sticks all day.
@@ -20,15 +23,29 @@ constexpr qint64 MaxLogBytes = 1024 * 1024;
 
 Logger::Logger(QObject *parent) : QObject(parent)
 {
-    // The per-user application data directory rather than Documents: this is a
-    // diagnostic file, not something the user put there, and it should not
-    // appear among their own documents.
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    if (dir.isEmpty() || !QDir().mkpath(dir)) {
+    // Beside the executable first: this is a portable tool, and a copy on a
+    // stick should carry its own log rather than scatter one into the profile
+    // of every machine it is plugged into.
+    if (openAt(QCoreApplication::applicationDirPath())) {
+        m_portable = true;
         return;
     }
 
-    const QString path = QDir(dir).filePath(QStringLiteral("usb-restoration-tool.log"));
+    // Read-only install directory, or an AppImage's squashfs mount. A log in
+    // the user's own data directory is worth more than no log at all.
+    const QString fallback = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (!fallback.isEmpty() && QDir().mkpath(fallback)) {
+        openAt(fallback);
+    }
+}
+
+bool Logger::openAt(const QString &directory)
+{
+    if (directory.isEmpty()) {
+        return false;
+    }
+
+    const QString path = QDir(directory).filePath(QString::fromLatin1(LogFileName));
     if (QFileInfo(path).size() > MaxLogBytes) {
         const QString rolled = path + QStringLiteral(".1");
         QFile::remove(rolled);
@@ -36,9 +53,11 @@ Logger::Logger(QObject *parent) : QObject(parent)
     }
 
     m_file.setFileName(path);
-    // A log that cannot be opened is reported by the window rather than
-    // failing startup: it costs diagnosability, not the ability to restore.
-    (void)m_file.open(QIODevice::Append | QIODevice::Text);
+    if (!m_file.open(QIODevice::Append | QIODevice::Text)) {
+        m_file.setFileName(QString());
+        return false;
+    }
+    return true;
 }
 
 void Logger::log(const QString &message)
@@ -73,6 +92,11 @@ QString Logger::path() const
 bool Logger::isOpen() const
 {
     return m_file.isOpen();
+}
+
+bool Logger::isPortable() const
+{
+    return m_portable;
 }
 
 } // namespace usbrestore

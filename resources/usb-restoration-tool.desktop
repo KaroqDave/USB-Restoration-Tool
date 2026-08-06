@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=USB Restoration Tool
+Comment=Restore an ISO-written USB drive to one clean exFAT volume
+Exec=usb-restoration-tool
+Icon=usb-restoration-tool
+Categories=Utility;System;Filesystem;
+Keywords=USB;format;exFAT;partition;restore;
+Terminal=false

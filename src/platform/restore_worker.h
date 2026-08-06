@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/disk.h"
+#include "platform/disk_service.h"
 
 #include <QObject>
-#include <QStringList>
+#include <QString>
 
 #include <atomic>
 
@@ -11,15 +11,12 @@ namespace usbrestore {
 
 // Runs one restore on a worker thread. The object is created on the GUI thread
 // and moved to the thread that calls run(); every result leaves through a
-// signal.
-class RestoreWorker : public QObject {
+// signal. All it does is adapt the backend's RestoreReporter calls into those
+// signals, so the platform code never touches Qt's threading.
+class RestoreWorker : public QObject, private RestoreReporter {
     Q_OBJECT
   public:
-    // Total number of steps a successful restore reports, so the GUI can show
-    // real progress instead of a bar that only knows "busy".
-    static constexpr int TotalSteps = 14;
-
-    RestoreWorker(DiskInfo disk, QStringList protectedDriveLetters, QString volumeLabel);
+    RestoreWorker(DiskService &service, RestoreRequest request);
 
     // Asks the restore to stop. Only honoured while the work is still
     // reversible: once the first sector has been overwritten there is nothing
@@ -36,16 +33,15 @@ class RestoreWorker : public QObject {
     void logFileOnly(const QString &message);
     void failed(const QString &message);
     void cancelled();
-    void finished(const QString &driveRoot);
+    void finished(const QString &location);
 
   private:
-    void step(const QString &message);
-    void fail(const QString &message);
-    bool cancelRequested() const;
+    void step(const QString &message) override;
+    void detail(const QString &message) override;
+    bool cancelRequested() const override;
 
-    DiskInfo m_disk;
-    QStringList m_protectedDriveLetters;
-    QString m_volumeLabel;
+    DiskService &m_service;
+    RestoreRequest m_request;
     int m_step = 0;
     std::atomic_bool m_cancelRequested{false};
 };

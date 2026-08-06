@@ -44,6 +44,17 @@ QString windowsErrorMessage(const QString &context, DWORD error)
     return QStringLiteral("%1: %2").arg(context, windowsErrorMessage(error));
 }
 
+QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
+{
+    for (int code = 'D'; code <= 'Z'; ++code) {
+        const int bit = code - 'A';
+        if ((logicalDrivesMask & (1u << bit)) == 0) {
+            return QString(QChar(static_cast<ushort>(code))) + QStringLiteral(":\\");
+        }
+    }
+    return {};
+}
+
 bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
 {
     if (volumeHandle == INVALID_HANDLE_VALUE) {

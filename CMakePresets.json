@@ -19,6 +19,20 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (Release)",
+      "description": "Set the CMAKE_PREFIX_PATH environment variable to your Qt gcc kit if Qt is not auto-detected.",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -31,6 +45,10 @@
       "name": "windows-debug",
       "configurePreset": "windows",
       "configuration": "Debug"
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux"
     }
   ],
   "testPresets": [
@@ -38,6 +56,13 @@
       "name": "windows",
       "configurePreset": "windows",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux",
       "output": {
         "outputOnFailure": true
       }

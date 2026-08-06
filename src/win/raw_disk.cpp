@@ -1,5 +1,6 @@
 #include "win/raw_disk.h"
 
+#include "core/partition_table.h"
 #include "core/safety.h"
 #include "win/windows_util.h"
 
@@ -8,6 +9,8 @@
 
 #include <objbase.h>
 #include <winioctl.h>
+
+#include <cstddef>
 
 namespace usbrestore {
 
@@ -343,14 +346,21 @@ bool RawDisk::setRaw(QString *error)
     return true;
 }
 
-bool RawDisk::createSingleGptPartition(std::uint64_t diskSize, quint32 sectorSize, QString *error)
+bool RawDisk::createSinglePartition(PartitionStyle style,
+                                    std::uint64_t diskSize,
+                                    quint32 sectorSize,
+                                    QString *error)
 {
     const GptLayout layout = calculateGptLayout(diskSize, sectorSize);
     if (layout.length == 0) {
         if (error) {
-            *error = QStringLiteral("Disk is too small for a safe GPT layout.");
+            *error = QStringLiteral("Disk is too small for a safe partition layout.");
         }
         return false;
+    }
+
+    if (style == PartitionStyle::Mbr) {
+        return createSingleMbrPartition(layout, sectorSize, error);
     }
 
     GUID diskId = {};
@@ -411,6 +421,91 @@ bool RawDisk::createSingleGptPartition(std::uint64_t diskSize, quint32 sectorSiz
                          nullptr)) {
         if (error) {
             *error = lastError(QStringLiteral("Could not create the partition layout"));
+        }
+        return false;
+    }
+
+    return refreshLayout(error);
+}
+
+bool RawDisk::createSingleMbrPartition(const GptLayout &layout, quint32 sectorSize, QString *error)
+{
+    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    const std::uint64_t endSector = (layout.startOffset + layout.length) / sector;
+    if (endSector > 0xFFFFFFFFull) {
+        if (error) {
+            *error = QStringLiteral("MBR cannot address a partition this far into the disk. Use GPT instead.");
+        }
+        return false;
+    }
+
+    GUID signatureSource = {};
+    if (FAILED(CoCreateGuid(&signatureSource))) {
+        if (error) {
+            *error = QStringLiteral("Could not generate a disk signature.");
+        }
+        return false;
+    }
+
+    CREATE_DISK createDisk = {};
+    createDisk.PartitionStyle = PARTITION_STYLE_MBR;
+    createDisk.Mbr.Signature = signatureSource.Data1;
+
+    DWORD unused = 0;
+    if (!DeviceIoControl(
+            m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
+        if (error) {
+            *error = lastError(QStringLiteral("Could not create the MBR disk"));
+        }
+        return false;
+    }
+    if (!refreshLayout(error)) {
+        return false;
+    }
+
+    // An MBR layout is always four entries: the on-disk table has four slots
+    // and IOCTL_DISK_SET_DRIVE_LAYOUT_EX rejects any other count. The three
+    // unused ones are written as empty rather than left alone, so nothing of
+    // the previous table survives in them.
+    constexpr int MbrPartitionCount = 4;
+    const int layoutBytes =
+        static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) +
+        static_cast<int>(sizeof(PARTITION_INFORMATION_EX)) * MbrPartitionCount;
+    QByteArray buffer(layoutBytes, '\0');
+
+    auto *driveLayout = reinterpret_cast<DRIVE_LAYOUT_INFORMATION_EX *>(buffer.data());
+    driveLayout->PartitionStyle = PARTITION_STYLE_MBR;
+    driveLayout->PartitionCount = MbrPartitionCount;
+    driveLayout->Mbr.Signature = signatureSource.Data1;
+
+    PARTITION_INFORMATION_EX &partition = driveLayout->PartitionEntry[0];
+    partition.PartitionStyle = PARTITION_STYLE_MBR;
+    partition.StartingOffset.QuadPart = static_cast<LONGLONG>(layout.startOffset);
+    partition.PartitionLength.QuadPart = static_cast<LONGLONG>(layout.length);
+    partition.PartitionNumber = 1;
+    partition.RewritePartition = TRUE;
+    // 0x07 is what a BIOS-era device reads to decide it recognises an exFAT
+    // stick, so the type byte has to say so.
+    partition.Mbr.PartitionType = MbrExFatPartitionType;
+    partition.Mbr.BootIndicator = FALSE;
+    partition.Mbr.RecognizedPartition = TRUE;
+    partition.Mbr.HiddenSectors = static_cast<DWORD>(layout.startOffset / sector);
+
+    for (int i = 1; i < MbrPartitionCount; ++i) {
+        driveLayout->PartitionEntry[i].PartitionStyle = PARTITION_STYLE_MBR;
+        driveLayout->PartitionEntry[i].RewritePartition = TRUE;
+    }
+
+    if (!DeviceIoControl(m_handle,
+                         IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
+                         buffer.data(),
+                         static_cast<DWORD>(buffer.size()),
+                         nullptr,
+                         0,
+                         &unused,
+                         nullptr)) {
+        if (error) {
+            *error = lastError(QStringLiteral("Could not create the MBR partition layout"));
         }
         return false;
     }

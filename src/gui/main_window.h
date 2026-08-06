@@ -3,19 +3,19 @@
 #include "core/disk.h"
 #include "gui/app_settings.h"
 #include "gui/theme.h"
-#include "win/disk_enumerator.h"
-#include "win/logger.h"
+#include "platform/disk_service.h"
+#include "platform/logger.h"
 
 #include <QMainWindow>
 #include <QPointer>
-#include <QStringList>
 #include <QVector>
 
+class QCheckBox;
 class QCloseEvent;
-class QGroupBox;
+class QComboBox;
+class QDialog;
 class QLabel;
 class QLayout;
-class QLineEdit;
 class QListWidget;
 class QProgressBar;
 class QPushButton;
@@ -29,7 +29,7 @@ class RestoreWorker;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
-    explicit MainWindow(Theme initialTheme, QWidget *parent = nullptr);
+    MainWindow(DiskService &service, Theme initialTheme, QWidget *parent = nullptr);
 
   protected:
     void closeEvent(QCloseEvent *event) override;
@@ -43,9 +43,10 @@ class MainWindow : public QMainWindow {
     void onRestoreProgress(int step, int totalSteps, const QString &message);
     void onRestoreFailed(const QString &message);
     void onRestoreCancelled();
-    void onRestoreFinished(const QString &driveRoot);
+    void onRestoreFinished(const QString &location);
     void toggleTheme();
     void showAbout();
+    void showActivity();
     void openLogFile();
 
   private:
@@ -53,10 +54,10 @@ class MainWindow : public QMainWindow {
     QLayout *buildHeaderLayout();
     QWidget *buildDiskSection();
     QWidget *buildDetailSection();
-    QWidget *buildConfirmSection();
+    QWidget *buildRestoreSection();
     QLayout *buildActionLayout();
-    QWidget *buildLogSection();
     QWidget *buildFooterWarning();
+    QDialog *activityDialog();
 
     void loadSettings();
     void saveSettings();
@@ -68,12 +69,14 @@ class MainWindow : public QMainWindow {
     void setStatus(StatusKind status, const QString &message, const QString &detail = {});
     void setRunning(bool running);
     void appendLog(const QString &message);
+    bool confirmErase(const DiskInfo &disk, PartitionStyle style);
+    PartitionStyle selectedPartitionStyle() const;
     const DiskInfo *selectedDisk() const;
     bool waitForRestoreThread(int timeoutMs = 30000);
 
-    DiskEnumerator m_enumerator;
+    DiskService &m_service;
     QVector<DiskInfo> m_disks;
-    QStringList m_protectedDriveLetters;
+    RestoreGuard m_guard;
     Logger m_logger;
     AppSettings m_settings;
     Theme m_theme = Theme::System;
@@ -85,15 +88,16 @@ class MainWindow : public QMainWindow {
     QLabel *m_detailTitle = nullptr;
     QLabel *m_detailValues = nullptr;
     QLabel *m_planLabel = nullptr;
-    QLabel *m_confirmHint = nullptr;
     QLabel *m_statusLabel = nullptr;
     QLabel *m_detailLabel = nullptr;
-    QLineEdit *m_confirmation = nullptr;
+    QComboBox *m_styleCombo = nullptr;
     QPushButton *m_refreshButton = nullptr;
     QPushButton *m_restoreButton = nullptr;
     QPushButton *m_themeButton = nullptr;
+    QPushButton *m_activityButton = nullptr;
     QProgressBar *m_progress = nullptr;
     QTextEdit *m_log = nullptr;
+    QPointer<QDialog> m_activityDialog;
     QPointer<QThread> m_restoreThread;
     QPointer<RestoreWorker> m_restoreWorker;
 };

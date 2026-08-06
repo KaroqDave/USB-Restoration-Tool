@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  # Both gates run before the build so a bad tag fails in seconds rather than
+  # Both gates run before the builds so a bad tag fails in seconds rather than
   # after several minutes of compiling.
   preflight:
     runs-on: ubuntu-latest
@@ -18,9 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # The packaging script names its artifact from PROJECT_VERSION, not from
-      # the tag. Without this gate, tagging v1.1.0 without bumping
-      # CMakeLists.txt would publish a "v1.1.0" release containing 1.0.0 files.
+      # The packaging scripts name their artifacts from PROJECT_VERSION, not
+      # from the tag. Without this gate, tagging v1.2.0 without bumping
+      # CMakeLists.txt would publish a "v1.2.0" release containing 1.1.0 files.
       - name: Verify tag matches project version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -107,8 +107,63 @@ jobs:
           path: standalone/*.zip
           if-no-files-found: error
 
+  build-linux:
+    needs: preflight
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            curl \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libfuse2 \
+            file \
+            gdisk \
+            fdisk
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+      - name: Build and test
+        run: |
+          cmake --build build-linux --target usb-restoration-tool usb-restoration-tool-tests usb-partition-dump
+          ctest --test-dir build-linux --output-on-failure
+
+      # A release must not ship a partition table the system tools reject.
+      - name: Verify generated partition tables
+        run: ./scripts/verify-partition-tables.sh build-linux
+
+      - name: Build AppImage
+        run: |
+          chmod +x ./scripts/build-appimage.sh
+          CMAKE_PREFIX_PATH="$QT_ROOT_DIR" ./scripts/build-appimage.sh
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-release
+          path: |
+            standalone/*.AppImage
+            standalone/*.AppImage.sha256
+          if-no-files-found: error
+
   publish:
-    needs: build-windows
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
 
     steps:
@@ -120,7 +175,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: artifacts/windows-release/**
+          files: |
+            artifacts/windows-release/**
+            artifacts/linux-release/**
           # The README notes become the body; generate_release_notes appends the
           # commit list and compare link underneath.
           body_path: artifacts/release-notes/release-notes.md

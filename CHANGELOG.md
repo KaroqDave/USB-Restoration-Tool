@@ -4,6 +4,65 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.0 - 2026-08-06
+
+Linux support, a choice of partition style, and a shorter window.
+
+### Added
+
+- **A Linux backend**, shipped as a portable AppImage. USB disks are enumerated
+  from sysfs, mounts read from `/proc/self/mountinfo`, the disk opened with
+  `O_EXCL` — which the kernel refuses while anything is still mounted — the
+  partition table written directly, and the new partition handed to
+  `mkfs.exfat`. Needs root.
+- **A `DiskService` interface** in `src/platform`. Everything platform-specific
+  sits behind it, so the GUI and the safety rules compile unchanged on either
+  platform and a third would only need one more implementation.
+- **GPT or MBR**, selectable in the Restore card and remembered between runs.
+  MBR is for devices that refuse to read a GPT stick at all.
+- **`src/core/partition_table.cpp`**: GPT and MBR serialisation as pure
+  functions over a buffer, including the CRC-32 that GPT specifies. Used by the
+  Linux backend, which has no equivalent of Windows'
+  `IOCTL_DISK_SET_DRIVE_LAYOUT_EX`.
+- **`scripts/verify-partition-tables.sh`** and the `usb-partition-dump` tool:
+  the tables a restore would write are dumped into sparse images and handed to
+  `sgdisk` and `fdisk`, so they are checked against the tools that will have to
+  read a restored disk rather than only against the specification. CI runs it
+  on every push.
+- Per-platform startup hardening: `PR_SET_DUMPABLE` off and a restrictive umask
+  on Linux, alongside the existing DLL search-order narrowing on Windows.
+
+### Changed
+
+- **The activity log moved into its own window**, behind an **Activity** button
+  in the header. The main window is about a third shorter and fits on a laptop
+  screen without scrolling.
+- **The typed confirmation phrase is gone.** The summary dialog that already
+  named the disk now carries an acknowledgement checkbox instead, so the gate
+  sits on the screen that describes the consequence.
+- **The log lives beside the executable**, falling back to per-user application
+  data only when that directory is not writable.
+- `DiskInfo` is keyed on a platform device path rather than a Windows disk
+  number, and drive letters generalised to mount points.
+- The partition length is rounded down to a 1 MiB boundary so both ends align,
+  which is what every other partitioning tool produces and what `sgdisk -v`
+  expects. It costs under a megabyte.
+- The MBR carries a real disk signature rather than zeros; Windows tells disks
+  apart by it.
+- Linux builds are compiled with `-D_FORTIFY_SOURCE=2 -fstack-protector-strong`
+  and linked with `-pie -Wl,-z,relro,-z,now,-z,noexecstack`.
+
+### Fixed
+
+- `readMounts()` returned nothing at all. procfs reports every file as zero
+  bytes and `QTextStream::atEnd()` believes it, so the read loop exited before
+  the first line. Every mount point was therefore invisible and the guard that
+  refuses the disk the running system boots from was empty.
+- An empty entry in the protected-device list matched every disk rather than
+  none, from a negated helper that read as its own opposite.
+- A protected drive letter written as a bare `C` did not match a disk reporting
+  `C:`, which is exactly the form the Windows guard supplies.
+
 ## 1.0.0 - 2026-08-06
 
 A rebuild of the tool around the same safety model, carried out more carefully.

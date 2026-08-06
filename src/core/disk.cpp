@@ -83,10 +83,24 @@ QString busTypeName(quint32 busType)
     }
 }
 
+QString partitionStyleLabel(PartitionStyle style)
+{
+    switch (style) {
+    case PartitionStyle::Gpt:
+        return QStringLiteral("GPT");
+    case PartitionStyle::Mbr:
+        return QStringLiteral("MBR");
+    case PartitionStyle::Unknown:
+        break;
+    }
+    return QStringLiteral("Unknown");
+}
+
 QString describeDisk(const DiskInfo &disk)
 {
     const QString name = disk.name.trimmed().isEmpty() ? QStringLiteral("USB disk") : disk.name.trimmed();
-    return QStringLiteral("Disk %1 — %2 (%3)").arg(disk.number).arg(name, formatByteSize(disk.size));
+    const QString identifier = disk.displayId.isEmpty() ? disk.deviceId : disk.displayId;
+    return QStringLiteral("%1 — %2 (%3)").arg(identifier, name, formatByteSize(disk.size));
 }
 
 } // namespace usbrestore

@@ -1,4 +1,5 @@
 #include "core/disk.h"
+#include "core/partition_table.h"
 #include "core/safety.h"
 
 #include <QtTest/QtTest>
@@ -12,16 +13,74 @@ namespace {
 DiskInfo healthyUsbDisk()
 {
     DiskInfo disk;
-    disk.number = 2;
+    disk.deviceId = QStringLiteral("/dev/sdb");
+    disk.displayId = QStringLiteral("/dev/sdb");
     disk.busType = UsbBusType;
     disk.name = QStringLiteral("SanDisk Ultra USB 3.0");
     disk.serialNumber = QStringLiteral("USB123");
-    disk.uniqueId = QStringLiteral("unique-123");
-    disk.path = QStringLiteral("\\\\?\\usbstor#disk&ven_sandisk");
+    disk.uniqueId = QStringLiteral("usb-SanDisk_Ultra_USB123-0:0");
+    disk.path = QStringLiteral("/sys/devices/pci0000:00/usb2/2-1/block/sdb");
     disk.size = 16ull * 1024ull * 1024ull * 1024ull;
     disk.sectorSize = 512;
-    disk.driveLetters = {QStringLiteral("E:")};
+    disk.mountPoints = {QStringLiteral("/run/media/dave/USB")};
     return disk;
+}
+
+DiskInfo healthyWindowsDisk()
+{
+    DiskInfo disk = healthyUsbDisk();
+    disk.deviceId = QStringLiteral("\\\\.\\PhysicalDrive2");
+    disk.displayId = QStringLiteral("Disk 2");
+    disk.number = 2;
+    disk.path = QStringLiteral("\\\\?\\usbstor#disk&ven_sandisk");
+    disk.mountPoints = {QStringLiteral("E:")};
+    return disk;
+}
+
+RestoreGuard linuxGuard()
+{
+    RestoreGuard guard;
+    guard.mountPoints = {QStringLiteral("/"), QStringLiteral("/boot"), QStringLiteral("/home")};
+    guard.deviceIds = {QStringLiteral("/dev/nvme0n1")};
+    return guard;
+}
+
+RestoreGuard windowsGuard()
+{
+    RestoreGuard guard;
+    guard.mountPoints = {QStringLiteral("C")};
+    return guard;
+}
+
+quint32 readLe32(const QByteArray &data, int offset)
+{
+    quint32 value = 0;
+    for (int i = 0; i < 4; ++i) {
+        value |= static_cast<quint32>(static_cast<quint8>(data.at(offset + i))) << (8 * i);
+    }
+    return value;
+}
+
+quint64 readLe64(const QByteArray &data, int offset)
+{
+    quint64 value = 0;
+    for (int i = 0; i < 8; ++i) {
+        value |= static_cast<quint64>(static_cast<quint8>(data.at(offset + i))) << (8 * i);
+    }
+    return value;
+}
+
+PartitionTableRequest tableRequestFor(std::uint64_t diskSize, quint32 sectorSize, PartitionStyle style)
+{
+    PartitionTableRequest request;
+    request.style = style;
+    request.diskSize = diskSize;
+    request.sectorSize = sectorSize;
+    request.layout = calculateGptLayout(diskSize, sectorSize);
+    request.diskGuid = QByteArray(16, '\x11');
+    request.partitionGuid = QByteArray(16, '\x22');
+    request.partitionName = QStringLiteral("USB");
+    return request;
 }
 
 } // namespace
@@ -41,30 +100,16 @@ class CoreTests : public QObject {
         QCOMPARE(partitionStyleName(static_cast<quint16>(PartitionStyle::Gpt)), QStringLiteral("GPT"));
         QCOMPARE(partitionStyleName(static_cast<quint16>(PartitionStyle::Mbr)), QStringLiteral("MBR"));
         QCOMPARE(partitionStyleName(static_cast<quint16>(PartitionStyle::Unknown)), QStringLiteral("RAW / unknown"));
+        QCOMPARE(partitionStyleLabel(PartitionStyle::Gpt), QStringLiteral("GPT"));
         QCOMPARE(healthStatusName(static_cast<quint16>(HealthStatus::Healthy)), QStringLiteral("Healthy"));
         QCOMPARE(busTypeName(UsbBusType), QStringLiteral("USB"));
         QCOMPARE(busTypeName(17), QStringLiteral("NVMe"));
     }
 
-    void buildsConfirmationPhrase()
-    {
-        QCOMPARE(confirmationPhrase(4), QStringLiteral("RESTORE DISK 4"));
-    }
-
-    void choosesFirstAvailableDriveLetterAfterC()
-    {
-        const quint32 mask = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3);
-        QCOMPARE(firstAvailableDriveLetter(mask), QStringLiteral("E:\\"));
-    }
-
-    void neverOffersCEvenWhenFree()
-    {
-        QCOMPARE(firstAvailableDriveLetter(0), QStringLiteral("D:\\"));
-    }
-
     void acceptsOrdinaryUsbDisk()
     {
-        QVERIFY(isSafeRestoreTarget(healthyUsbDisk()));
+        QVERIFY(isSafeRestoreTarget(healthyUsbDisk(), linuxGuard()));
+        QVERIFY(isSafeRestoreTarget(healthyWindowsDisk(), windowsGuard()));
     }
 
     void refusesNonUsbBus()
@@ -72,36 +117,84 @@ class CoreTests : public QObject {
         DiskInfo disk = healthyUsbDisk();
         disk.busType = 11; // SATA
         QString reason;
-        QVERIFY(!isSafeRestoreTarget(disk, &reason));
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("SATA")));
     }
 
-    // The earlier safety check let a bus type of 0 through as "unknown is
-    // fine". A disk whose bus cannot be read is exactly the disk not to erase.
+    // The 1.0.0 safety check let a bus type of 0 through as "unknown is fine".
+    // A disk whose bus cannot be read is exactly the disk not to erase.
     void refusesUnknownBus()
     {
         DiskInfo disk = healthyUsbDisk();
         disk.busType = 0;
-        QVERIFY(!isSafeRestoreTarget(disk));
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
     }
 
-    void refusesProtectedDriveLetter()
+    void refusesDiskWithNoDeviceId()
     {
         DiskInfo disk = healthyUsbDisk();
-        disk.driveLetters = {QStringLiteral("C:")};
+        disk.deviceId.clear();
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
+    }
+
+    void refusesGuardedDevice()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        disk.deviceId = QStringLiteral("/dev/nvme0n1");
         QString reason;
-        QVERIFY(!isSafeRestoreTarget(disk, &reason));
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &reason));
+        QVERIFY(reason.contains(QStringLiteral("depends on")));
+    }
+
+    // An empty entry in the guard must match nothing. Getting this backwards
+    // would refuse every disk on a machine that reported one blank device.
+    void emptyGuardEntriesMatchNothing()
+    {
+        RestoreGuard guard;
+        guard.deviceIds = {QString(), QStringLiteral("  ")};
+        guard.mountPoints = {QString()};
+        QVERIFY(isSafeRestoreTarget(healthyUsbDisk(), guard));
+    }
+
+    void refusesProtectedWindowsDriveLetter()
+    {
+        DiskInfo disk = healthyWindowsDisk();
+        disk.mountPoints = {QStringLiteral("C:")};
+        QString reason;
+        QVERIFY(!isSafeRestoreTarget(disk, windowsGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("protected")));
     }
 
-    void refusesCallerSuppliedProtectedLetter()
+    void matchesDriveLettersHoweverSpelled()
+    {
+        QVERIFY(isProtectedMountPoint(QStringLiteral("e:\\"), {QStringLiteral("E:")}));
+        QVERIFY(isProtectedMountPoint(QStringLiteral("E:"), {QStringLiteral("e")}));
+        QVERIFY(!isProtectedMountPoint(QStringLiteral("F:"), {QStringLiteral("E:")}));
+    }
+
+    void refusesProtectedPosixMountPoints()
     {
         DiskInfo disk = healthyUsbDisk();
-        disk.driveLetters = {QStringLiteral("E:")};
-        QVERIFY(isSafeRestoreTarget(disk, nullptr, {QStringLiteral("F:")}));
-        QVERIFY(!isSafeRestoreTarget(disk, nullptr, {QStringLiteral("E:")}));
-        // The letter is matched however it is spelled.
-        QVERIFY(!isSafeRestoreTarget(disk, nullptr, {QStringLiteral("e:\\")}));
+        disk.mountPoints = {QStringLiteral("/home")};
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
+
+        // A trailing slash is the same directory.
+        disk.mountPoints = {QStringLiteral("/home/")};
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
+    }
+
+    // A disk mounted at "/" holds "/boot" whether or not "/boot" is a separate
+    // mount, so containment has to count, not just equality.
+    void refusesMountPointContainingAProtectedPath()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        disk.mountPoints = {QStringLiteral("/")};
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
+
+        QVERIFY(isProtectedMountPoint(QStringLiteral("/"), {QStringLiteral("/boot")}));
+        QVERIFY(!isProtectedMountPoint(QStringLiteral("/run/media/dave"), {QStringLiteral("/boot")}));
+        // "/bootstrap" is not "/boot", however similar the strings look.
+        QVERIFY(!isProtectedMountPoint(QStringLiteral("/bootstrap"), {QStringLiteral("/boot")}));
     }
 
     void refusesBootSystemOfflineAndReadOnlyDisks()
@@ -110,19 +203,19 @@ class CoreTests : public QObject {
 
         DiskInfo boot = healthyUsbDisk();
         boot.isBoot = true;
-        QVERIFY(!isSafeRestoreTarget(boot, &reason));
+        QVERIFY(!isSafeRestoreTarget(boot, linuxGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("boot")));
 
         DiskInfo offline = healthyUsbDisk();
         offline.isOffline = true;
         reason.clear();
-        QVERIFY(!isSafeRestoreTarget(offline, &reason));
+        QVERIFY(!isSafeRestoreTarget(offline, linuxGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("offline")));
 
         DiskInfo readOnly = healthyUsbDisk();
         readOnly.isReadOnly = true;
         reason.clear();
-        QVERIFY(!isSafeRestoreTarget(readOnly, &reason));
+        QVERIFY(!isSafeRestoreTarget(readOnly, linuxGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("read-only")));
     }
 
@@ -130,16 +223,16 @@ class CoreTests : public QObject {
     {
         DiskInfo empty = healthyUsbDisk();
         empty.size = 0;
-        QVERIFY(!isSafeRestoreTarget(empty));
+        QVERIFY(!isSafeRestoreTarget(empty, linuxGuard()));
 
         DiskInfo tiny = healthyUsbDisk();
         tiny.size = 4ull * 1024ull * 1024ull;
-        QVERIFY(!isSafeRestoreTarget(tiny));
+        QVERIFY(!isSafeRestoreTarget(tiny, linuxGuard()));
 
         DiskInfo oddSectors = healthyUsbDisk();
         oddSectors.sectorSize = 511;
         QString reason;
-        QVERIFY(!isSafeRestoreTarget(oddSectors, &reason));
+        QVERIFY(!isSafeRestoreTarget(oddSectors, linuxGuard(), &reason));
         QVERIFY(reason.contains(QStringLiteral("sector size")));
     }
 
@@ -147,6 +240,17 @@ class CoreTests : public QObject {
     {
         const DiskInfo selected = healthyUsbDisk();
         QVERIFY(isSameRestoreTarget(selected, selected));
+    }
+
+    void rejectsMovedDevice()
+    {
+        const DiskInfo selected = healthyUsbDisk();
+        DiskInfo current = selected;
+        current.deviceId = QStringLiteral("/dev/sdc");
+
+        QString reason;
+        QVERIFY(!isSameRestoreTarget(selected, current, &reason));
+        QVERIFY(reason.contains(QStringLiteral("moved")));
     }
 
     void rejectsChangedSerialNumber()
@@ -160,13 +264,13 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("serial")));
     }
 
-    // The earlier check stopped at the first strong identifier that matched, so
-    // a device keeping its serial number while changing its path slipped past.
+    // The 0.1.0 check stopped at the first strong identifier that matched, so a
+    // device keeping its serial while changing its path slipped past.
     void rejectsChangedPathEvenWhenSerialMatches()
     {
         const DiskInfo selected = healthyUsbDisk();
         DiskInfo current = selected;
-        current.path = QStringLiteral("\\\\?\\usbstor#disk&ven_other");
+        current.path = QStringLiteral("/sys/devices/pci0000:00/usb2/2-4/block/sdb");
 
         QString reason;
         QVERIFY(!isSameRestoreTarget(selected, current, &reason));
@@ -177,25 +281,18 @@ class CoreTests : public QObject {
     {
         DiskInfo selected = healthyUsbDisk();
         selected.uniqueId.clear();
-        const DiskInfo current = healthyUsbDisk();
-        QVERIFY(isSameRestoreTarget(selected, current));
+        QVERIFY(isSameRestoreTarget(selected, healthyUsbDisk()));
     }
 
-    void rejectsChangedSizeAndNumber()
+    void rejectsChangedSize()
     {
         const DiskInfo selected = healthyUsbDisk();
-
         DiskInfo resized = selected;
         resized.size += 512;
+
         QString reason;
         QVERIFY(!isSameRestoreTarget(selected, resized, &reason));
         QVERIFY(reason.contains(QStringLiteral("size")));
-
-        DiskInfo renumbered = selected;
-        renumbered.number = 3;
-        reason.clear();
-        QVERIFY(!isSameRestoreTarget(selected, renumbered, &reason));
-        QVERIFY(reason.contains(QStringLiteral("disk number")));
     }
 
     void identifiesLargeRestoreTarget()
@@ -211,22 +308,37 @@ class CoreTests : public QObject {
         QVERIFY(largeRestoreTargetWarning(large).contains(QStringLiteral("Large USB disk")));
     }
 
+    // Both ends land on a 1 MiB boundary, which is what every other partitioning
+    // tool produces and what `sgdisk -v` expects to see.
     void calculatesAlignedGptLayout()
     {
+        constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
         const GptLayout layout = calculateGptLayout(16ull * 1024ull * 1024ull * 1024ull, 512);
-        QCOMPARE(layout.startOffset, 1024ull * 1024ull);
+        QCOMPARE(layout.startOffset, oneMiB);
         QVERIFY(layout.length > 15ull * 1024ull * 1024ull * 1024ull);
-        QCOMPARE(layout.length % 512, 0ull);
-        // The partition plus its 1 MiB head start and the backup GPT must fit.
+        QCOMPARE(layout.length % oneMiB, 0ull);
         QVERIFY(layout.startOffset + layout.length + 33ull * 512ull <= 16ull * 1024ull * 1024ull * 1024ull);
     }
 
     void alignsGptLayoutToLargeSectors()
     {
+        constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
         const GptLayout layout = calculateGptLayout(32ull * 1024ull * 1024ull * 1024ull, 4096);
-        QCOMPARE(layout.startOffset % 4096ull, 0ull);
+        QCOMPARE(layout.startOffset % oneMiB, 0ull);
+        QCOMPARE(layout.length % oneMiB, 0ull);
         QCOMPARE(layout.length % 4096ull, 0ull);
         QVERIFY(layout.startOffset + layout.length + 33ull * 4096ull <= 32ull * 1024ull * 1024ull * 1024ull);
+    }
+
+    // A disk whose size is not a whole number of megabytes still gets a legal
+    // layout rather than one that runs past the backup header.
+    void handlesDiskSizesThatAreNotRoundMegabytes()
+    {
+        const std::uint64_t odd = 16ull * 1024ull * 1024ull * 1024ull + 512ull * 777ull;
+        const GptLayout layout = calculateGptLayout(odd, 512);
+        QVERIFY(layout.length > 0);
+        QCOMPARE(layout.length % (1024ull * 1024ull), 0ull);
+        QVERIFY(layout.startOffset + layout.length + 33ull * 512ull <= odd);
     }
 
     void refusesGptLayoutOnDisksTooSmall()
@@ -245,10 +357,189 @@ class CoreTests : public QObject {
 
     void describesDiskForPrompts()
     {
-        const QString description = describeDisk(healthyUsbDisk());
+        const QString description = describeDisk(healthyWindowsDisk());
         QVERIFY(description.contains(QStringLiteral("Disk 2")));
         QVERIFY(description.contains(QStringLiteral("SanDisk")));
         QVERIFY(description.contains(QStringLiteral("16.00 GB")));
+    }
+
+    // --- Partition table bytes -------------------------------------------
+    // The Linux backend writes these itself, so a wrong byte here is a disk
+    // that no longer mounts. Windows builds the same table through an IOCTL
+    // and never runs this code, which is exactly why it is worth pinning down.
+
+    void computesTheCrc32GptSpecifies()
+    {
+        // The check value every CRC-32 implementation is measured against.
+        QCOMPARE(gptCrc32(QByteArrayLiteral("123456789")), 0xCBF43926u);
+        QCOMPARE(gptCrc32(QByteArray()), 0u);
+    }
+
+    void writesTheBasicDataPartitionGuidInMixedEndianForm()
+    {
+        const QByteArray guid = basicDataPartitionTypeGuid();
+        QCOMPARE(guid.size(), 16);
+        QCOMPARE(guid, QByteArrayLiteral("\xA2\xA0\xD0\xEB\xE5\xB9\x33\x44\x87\xC0\x68\xB6\xB7\x26\x99\xC7"));
+    }
+
+    void buildsAGptHeaderThatChecksOutAgainstItself()
+    {
+        const auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        QVERIFY(isWritablePartitionRequest(request));
+
+        const QByteArray primary = buildGptPrimary(request);
+        // Protective MBR, header sector, and 32 sectors of entry array.
+        QCOMPARE(primary.size(), 34 * 512);
+
+        // Protective MBR: one 0xEE partition starting at LBA 1.
+        QCOMPARE(static_cast<quint8>(primary.at(450)), quint8(0xEE));
+        QCOMPARE(readLe32(primary, 454), 1u);
+        QCOMPARE(static_cast<quint8>(primary.at(510)), quint8(0x55));
+        QCOMPARE(static_cast<quint8>(primary.at(511)), quint8(0xAA));
+
+        const QByteArray header = primary.mid(512, 512);
+        QCOMPARE(header.left(8), QByteArrayLiteral("EFI PART"));
+        QCOMPARE(readLe32(header, 12), 92u);
+        QCOMPARE(readLe64(header, 24), 1ull);   // MyLBA
+        QCOMPARE(readLe64(header, 72), 2ull);   // Entry array LBA
+        QCOMPARE(readLe32(header, 80), 128u);   // Entry count
+        QCOMPARE(readLe32(header, 84), 128u);   // Entry size
+
+        // The header checksum covers the first 92 bytes with the checksum field
+        // itself read as zero. Recomputing it that way must reproduce it.
+        QByteArray zeroed = header.left(92);
+        zeroed.replace(16, 4, QByteArray(4, '\0'));
+        QCOMPARE(readLe32(header, 16), gptCrc32(zeroed));
+
+        // And the entry-array checksum must match the array that follows.
+        QCOMPARE(readLe32(header, 88), gptCrc32(primary.mid(1024, 128 * 128)));
+    }
+
+    void placesTheGptPartitionWhereTheLayoutSaid()
+    {
+        const auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        const QByteArray entry = buildGptPrimary(request).mid(1024, 128);
+
+        QCOMPARE(entry.left(16), basicDataPartitionTypeGuid());
+        QCOMPARE(entry.mid(16, 16), request.partitionGuid);
+        QCOMPARE(readLe64(entry, 32), request.layout.startOffset / 512);
+        // The end LBA is inclusive: the last sector in the partition.
+        QCOMPARE(readLe64(entry, 40), (request.layout.startOffset + request.layout.length) / 512 - 1);
+        // "USB" as UTF-16LE.
+        QCOMPARE(entry.mid(56, 6), QByteArrayLiteral("U\0S\0B\0"));
+    }
+
+    void keepsTheGptPartitionInsideTheUsableRange()
+    {
+        for (const quint32 sectorSize : {512u, 4096u}) {
+            const auto request = tableRequestFor(32ull * 1024ull * 1024ull * 1024ull, sectorSize, PartitionStyle::Gpt);
+            const QByteArray header = buildGptPrimary(request).mid(sectorSize, sectorSize);
+
+            const quint64 firstUsable = readLe64(header, 40);
+            const quint64 lastUsable = readLe64(header, 48);
+            const QByteArray entry = buildGptPrimary(request).mid(2 * sectorSize, 128);
+            const quint64 first = readLe64(entry, 32);
+            const quint64 last = readLe64(entry, 40);
+
+            QVERIFY(first >= firstUsable);
+            QVERIFY(last <= lastUsable);
+        }
+    }
+
+    void mirrorsThePrimaryHeaderInTheBackup()
+    {
+        const auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        const QByteArray backup = buildGptBackup(request);
+        QCOMPARE(backup.size(), 33 * 512);
+
+        const QByteArray header = backup.right(512);
+        QCOMPARE(header.left(8), QByteArrayLiteral("EFI PART"));
+
+        const quint64 lastLba = request.diskSize / 512 - 1;
+        QCOMPARE(readLe64(header, 24), lastLba);          // MyLBA is the last sector
+        QCOMPARE(readLe64(header, 32), 1ull);             // Alternate is the primary
+        QCOMPARE(readLe64(header, 72), lastLba - 32);     // Its own entry array
+
+        // The backup must land exactly on that entry-array LBA.
+        QCOMPARE(gptBackupOffset(request), (lastLba - 32) * 512);
+        QCOMPARE(gptBackupOffset(request) + static_cast<std::uint64_t>(backup.size()), request.diskSize);
+
+        // Both copies describe the same partition.
+        QCOMPARE(backup.left(128), buildGptPrimary(request).mid(1024, 128));
+    }
+
+    void buildsAnMbrForOlderDevices()
+    {
+        const auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
+        QVERIFY(isWritablePartitionRequest(request));
+
+        const QByteArray mbr = buildMbr(request);
+        QCOMPARE(mbr.size(), 512);
+        // A non-zero disk signature: Windows tells disks apart by it and gets
+        // confused when two share one.
+        QCOMPARE(mbr.mid(440, 4), request.diskGuid.left(4));
+        QVERIFY(mbr.mid(440, 4) != QByteArray(4, '\0'));
+        QCOMPARE(static_cast<quint8>(mbr.at(446)), quint8(0x00)); // Not bootable
+        QCOMPARE(static_cast<quint8>(mbr.at(450)), MbrExFatPartitionType);
+        QCOMPARE(readLe32(mbr, 454), static_cast<quint32>(request.layout.startOffset / 512));
+        QCOMPARE(readLe32(mbr, 458), static_cast<quint32>(request.layout.length / 512));
+        QCOMPARE(static_cast<quint8>(mbr.at(510)), quint8(0x55));
+        QCOMPARE(static_cast<quint8>(mbr.at(511)), quint8(0xAA));
+    }
+
+    void padsTheMbrToAWholeSectorOn4KnDisks()
+    {
+        const auto request = tableRequestFor(32ull * 1024ull * 1024ull * 1024ull, 4096, PartitionStyle::Mbr);
+        const QByteArray mbr = buildMbr(request);
+        // A raw write to a 4 Kn device has to be a whole sector.
+        QCOMPARE(mbr.size(), 4096);
+        QCOMPARE(static_cast<quint8>(mbr.at(510)), quint8(0x55));
+    }
+
+    void refusesUnwritablePartitionRequests()
+    {
+        QString reason;
+
+        auto badSector = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        badSector.sectorSize = 999;
+        QVERIFY(!isWritablePartitionRequest(badSector, &reason));
+
+        auto tiny = tableRequestFor(1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        QVERIFY(!isWritablePartitionRequest(tiny, &reason));
+
+        auto noGuid = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        noGuid.diskGuid.clear();
+        QVERIFY(!isWritablePartitionRequest(noGuid, &reason));
+        QVERIFY(reason.contains(QStringLiteral("identifier")));
+
+        auto mbrNoSignature = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
+        mbrNoSignature.diskGuid.clear();
+        QVERIFY(!isWritablePartitionRequest(mbrNoSignature, &reason));
+        QVERIFY(reason.contains(QStringLiteral("identifier")));
+
+        auto misaligned = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        misaligned.layout.startOffset += 1;
+        QVERIFY(!isWritablePartitionRequest(misaligned, &reason));
+        QVERIFY(reason.contains(QStringLiteral("aligned")));
+
+        auto pastTheEnd = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        pastTheEnd.layout.length += 64ull * 1024ull * 1024ull;
+        QVERIFY(!isWritablePartitionRequest(pastTheEnd, &reason));
+        QVERIFY(reason.contains(QStringLiteral("past the end")));
+    }
+
+    // MBR addresses sectors in 32 bits, which runs out at 2 TiB. A 4 TB
+    // external drive with MBR selected must be refused, not quietly truncated.
+    void refusesMbrBeyondItsAddressingLimit()
+    {
+        auto request = tableRequestFor(4ull * 1024ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
+        QString reason;
+        QVERIFY(!isWritablePartitionRequest(request, &reason));
+        QVERIFY(reason.contains(QStringLiteral("MBR")));
+
+        // The same disk is fine under GPT.
+        request.style = PartitionStyle::Gpt;
+        QVERIFY(isWritablePartitionRequest(request));
     }
 };
 

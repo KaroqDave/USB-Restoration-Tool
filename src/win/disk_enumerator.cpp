@@ -80,6 +80,9 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object) const
 {
     DiskInfo disk;
     disk.number = object.uintValue(L"Number");
+    // The path the raw layer reopens, and the number Disk Management shows.
+    disk.deviceId = QStringLiteral("\\\\.\\PhysicalDrive%1").arg(disk.number);
+    disk.displayId = QStringLiteral("Disk %1").arg(disk.number);
     disk.busType = object.uintValue(L"BusType");
     disk.name = object.stringValue(L"FriendlyName").trimmed();
     disk.uniqueId = object.stringValue(L"UniqueId").trimmed();
@@ -93,8 +96,8 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object) const
     disk.isSystem = object.boolValue(L"IsSystem");
     disk.isReadOnly = object.boolValue(L"IsReadOnly");
     disk.isOffline = object.boolValue(L"IsOffline");
-    disk.driveLetters = driveLettersForDisk(disk.number);
-    disk.labels = labelsForLetters(disk.driveLetters);
+    disk.mountPoints = driveLettersForDisk(disk.number);
+    disk.labels = labelsForLetters(disk.mountPoints);
     return disk;
 }
 
