@@ -15,7 +15,17 @@ Built with C++ and Qt 6.
 
 > **Restoring erases every partition and file on the selected disk.** Only USB disks are listed, and boot, system, offline, and read-only disks are refused outright — but the drive you pick is erased completely.
 
-## What's New in 1.1.0
+## What's New in 1.3.0
+
+- **The Linux app no longer runs as root.** An installed build runs the application as you, and hands the restore to a separate `usb-restoration-helper` that holds privilege for the duration of one restore and exits. Your desktop asks for the password when you press **Restore**, through polkit, the same way every other privileged action on the system does. It also means the app is launchable from the applications menu, and that its settings and log belong to you rather than to root.
+- **The helper links Qt Core and nothing else.** Running the GUI as root meant every Qt plugin it loaded — widgets, theming, SVG and image formats, input methods — ran as root too, for the sake of the few hundred lines that actually needed it. None of that is loaded in the privileged process any more.
+- **The helper trusts nothing it is told.** It re-enumerates the disk from sysfs, rebuilds its own list of protected devices and mount points, and re-runs every safety rule before anything is opened. The arguments it receives are claims it can only refuse on — notably, a caller cannot assert that its target is on the USB bus. That is what makes the boundary worth having: any local process can start the helper, and it decides for itself.
+- **The AppImage is unchanged and still runs as root.** polkit reads its policies from system directories, which a self-contained bundle cannot register one in. Prefer an installed build where your distribution offers it; see [Linux](#linux).
+- **Windows is untouched.** UAC already gates the process at launch and there is no equivalent worth building — splitting it would mean a service or a COM elevation moniker, both of which add more attack surface than they remove.
+
+> **Neither Linux path has been tested on real hardware.** No restore has ever run against a physical USB stick on Linux — that was already true of 1.1.0 and is still true — and the polkit round trip added here has not run even once, because the environment it was written in has no polkit. Both compile clean and pass the test suite, and the rules that stop the wrong disk being touched are the well-covered part. The sequence that erases the right one is not. Use a drive you can afford to lose. The Windows path has been verified on hardware.
+
+### Previously, in 1.1.0
 
 - **Linux support.** A native backend built on sysfs, `/proc/self/mountinfo`, and raw block-device I/O, shipped as a portable AppImage. It enumerates USB disks, refuses the ones the running system depends on, unmounts what it is about to erase, writes the partition table itself, and hands the new partition to `mkfs.exfat`. Run it with `sudo`.
 - **GPT or MBR.** A layout selector in the Restore card, defaulting to GPT. MBR is there for the devices that refuse to read a GPT stick at all: BIOS-era PCs, car stereos, older TVs and set-top boxes. The choice is remembered between runs.
@@ -23,8 +33,6 @@ Built with C++ and Qt 6.
 - **The typed confirmation phrase is gone.** In its place, the summary dialog that already named the disk now carries a checkbox to acknowledge what is about to happen. One gate instead of two, on the screen that actually describes the consequence.
 - **The log lives beside the executable,** so a portable copy carries its own history and leaves nothing behind on the machines it is plugged into. It falls back to per-user application data only when the application folder is read-only, such as an AppImage's mount or an install under Program Files.
 - **The partition tables are verified against the tools that read them.** `scripts/verify-partition-tables.sh` writes what a restore would produce into a sparse image and hands it to `sgdisk` and `fdisk`; CI runs it on every push. See [Testing](#testing).
-
-> **The Linux build has not been tested on real hardware.** It compiles clean, passes the test suite, and every partition table it can write has been validated with `sgdisk` and `fdisk` — but no restore has run against a physical USB stick on Linux. The checks that stop it touching the wrong disk are the well-covered part; the sequence that erases the right one is not. Treat 1.1.0 on Linux as a first cut and use a drive you can afford to lose. The Windows path is unchanged from 1.0.0 and has been verified on hardware.
 
 ### Previously, in 1.0.0
 

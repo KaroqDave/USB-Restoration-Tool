@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(USBRestorationTool
-    VERSION 1.1.0
+    VERSION 1.3.0
     DESCRIPTION "Restore ISO-written USB drives to one clean exFAT volume"
     LANGUAGES CXX
 )

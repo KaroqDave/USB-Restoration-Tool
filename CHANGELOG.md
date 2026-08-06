@@ -4,7 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.3.0 - 2026-08-06
+
+Privilege separation on Linux. There is no 1.2.0: the split was always planned
+for 1.3.0, because doing it properly depends on being installed rather than
+bundled, which is a packaging project of its own.
 
 ### Changed
 
