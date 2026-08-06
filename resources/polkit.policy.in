@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  Configured by CMake so that exec.path below and the path compiled into the GUI
+  come from one variable. pkexec authorises exactly the path named here, so if
+  the two ever disagree the restore fails at the prompt with nothing useful to
+  say about why.
+-->
+<policyconfig>
+  <vendor>KaroqDave</vendor>
+  <vendor_url>https://github.com/KaroqDave/USB-Restoration-Tool</vendor_url>
+  <icon_name>usb-restoration-tool</icon_name>
+
+  <action id="dev.karoqdave.usb-restoration-tool.restore">
+    <description>Restore a USB drive</description>
+    <message>Authentication is required to erase and restore a USB drive</message>
+
+    <!--
+      auth_admin_keep for the active session so that restoring several sticks in
+      a row asks once rather than once per drive. "yes" would be wrong: this
+      action destroys data. The cost of "keep" is a few minutes during which
+      another local process could start the helper without a prompt; what it
+      could do with that is bounded by the helper refusing anything that is not
+      an unmounted USB disk, which it decides for itself.
+    -->
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+
+    <annotate key="org.freedesktop.policykit.exec.path">@USBRESTORE_HELPER_PATH@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

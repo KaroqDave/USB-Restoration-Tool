@@ -1,8 +1,16 @@
-# Privilege separation on Linux — a polkit helper (planned for 1.3.0)
+# Privilege separation on Linux — a polkit helper (for 1.3.0)
+
+> **Status.** All six steps below are implemented. An installed build runs the
+> GUI unprivileged and the restore in `usb-restoration-helper` through pkexec;
+> the AppImage keeps the run-as-root path. None of it has been exercised against
+> a physical USB stick, and the pkexec round trip has not been exercised at all
+> — there is no polkit in the environment this was written in. Treat the whole
+> path as unverified until someone has restored a real drive both ways. What
+> "Before this" at the bottom says still stands.
 
 ## The problem
 
-On Linux the whole application runs as root. `sudo ./usb-restoration-tool`
+On Linux the whole application ran as root. `sudo ./usb-restoration-tool`
 starts a Qt GUI — widgets, theming, a QSettings store, an SVG renderer, a
 handful of image format plugins, a font stack — as uid 0, so that roughly two
 hundred lines of it can call `open()`, `ioctl()` and `umount2()`.
@@ -159,21 +167,38 @@ not.
    `ldd` on the result lists `libQt6Core` and nothing else, against the GUI's
    Core, Gui, Widgets and DBus. That is the entire point of the exercise,
    visible in one command.
-3. Teach the Linux `DiskService` to spawn the helper through `pkexec` and parse
-   its output back into `RestoreReporter` calls.
-4. Install the `.policy` file from CMake. The helper already installs to
-   `libexecdir`, and does so inert: without the policy there is no way to obtain
-   privilege through it.
-5. Drop the root check from the GUI on Linux; keep it in the helper, where a
-   non-root invocation is now genuinely an error.
-6. Keep the AppImage on the run-as-root path, and say which is which in the
-   README.
+3. **Done.** Teach the Linux `DiskService` to spawn the helper through `pkexec`
+   and parse its output back into `RestoreReporter` calls.
 
-Steps 1 and 2 changed nothing about how the tool runs: the GUI still performs
-its own restores as root, and the helper it now ships alongside is not yet
-invoked by anything. That was deliberate — it is the part that can land before
-the hardware verification below, because it cannot regress a path it does not
-touch. Step 3 is where that stops being true.
+   `src/linux/helper_client.*`. `restore()` picks a route: already root means
+   sudo or the AppImage and runs in-process, otherwise the helper. The version
+   handshake happens *before* pkexec — the probe needs no privilege — so a
+   mismatched pair is caught without making the user type a password first.
+4. **Done.** Install the `.policy` file from CMake, alongside the helper in
+   `libexecdir`. The exec path is one CMake variable that is compiled into the
+   GUI, written into the action, and used as the install destination; pkexec
+   authorises exactly one absolute path, so all three have to be the same
+   string. The two files install together or not at all — a helper without the
+   policy cannot obtain privilege, and a policy without the helper points at
+   nothing.
+5. **Done.** Drop the root check from the GUI on Linux; keep it in the helper,
+   where a non-root invocation is now genuinely an error.
+
+   `isPrivileged()` stopped meaning "am I root" and started meaning "can a
+   restore happen at all": root, or an installed helper and a pkexec to reach
+   it. `main.cpp` did not change.
+6. **Done.** Keep the AppImage on the run-as-root path, and say which is which
+   in the README. `USBRESTORE_INSTALL_HELPER=OFF` is how the AppImage build
+   leaves the helper and the policy out.
+
+### One thing this cost
+
+`detectPartitionStyle()` read the first sectors of the device, which an
+unprivileged GUI cannot open, so every disk in the list would have shown
+"RAW / unknown". It now falls back to `ID_PART_TABLE_TYPE` from udev's
+database, which is world-readable. Second-hand and possibly stale, so it is
+consulted only when the authoritative read is unavailable — and nothing but the
+label in the list depends on it. No safety rule reads `partitionStyle`.
 
 ## Not in scope
 

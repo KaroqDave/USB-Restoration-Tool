@@ -63,7 +63,8 @@ QString labelForPartition(const QString &partitionName);
 QString parentDiskName(const QString &partitionName);
 
 // Reads the first sectors of a device to see which partition table, if any, is
-// already on it. Needs read access to the device node.
+// already on it. Falls back to what udev recorded when the device node cannot
+// be opened, which is the ordinary case for the unprivileged GUI.
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize);
 
 } // namespace usbrestore

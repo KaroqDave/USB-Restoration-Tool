@@ -103,10 +103,12 @@ Adding a platform means implementing `DiskService` and nothing else. If a change
 needs the GUI or `src/core` to know which platform it is on, the abstraction is
 in the wrong place.
 
-The Linux GUI still runs entirely as root, and `usb-restoration-helper` is built
-and installed but not yet invoked by anything. `docs/polkit-helper.md` describes
-the privilege split planned for 1.3.0 and tracks which of its steps are done;
-read it before restructuring `src/linux`.
+On Linux an installed build runs the GUI unprivileged and the restore in
+`usb-restoration-helper` through pkexec; the AppImage still runs everything as
+root, because it can register no polkit policy. `docs/polkit-helper.md` is the
+design and carries the status — as of 1.3.0 the whole path is implemented and
+none of it has been exercised on hardware. Read it before restructuring
+`src/linux`.
 
 `PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version.
 Tagging `vX.Y.Z` triggers `release.yml`, which fails unless the tag matches that

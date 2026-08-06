@@ -27,6 +27,28 @@ inline constexpr int RestoreProtocolVersion = 1;
 // disk. The only invocation that is not a restore.
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
 
+// What the helper's exit status means. Part of the protocol rather than an
+// implementation detail of either end, because both have to read these the
+// same way.
+inline constexpr int RestoreExitSuccess = 0;
+// The restore was refused or it failed. One line on stderr says which.
+inline constexpr int RestoreExitFailed = 1;
+// The two binaries disagree about their arguments, which in practice means a
+// GUI and a helper from different versions.
+inline constexpr int RestoreExitUsage = 2;
+// Stopped because it was asked to, while stopping was still harmless. Distinct
+// from a failure so the GUI does not report a cancellation as an error.
+inline constexpr int RestoreExitCancelled = 3;
+
+// The exit status in the words of the person holding the USB stick. Returns an
+// empty string for RestoreExitSuccess and RestoreExitCancelled, neither of
+// which is something to report as an error.
+//
+// It also covers 126 and 127, which are pkexec's rather than the helper's —
+// authentication dismissed, and the helper could not be executed. They cannot
+// collide, because the helper only ever exits 0 to 3.
+QString describeRestoreExit(int exitCode, const QString &helperStderr);
+
 // What the GUI claims about the disk the user selected, as recovered from the
 // helper's argv. Every field is an expectation to be checked against what the
 // helper reads from sysfs itself, never a substitute for reading it.

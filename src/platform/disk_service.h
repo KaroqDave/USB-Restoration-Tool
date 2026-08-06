@@ -54,8 +54,11 @@ class DiskService {
     // The backend for the platform this build targets.
     static std::unique_ptr<DiskService> create();
 
-    // Whether the process can do raw disk work at all: Administrator on
-    // Windows, uid 0 on Linux.
+    // Whether a restore can be carried out at all. On Windows that means the
+    // process is elevated, because it does the work itself. On Linux it means
+    // either the process is root or it can reach the helper that will be, so a
+    // false here is a tool that cannot work rather than one that merely was not
+    // started with enough privilege.
     virtual bool isPrivileged() const = 0;
 
     // What to tell the user when it is not, in their platform's terms.

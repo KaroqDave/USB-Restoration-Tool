@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- **The Linux GUI no longer runs as root.** An installed build runs the
+  application as an ordinary user and performs the restore in a separate
+  `usb-restoration-helper`, started through `pkexec` and holding privilege for
+  the duration of one restore. It links Qt Core and nothing else, so none of the
+  widget, theming or image-format machinery is loaded as root. The AppImage is
+  unchanged and still runs everything as root: polkit reads its policies from
+  system directories, which a self-contained bundle cannot register one in.
+- **The helper trusts nothing it is told.** It re-enumerates the disk from
+  sysfs, rebuilds its own `RestoreGuard`, and re-runs every safety rule before
+  anything is opened. The arguments it receives are claims it can only refuse
+  on — notably, the caller cannot assert that its target is on the USB bus.
+- **`detectPartitionStyle()` falls back to udev's database** when the device
+  node cannot be opened, so the unprivileged GUI still shows GPT or MBR rather
+  than "RAW / unknown" for every disk.
+
+> None of this has been exercised against a physical USB stick, and the pkexec
+> round trip has not been exercised at all. See `docs/polkit-helper.md`.
+
 ## 1.1.0 - 2026-08-06
 
 Linux support, a choice of partition style, and a shorter window.

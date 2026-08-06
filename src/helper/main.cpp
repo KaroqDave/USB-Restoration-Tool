@@ -29,13 +29,6 @@
 
 namespace {
 
-// 0 is a completed restore, 1 is a refusal or a failure, 2 is the caller and
-// this binary disagreeing about how to talk to each other. The GUI shows the
-// stderr line for 1 and a version-mismatch message for 2.
-constexpr int ExitSuccess = 0;
-constexpr int ExitFailed = 1;
-constexpr int ExitUsage = 2;
-
 void writeLine(const QString &line)
 {
     QTextStream out(stdout);
@@ -139,7 +132,7 @@ int main(int argc, char *argv[])
 
     if (arguments.size() == 1 && arguments.first() == QLatin1String(usbrestore::ProtocolVersionFlag)) {
         writeLine(usbrestore::encodeVersionLine(usbrestore::RestoreProtocolVersion));
-        return ExitSuccess;
+        return usbrestore::RestoreExitSuccess;
     }
 
     // Announced before the work starts, so a caller that reads this and does
@@ -153,14 +146,14 @@ int main(int argc, char *argv[])
         // rather than one that requires it.
         writeError(QStringLiteral("usb-restoration-helper must run as root. It is started by USB Restoration Tool "
                                   "through pkexec, not on its own."));
-        return ExitUsage;
+        return usbrestore::RestoreExitUsage;
     }
 
     usbrestore::RestoreArguments parsed;
     QString error;
     if (!usbrestore::parseRestoreArguments(arguments, &parsed, &error)) {
         writeError(error);
-        return ExitUsage;
+        return usbrestore::RestoreExitUsage;
     }
 
     // From here nothing the caller said is taken at face value. The guard and
@@ -171,7 +164,7 @@ int main(int argc, char *argv[])
     usbrestore::DiskInfo disk;
     if (!usbrestore::refreshUsbDisk(parsed.expected.deviceId, &disk, &error)) {
         writeError(error);
-        return ExitFailed;
+        return usbrestore::RestoreExitFailed;
     }
 
     // The whole point of the split. A caller that asks for the system disk, a
@@ -179,7 +172,7 @@ int main(int argc, char *argv[])
     // system depends on is refused here, with no reference to anything it said.
     if (!usbrestore::isSafeRestoreTarget(disk, guard, &error)) {
         writeError(error);
-        return ExitFailed;
+        return usbrestore::RestoreExitFailed;
     }
 
     // And this one catches the disk changing underneath an honest caller: the
@@ -189,7 +182,7 @@ int main(int argc, char *argv[])
     // is for.
     if (!usbrestore::isSameRestoreTarget(parsed.expected, disk, &error)) {
         writeError(error);
-        return ExitFailed;
+        return usbrestore::RestoreExitFailed;
     }
 
     usbrestore::RestoreRequest request;
@@ -201,10 +194,16 @@ int main(int argc, char *argv[])
     HelperReporter reporter;
     usbrestore::RestoreResult result;
     if (!usbrestore::performLinuxRestore(request, reporter, &result, &error)) {
+        // A restore that stopped because it was asked to reports no error. The
+        // GUI has to be able to tell that apart from a failure, and guessing
+        // from an empty stderr line would be guessing.
+        if (reporter.cancelRequested() && error.isEmpty()) {
+            return usbrestore::RestoreExitCancelled;
+        }
         writeError(error.isEmpty() ? QStringLiteral("The restore failed.") : error);
-        return ExitFailed;
+        return usbrestore::RestoreExitFailed;
     }
 
     writeLine(usbrestore::encodeResultLine(result.location));
-    return ExitSuccess;
+    return usbrestore::RestoreExitSuccess;
 }

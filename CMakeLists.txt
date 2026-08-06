@@ -47,6 +47,16 @@ if(WIN32 AND NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PRE
     endif()
 endif()
 
+if(NOT WIN32)
+    include(GNUInstallDirs)
+
+    # The one place the helper's installed location is decided. It is compiled
+    # into the GUI, written into the polkit action, and used as the install
+    # destination — pkexec authorises one absolute path, so all three have to be
+    # the same string or the prompt fails with nothing useful to say.
+    set(USBRESTORE_HELPER_PATH "${CMAKE_INSTALL_FULL_LIBEXECDIR}/usb-restoration-helper")
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 if(USBRESTORE_BUILD_TESTS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
@@ -109,8 +119,14 @@ set(USBRESTORE_LINUX_RESTORE_SOURCES
     src/linux/sysfs.h
 )
 
+# The above plus the GUI-only half: the DiskService, and the client that starts
+# the helper through pkexec. The helper must never link helper_client — nothing
+# would go wrong, but a privileged binary that knows how to ask for privilege is
+# a loop waiting to be written.
 set(USBRESTORE_LINUX_SOURCES
     ${USBRESTORE_LINUX_RESTORE_SOURCES}
+    src/linux/helper_client.cpp
+    src/linux/helper_client.h
     src/linux/linux_disk_service.cpp
     src/linux/linux_disk_service.h
 )
@@ -175,6 +191,11 @@ target_include_directories(usb-restoration-tool PRIVATE src)
 target_compile_definitions(usb-restoration-tool PRIVATE
     USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
 )
+if(NOT WIN32)
+    target_compile_definitions(usb-restoration-tool PRIVATE
+        USBRESTORE_HELPER_PATH="${USBRESTORE_HELPER_PATH}"
+    )
+endif()
 target_link_libraries(usb-restoration-tool PRIVATE Qt6::Core Qt6::Widgets)
 
 if(WIN32)
@@ -270,15 +291,23 @@ if(WIN32)
         ")
     endif()
 else()
-    include(GNUInstallDirs)
     install(TARGETS usb-restoration-tool RUNTIME DESTINATION bin)
 
     # libexecdir rather than bin: this is not a command anyone runs, and the
-    # polkit action that will authorise it names an absolute path. It installs
-    # inert — without that .policy file nothing can obtain privilege through it,
-    # and the GUI does not invoke it yet.
+    # polkit action that authorises it names an absolute path.
+    #
+    # The action goes in with it. Installing the helper without the policy would
+    # leave a binary nothing can obtain privilege through, and installing the
+    # policy without the helper would leave an action pointing at nothing, so
+    # the two are deliberately not separable.
     if(USBRESTORE_INSTALL_HELPER)
         install(TARGETS usb-restoration-helper RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}")
+
+        set(USBRESTORE_POLICY_FILE
+            "${CMAKE_CURRENT_BINARY_DIR}/dev.karoqdave.usb-restoration-tool.policy")
+        configure_file(resources/polkit.policy.in "${USBRESTORE_POLICY_FILE}" @ONLY)
+        install(FILES "${USBRESTORE_POLICY_FILE}"
+                DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/polkit-1/actions")
     endif()
 
     install(FILES resources/usb-restoration-tool.desktop DESTINATION share/applications)

@@ -202,6 +202,42 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     return true;
 }
 
+QString describeRestoreExit(int exitCode, const QString &helperStderr)
+{
+    const QString reported = sanitizeProtocolText(helperStderr);
+
+    switch (exitCode) {
+    case RestoreExitSuccess:
+    case RestoreExitCancelled:
+        return {};
+
+    case RestoreExitFailed:
+        // The helper always explains itself on stderr. The fallback is for a
+        // helper that died before it could.
+        return reported.isEmpty() ? QStringLiteral("The restore failed.") : reported;
+
+    case RestoreExitUsage:
+        return QStringLiteral("USB Restoration Tool and its restore helper do not agree on how to talk to each "
+                              "other, which usually means a partly upgraded installation. Reinstall the "
+                              "application.%1")
+            .arg(reported.isEmpty() ? QString() : QStringLiteral("\n\nThe helper said: %1").arg(reported));
+
+    // pkexec's own, not the helper's.
+    case 126:
+        return QStringLiteral("Authentication was cancelled, so nothing on the drive was changed.");
+    case 127:
+        return QStringLiteral("The restore helper could not be started. Check that USB Restoration Tool is "
+                              "installed rather than run from a build directory.");
+
+    default:
+        return reported.isEmpty()
+                   ? QStringLiteral("The restore helper stopped unexpectedly (exit code %1).").arg(exitCode)
+                   : QStringLiteral("The restore helper stopped unexpectedly (exit code %1): %2")
+                         .arg(exitCode)
+                         .arg(reported);
+    }
+}
+
 QString sanitizeProtocolText(const QString &text)
 {
     QString sanitized;

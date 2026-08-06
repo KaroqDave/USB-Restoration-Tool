@@ -70,10 +70,11 @@ int main(int argc, char *argv[])
 
     const std::unique_ptr<usbrestore::DiskService> service = usbrestore::DiskService::create();
 
-    // Windows asks for elevation through the manifest and Linux is started
-    // with sudo, so reaching this without the permission means something
-    // bypassed that. Raw disk access would fail partway through rather than up
-    // front, so stop here instead.
+    // Windows asks for elevation through the manifest, so reaching this without
+    // it means something bypassed that. On Linux this process no longer needs
+    // privilege at all — it asks for it when a restore starts — so a false here
+    // means neither route is open: no helper installed and not root either.
+    // Both cases would otherwise fail partway through rather than up front.
     if (!service->isPrivileged()) {
         QMessageBox::critical(nullptr, QStringLiteral("Elevated permission required"), service->privilegeHint());
         return 1;

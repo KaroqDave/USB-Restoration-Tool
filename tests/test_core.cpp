@@ -688,6 +688,45 @@ class CoreTests : public QObject {
         QCOMPARE(sanitizeProtocolText(QStringLiteral("  padded  ")), QStringLiteral("padded"));
     }
 
+    // A cancelled restore is not a failed one, and reporting it as an error is
+    // the bug this distinction exists to prevent. Both must come back empty so
+    // the worker emits cancelled() rather than failed().
+    void reportsNoErrorForSuccessOrCancellation()
+    {
+        QVERIFY(describeRestoreExit(RestoreExitSuccess, QString()).isEmpty());
+        QVERIFY(describeRestoreExit(RestoreExitCancelled, QString()).isEmpty());
+        QVERIFY(describeRestoreExit(RestoreExitCancelled, QStringLiteral("ignored")).isEmpty());
+    }
+
+    void explainsHelperExitCodes()
+    {
+        QCOMPARE(describeRestoreExit(RestoreExitFailed, QStringLiteral("/dev/sdb is read-only.")),
+                 QStringLiteral("/dev/sdb is read-only."));
+
+        // The helper always explains itself, so an empty stderr means it died
+        // before it could rather than that nothing went wrong.
+        QVERIFY(!describeRestoreExit(RestoreExitFailed, QString()).isEmpty());
+
+        QVERIFY(describeRestoreExit(RestoreExitUsage, QString()).contains(QStringLiteral("Reinstall")));
+
+        // pkexec's codes, which the helper never returns.
+        QVERIFY(describeRestoreExit(126, QString()).contains(QStringLiteral("Authentication")));
+        QVERIFY(describeRestoreExit(127, QString()).contains(QStringLiteral("installed")));
+
+        // Anything else still has to produce something a person can act on.
+        const QString unexpected = describeRestoreExit(9, QString());
+        QVERIFY(!unexpected.isEmpty());
+        QVERIFY(unexpected.contains(QStringLiteral("9")));
+    }
+
+    // The error line crosses the same boundary the progress lines do, and ends
+    // up in a dialog and the log.
+    void flattensTheHelpersErrorLine()
+    {
+        QCOMPARE(describeRestoreExit(RestoreExitFailed, QStringLiteral("mkfs failed\nresult /dev/sda")),
+                 QStringLiteral("mkfs failed result /dev/sda"));
+    }
+
     void parsesProtocolLines()
     {
         const ProtocolLine version = parseProtocolLine(encodeVersionLine(RestoreProtocolVersion));

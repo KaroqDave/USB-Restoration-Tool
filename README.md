@@ -60,15 +60,35 @@ Keep the DLLs and plugin folders next to the executable. If Windows reports miss
 
 Releases can be distributed unsigned or Authenticode-signed. Unsigned builds may trigger SmartScreen warnings; see [docs/signing.md](docs/signing.md).
 
-### Linux (AppImage)
+### Linux
 
-1. Download `USB-Restoration-Tool-<version>-x86_64.AppImage`.
-2. Make it executable and run it as root — raw disk access needs it:
+There are two ways to run it, and they differ in how much of the app holds
+privilege.
+
+**Installed** — from a distribution package, or built and installed from source.
+The application itself runs as you, and only a small non-GUI helper
+(`usb-restoration-helper`) runs as root, for the duration of one restore. Your
+desktop asks for the password when you press Restore. Launch it from the
+applications menu or just:
+
+```bash
+usb-restoration-tool
+```
+
+**AppImage** — self-contained and portable, and the whole application runs as
+root. polkit reads its policies from system directories, which a bundle that
+installs nothing cannot write to, so the AppImage keeps the original behaviour:
 
 ```bash
 chmod +x USB-Restoration-Tool-*-x86_64.AppImage
 sudo ./USB-Restoration-Tool-*-x86_64.AppImage
 ```
+
+Prefer the installed form where your distribution offers it. Running a Qt
+application as root means every plugin it loads runs as root too, for the sake
+of a few hundred lines that actually need it — see
+[docs/polkit-helper.md](docs/polkit-helper.md) for what the split does about
+that.
 
 Formatting uses the `mkfs.exfat` already on your machine, because a filesystem tool has to match the kernel it is writing for. Install it first if it is missing:
 
@@ -213,20 +233,30 @@ The platform backends drive real hardware and have no automated coverage. **Do n
 
 ## Project Layout
 
-On Linux the whole app currently runs as root, which is more privilege than the
-work needs. Splitting the privileged part into a polkit helper is planned for
-1.3.0 — see [docs/polkit-helper.md](docs/polkit-helper.md).
+On Linux an installed build ships two binaries: the GUI, which holds no
+privilege, and `usb-restoration-helper`, which holds it for one restore and
+decides for itself whether that restore may happen. See
+[docs/polkit-helper.md](docs/polkit-helper.md). The AppImage keeps the older
+arrangement where the whole application runs as root.
 
 ```text
-src/core      Safety policy, layout arithmetic, GPT/MBR serialisation — no OS headers
+src/core      Safety policy, layout arithmetic, GPT/MBR serialisation, the
+              GUI-to-helper protocol — no OS headers
 src/platform  The DiskService interface, the restore worker, the log
 src/win       Windows backend: WMI, DeviceIoControl, drive letters
 src/linux     Linux backend: sysfs, mountinfo, raw block I/O, mkfs.exfat
+src/helper    usb-restoration-helper: the privileged Linux restore, Qt Core only
 src/gui       Qt widgets, theme, settings
 tests         Tests for src/core
 tools         usb-partition-dump, used by the partition table verification
 scripts       Packaging and verification
 ```
+
+The helper's installed location is baked into both the GUI and the polkit
+action, so it is fixed at **configure** time. Package with
+`-DCMAKE_INSTALL_PREFIX=/usr` and relocate with `DESTDIR` when staging;
+overriding the prefix at `cmake --install` time would move the binary without
+moving the path that authorises it.
 
 Adding a third platform means implementing `DiskService` and nothing else; the GUI and every safety rule are written against that interface.
 

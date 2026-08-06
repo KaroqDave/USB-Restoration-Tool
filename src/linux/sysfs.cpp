@@ -233,11 +233,56 @@ QString parentDiskName(const QString &partitionName)
     return {};
 }
 
+namespace {
+
+// What udev recorded when the device appeared. Its database is world-readable,
+// which /dev/sdX is not: since the privileged work moved into the helper the
+// GUI runs as an ordinary user and cannot open a block device at all. Without
+// this every disk in the list would read "RAW / unknown".
+//
+// Second-hand and possibly stale — it describes the disk as udev last saw it —
+// so it is only ever consulted when the authoritative read is unavailable, and
+// nothing but the label in the list depends on it.
+PartitionStyle partitionStyleFromUdevDatabase(const QString &devicePath)
+{
+    const DeviceNumber number =
+        readDeviceNumber(QStringLiteral("%1/%2").arg(SysBlock, QFileInfo(devicePath).fileName()));
+    if (!number.isValid()) {
+        return PartitionStyle::Unknown;
+    }
+
+    QFile database(QStringLiteral("/run/udev/data/b%1:%2").arg(number.major).arg(number.minor));
+    if (!database.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return PartitionStyle::Unknown;
+    }
+
+    // Property lines are "E:KEY=value". udev spells MBR "dos", the same name
+    // fdisk uses for it.
+    static const QByteArray key = QByteArrayLiteral("E:ID_PART_TABLE_TYPE=");
+    while (!database.atEnd()) {
+        const QByteArray line = database.readLine().trimmed();
+        if (!line.startsWith(key)) {
+            continue;
+        }
+        const QByteArray value = line.mid(key.size());
+        if (value == QByteArrayLiteral("gpt")) {
+            return PartitionStyle::Gpt;
+        }
+        if (value == QByteArrayLiteral("dos")) {
+            return PartitionStyle::Mbr;
+        }
+        return PartitionStyle::Unknown;
+    }
+    return PartitionStyle::Unknown;
+}
+
+} // namespace
+
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize)
 {
     QFile device(devicePath);
     if (!device.open(QIODevice::ReadOnly)) {
-        return PartitionStyle::Unknown;
+        return partitionStyleFromUdevDatabase(devicePath);
     }
 
     const qint64 sector = sectorSize == 0 ? 512 : sectorSize;

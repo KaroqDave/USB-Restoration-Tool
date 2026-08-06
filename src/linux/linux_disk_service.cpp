@@ -1,5 +1,6 @@
 #include "linux/linux_disk_service.h"
 
+#include "linux/helper_client.h"
 #include "linux/linux_enumerate.h"
 #include "linux/linux_restore.h"
 
@@ -11,6 +12,18 @@
 
 namespace usbrestore {
 
+namespace {
+
+// Whether this process is the one that will do the writing. True under sudo and
+// inside the AppImage, which cannot register a polkit action and so keeps the
+// old behaviour; false for an ordinary installed run, where the helper does it.
+bool runningAsRoot()
+{
+    return ::geteuid() == 0;
+}
+
+} // namespace
+
 std::unique_ptr<DiskService> DiskService::create()
 {
     return std::make_unique<LinuxDiskService>();
@@ -18,13 +31,20 @@ std::unique_ptr<DiskService> DiskService::create()
 
 bool LinuxDiskService::isPrivileged() const
 {
-    return ::geteuid() == 0;
+    // Nothing this process does needs privilege any more except the restore
+    // itself, and that is the helper's job. The question is no longer "am I
+    // root" but "can a restore be carried out at all", which has two answers.
+    return runningAsRoot() || isHelperAvailable();
 }
 
 QString LinuxDiskService::privilegeHint() const
 {
-    return QStringLiteral("USB Restoration Tool needs root permission to restore USB disks.\n\nClose this window and "
-                          "start it again with sudo, for example:\n\n    sudo %1")
+    // Reached only when both routes are closed: not root, and no installed
+    // helper to ask polkit about. That is an AppImage or a build directory
+    // started without sudo.
+    return QStringLiteral("USB Restoration Tool cannot get permission to restore USB disks.\n\nInstall it, so that "
+                          "it can ask for permission when a restore starts, or start it again with sudo:\n\n    "
+                          "sudo %1")
         .arg(QCoreApplication::applicationFilePath());
 }
 
@@ -58,7 +78,13 @@ bool LinuxDiskService::restore(const RestoreRequest &request,
                                RestoreResult *result,
                                QString *error)
 {
-    return performLinuxRestore(request, reporter, result, error);
+    // The same restore either way; the only question is which process runs it.
+    // Already root means sudo or the AppImage, where there is no privilege to
+    // ask for and no policy to ask under.
+    if (runningAsRoot()) {
+        return performLinuxRestore(request, reporter, result, error);
+    }
+    return runHelperRestore(request, reporter, result, error);
 }
 
 } // namespace usbrestore
