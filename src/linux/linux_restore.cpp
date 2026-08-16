@@ -7,8 +7,10 @@
 
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QList>
 #include <QProcess>
 #include <QRandomGenerator>
+#include <QStringList>
 #include <QThread>
 
 #include <sys/mount.h>
@@ -136,29 +138,48 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
     return true;
 }
 
-bool formatExFat(const QString &partitionPath, const QString &label, RestoreReporter &reporter, QString *error)
+bool formatPartition(FileSystemType fileSystem,
+                     const QString &tool,
+                     const QString &partitionPath,
+                     const QString &label,
+                     RestoreReporter &reporter,
+                     QString *error)
 {
-    QString tool = findSystemTool(QStringLiteral("mkfs.exfat"));
-    if (tool.isEmpty()) {
-        tool = findSystemTool(QStringLiteral("mkexfatfs"));
+    QList<QStringList> attempts;
+    switch (fileSystem) {
+    case FileSystemType::ExFat:
+        // exfatprogs takes -L for the label; the older exfat-utils took -n.
+        // Which one is installed is not worth asking the user about, so the
+        // second form is tried when the first is rejected *as an unknown
+        // option* — and only then. Retrying a format that failed for a real
+        // reason would just run mkfs twice and report the wrong cause.
+        attempts = {
+            {QStringLiteral("-L"), label, partitionPath},
+            {QStringLiteral("-n"), label, partitionPath},
+        };
+        break;
+    case FileSystemType::Fat32:
+        attempts = {{QStringLiteral("-F"), QStringLiteral("32"), QStringLiteral("-n"), label, partitionPath}};
+        break;
+    case FileSystemType::Ntfs:
+        // -Q is a quick format; a full zero-fill of a 64 GB stick can take
+        // hours and is not what anyone restoring a USB drive asked for.
+        attempts = {
+            {QStringLiteral("-Q"), QStringLiteral("-L"), label, partitionPath},
+            {QStringLiteral("-f"), QStringLiteral("-L"), label, partitionPath},
+        };
+        break;
+    case FileSystemType::Ext4:
+        // -F so mkfs does not ask; -m 0 so a USB stick does not reserve 5%
+        // of itself for root.
+        attempts = {{QStringLiteral("-F"),
+                     QStringLiteral("-L"),
+                     label,
+                     QStringLiteral("-m"),
+                     QStringLiteral("0"),
+                     partitionPath}};
+        break;
     }
-    if (tool.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
-                                    "\"exfatprogs\", Arch: \"exfatprogs\") and try again.");
-        }
-        return false;
-    }
-
-    // exfatprogs takes -L for the label; the older exfat-utils took -n. Which
-    // one is installed is not worth asking the user about, so the second form
-    // is tried when the first is rejected *as an unknown option* — and only
-    // then. Retrying a format that failed for a real reason would just run
-    // mkfs twice and report the wrong cause.
-    const QList<QStringList> attempts = {
-        {QStringLiteral("-L"), label, partitionPath},
-        {QStringLiteral("-n"), label, partitionPath},
-    };
 
     QString lastOutput;
     for (const QStringList &arguments : attempts) {
@@ -219,6 +240,59 @@ bool formatExFat(const QString &partitionPath, const QString &label, RestoreRepo
     return false;
 }
 
+QString resolveFormatTool(FileSystemType fileSystem, QString *error)
+{
+    const auto missing = [error](const QString &message) {
+        if (error) {
+            *error = message;
+        }
+        return QString();
+    };
+
+    switch (fileSystem) {
+    case FileSystemType::ExFat: {
+        QString tool = findSystemTool(QStringLiteral("mkfs.exfat"));
+        if (tool.isEmpty()) {
+            tool = findSystemTool(QStringLiteral("mkexfatfs"));
+        }
+        if (tool.isEmpty()) {
+            return missing(QStringLiteral("mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
+                                          "\"exfatprogs\", Arch: \"exfatprogs\") and try again."));
+        }
+        return tool;
+    }
+    case FileSystemType::Fat32: {
+        QString tool = findSystemTool(QStringLiteral("mkfs.vfat"));
+        if (tool.isEmpty()) {
+            tool = findSystemTool(QStringLiteral("mkfs.fat"));
+        }
+        if (tool.isEmpty()) {
+            return missing(QStringLiteral("mkfs.vfat was not found. Install dosfstools and try again."));
+        }
+        return tool;
+    }
+    case FileSystemType::Ntfs: {
+        QString tool = findSystemTool(QStringLiteral("mkfs.ntfs"));
+        if (tool.isEmpty()) {
+            tool = findSystemTool(QStringLiteral("mkntfs"));
+        }
+        if (tool.isEmpty()) {
+            return missing(QStringLiteral("mkfs.ntfs was not found. Install ntfs-3g (Debian/Ubuntu: \"ntfs-3g\", "
+                                          "Fedora: \"ntfsprogs\", Arch: \"ntfs-3g\") and try again."));
+        }
+        return tool;
+    }
+    case FileSystemType::Ext4: {
+        const QString tool = findSystemTool(QStringLiteral("mkfs.ext4"));
+        if (tool.isEmpty()) {
+            return missing(QStringLiteral("mkfs.ext4 was not found. Install e2fsprogs and try again."));
+        }
+        return tool;
+    }
+    }
+    return missing(QStringLiteral("That filesystem is not supported."));
+}
+
 } // namespace
 
 bool performLinuxRestore(const RestoreRequest &request,
@@ -232,6 +306,13 @@ bool performLinuxRestore(const RestoreRequest &request,
         if (error) {
             *error = reason;
         }
+        return false;
+    }
+
+    // Looked up before anything is overwritten, so a missing mkfs does not
+    // leave a blank partition table behind.
+    const QString formatTool = resolveFormatTool(request.fileSystem, error);
+    if (formatTool.isEmpty()) {
         return false;
     }
 
@@ -308,6 +389,7 @@ bool performLinuxRestore(const RestoreRequest &request,
 
     PartitionTableRequest tableRequest;
     tableRequest.style = request.style;
+    tableRequest.fileSystem = request.fileSystem;
     tableRequest.diskSize = disk.size;
     tableRequest.sectorSize = disk.sectorSize;
     tableRequest.layout = calculateGptLayout(disk.size, disk.sectorSize);
@@ -379,15 +461,15 @@ bool performLinuxRestore(const RestoreRequest &request,
     }
 
     // A brand new partition on a removable disk is precisely what a desktop
-    // automounter jumps on, and mkfs.exfat refuses a mounted device. Give udev
+    // automounter jumps on, and mkfs refuses a mounted device. Give udev
     // a moment to do whatever it is going to do, then undo it.
     QThread::msleep(500);
     if (!unmountDisk(disk, reporter, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Formatting as exFAT"));
-    if (!formatExFat(partitionPath, request.volumeLabel, reporter, error)) {
+    reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!formatPartition(request.fileSystem, formatTool, partitionPath, request.volumeLabel, reporter, error)) {
         return false;
     }
 

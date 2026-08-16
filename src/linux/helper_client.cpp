@@ -140,7 +140,7 @@ bool runHelperRestore(const RestoreRequest &request,
     QProcess process;
     process.setProgram(pkexec);
     process.setArguments(QStringList{helper} +
-                         buildRestoreArguments(request.disk, request.style, request.volumeLabel));
+                         buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
     // Separate channels: stdout carries the protocol and stderr carries the one
     // error line, and merging them would let a message from mkfs be read as a
     // protocol line.

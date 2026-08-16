@@ -18,7 +18,7 @@ On each platform, and for both GPT and MBR:
 2. A stick with several partitions
 3. A stick with no partition table at all
 
-Afterwards: one exFAT volume labelled `USB`. Windows assigns a letter; Linux leaves mounting to the desktop.
+Afterwards: one volume labelled `USB` in the filesystem that was chosen. Windows assigns a letter; Linux leaves mounting to the desktop.
 
 Cancel: confirm it still stops while reversible, and that it does **not** stop once the first sector is rewritten.
 

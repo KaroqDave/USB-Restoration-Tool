@@ -62,6 +62,11 @@ QString largeRestoreTargetWarning(const DiskInfo &disk);
 // aligned to every erase block size in use.
 GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize);
 
+// Chooses the smallest allocation unit that makes a volume valid FAT32 within
+// the formatter's size limit. A zero return means no supported geometry can
+// produce FAT32's required data-cluster count.
+quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, std::uint64_t maximumVolumeSize);
+
 // Whether a reported sector size can be trusted for raw writes. Anything else
 // would make every offset this tool computes wrong.
 bool isSupportedSectorSize(quint32 sectorSize);

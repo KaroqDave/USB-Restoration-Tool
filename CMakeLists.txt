@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(USBRestorationTool
-    VERSION 1.3.0
-    DESCRIPTION "Restore ISO-written USB drives to one clean exFAT volume"
+    VERSION 1.4.0
+    DESCRIPTION "Restore ISO-written USB drives to one clean volume"
     LANGUAGES CXX
 )
 
@@ -19,6 +19,10 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Ninja and the Makefile generators honour this; Visual Studio ignores it.
+# usbrestore_export_clangd_compile_commands() writes a clang-style database
+# next to this file so the language server still sees src/ and Qt.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_AUTOMOC ON)
@@ -180,6 +184,152 @@ function(usbrestore_harden target)
             -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE)
         target_link_options(${target} PRIVATE -pie -Wl,-z,relro,-z,now,-z,noexecstack)
     endif()
+endfunction()
+
+function(usbrestore_json_escape str outvar)
+    string(REPLACE "\\" "\\\\" str "${str}")
+    string(REPLACE "\"" "\\\"" str "${str}")
+    set(${outvar} "${str}" PARENT_SCOPE)
+endfunction()
+
+# Clangd walks up from the open file looking for compile_commands.json. The
+# Visual Studio generator never writes one, and Ninja writes it into the build
+# tree, which clangd does not search. Either way the editor reports core/disk.h
+# and every Qt header as missing. A clang-style database next to CMakeLists.txt
+# (gitignored, machine-specific Qt paths) is what the language server actually
+# reads; CMAKE_EXPORT_COMPILE_COMMANDS stays on for tools that look in the
+# build tree.
+function(usbrestore_export_clangd_compile_commands)
+    set(_includes "${CMAKE_SOURCE_DIR}/src")
+    foreach(_cfg IN ITEMS "" Release Debug RelWithDebInfo MinSizeRel)
+        if(_cfg STREQUAL "")
+            set(_suffix "")
+        else()
+            set(_suffix "_${_cfg}")
+        endif()
+        list(APPEND _includes
+            "${CMAKE_BINARY_DIR}/usb-restoration-tool_autogen/include${_suffix}"
+            "${CMAKE_BINARY_DIR}/usb-restoration-tool-tests_autogen/include${_suffix}"
+            "${CMAKE_BINARY_DIR}/usb-partition-dump_autogen/include${_suffix}"
+        )
+    endforeach()
+
+    foreach(_tgt IN ITEMS Qt6::Platform Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+        if(NOT TARGET ${_tgt})
+            continue()
+        endif()
+        get_target_property(_tgt_inc ${_tgt} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_tgt_inc)
+            foreach(_p IN LISTS _tgt_inc)
+                if(NOT _p MATCHES "\\$<")
+                    list(APPEND _includes "${_p}")
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _includes)
+
+    set(_defs
+        QT_CORE_LIB
+        QT_GUI_LIB
+        QT_WIDGETS_LIB
+        "USBRESTORE_APP_VERSION=\"${PROJECT_VERSION}\""
+    )
+    if(TARGET Qt6::Test)
+        list(APPEND _defs QT_TESTLIB_LIB)
+    endif()
+    if(WIN32)
+        list(APPEND _defs UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
+    foreach(_tgt IN ITEMS Qt6::Platform Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+        if(NOT TARGET ${_tgt})
+            continue()
+        endif()
+        get_target_property(_tgt_defs ${_tgt} INTERFACE_COMPILE_DEFINITIONS)
+        if(_tgt_defs)
+            foreach(_d IN LISTS _tgt_defs)
+                if(NOT _d MATCHES "\\$<")
+                    list(APPEND _defs "${_d}")
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _defs)
+
+    # clangd is Clang even when the project is built with MSVC, so the database
+    # uses Clang flags. --target=windows-msvc is what lets it find windows.h.
+    set(_args clang++)
+    list(APPEND _args -std=c++20 -xc++)
+    if(WIN32)
+        list(APPEND _args --target=x86_64-pc-windows-msvc -fms-extensions -fms-compatibility)
+    endif()
+    foreach(_inc IN LISTS _includes)
+        file(TO_CMAKE_PATH "${_inc}" _inc)
+        list(APPEND _args "-I${_inc}")
+    endforeach()
+    foreach(_d IN LISTS _defs)
+        list(APPEND _args "-D${_d}")
+    endforeach()
+
+    set(_sources
+        ${USBRESTORE_CORE_SOURCES}
+        ${USBRESTORE_PLATFORM_SOURCES}
+        ${USBRESTORE_GUI_SOURCES}
+        tests/test_core.cpp
+        tools/partition_dump.cpp
+    )
+    if(WIN32)
+        list(APPEND _sources ${USBRESTORE_WIN_SOURCES})
+    else()
+        list(APPEND _sources
+            ${USBRESTORE_LINUX_SOURCES}
+            src/helper/main.cpp
+        )
+    endif()
+
+    set(_abs_sources "")
+    foreach(_src IN LISTS _sources)
+        if(NOT _src MATCHES "\\.(cpp|h)$")
+            continue()
+        endif()
+        if(NOT IS_ABSOLUTE "${_src}")
+            set(_src "${CMAKE_SOURCE_DIR}/${_src}")
+        endif()
+        list(APPEND _abs_sources "${_src}")
+    endforeach()
+    list(REMOVE_DUPLICATES _abs_sources)
+
+    set(_args_json "")
+    set(_sep "")
+    foreach(_a IN LISTS _args)
+        usbrestore_json_escape("${_a}" _esc)
+        string(APPEND _args_json "${_sep}\"${_esc}\"")
+        set(_sep ", ")
+    endforeach()
+
+    file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}" _dir)
+    usbrestore_json_escape("${_dir}" _dir_esc)
+
+    set(_json "[\n")
+    set(_first TRUE)
+    foreach(_src IN LISTS _abs_sources)
+        file(TO_CMAKE_PATH "${_src}" _src_fwd)
+        usbrestore_json_escape("${_src_fwd}" _src_esc)
+        if(NOT _first)
+            string(APPEND _json ",\n")
+        endif()
+        set(_first FALSE)
+        string(APPEND _json "  {\n")
+        string(APPEND _json "    \"directory\": \"${_dir_esc}\",\n")
+        string(APPEND _json "    \"file\": \"${_src_esc}\",\n")
+        string(APPEND _json "    \"arguments\": [${_args_json}, \"${_src_esc}\"]\n")
+        string(APPEND _json "  }")
+    endforeach()
+    string(APPEND _json "\n]\n")
+
+    set(_out "${CMAKE_SOURCE_DIR}/compile_commands.json")
+    file(WRITE "${_out}" "${_json}")
+    message(STATUS "Wrote ${_out} for clangd")
 endfunction()
 
 set(USBRESTORE_GUI_SOURCES
@@ -345,3 +495,5 @@ else()
     install(FILES resources/icons/app.png DESTINATION share/icons/hicolor/256x256/apps
             RENAME usb-restoration-tool.png)
 endif()
+
+usbrestore_export_clangd_compile_commands()

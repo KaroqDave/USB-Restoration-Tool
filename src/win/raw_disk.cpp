@@ -347,6 +347,7 @@ bool RawDisk::setRaw(QString *error)
 }
 
 bool RawDisk::createSinglePartition(PartitionStyle style,
+                                    FileSystemType fileSystem,
                                     std::uint64_t diskSize,
                                     quint32 sectorSize,
                                     QString *error)
@@ -360,7 +361,7 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     }
 
     if (style == PartitionStyle::Mbr) {
-        return createSingleMbrPartition(layout, sectorSize, error);
+        return createSingleMbrPartition(layout, fileSystem, sectorSize, error);
     }
 
     GUID diskId = {};
@@ -428,7 +429,8 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     return refreshLayout(error);
 }
 
-bool RawDisk::createSingleMbrPartition(const GptLayout &layout, quint32 sectorSize, QString *error)
+bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
+                                       QString *error)
 {
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
     const std::uint64_t endSector = (layout.startOffset + layout.length) / sector;
@@ -484,9 +486,9 @@ bool RawDisk::createSingleMbrPartition(const GptLayout &layout, quint32 sectorSi
     partition.PartitionLength.QuadPart = static_cast<LONGLONG>(layout.length);
     partition.PartitionNumber = 1;
     partition.RewritePartition = TRUE;
-    // 0x07 is what a BIOS-era device reads to decide it recognises an exFAT
-    // stick, so the type byte has to say so.
-    partition.Mbr.PartitionType = MbrExFatPartitionType;
+    // The type byte is what a BIOS-era device reads to decide it recognises
+    // the stick: 0x07 for exFAT/NTFS, 0x0C for FAT32 LBA.
+    partition.Mbr.PartitionType = mbrPartitionType(fileSystem);
     partition.Mbr.BootIndicator = FALSE;
     partition.Mbr.RecognizedPartition = TRUE;
     partition.Mbr.HiddenSectors = static_cast<DWORD>(layout.startOffset / sector);

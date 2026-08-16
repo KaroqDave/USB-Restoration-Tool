@@ -14,6 +14,7 @@ struct AppSettings {
     // MBR every time, not once. It is a preference about the person's devices,
     // not about any particular disk.
     PartitionStyle partitionStyle = PartitionStyle::Gpt;
+    FileSystemType fileSystem = FileSystemType::ExFat;
 };
 
 AppSettings loadAppSettings();

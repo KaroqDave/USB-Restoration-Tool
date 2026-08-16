@@ -20,6 +20,15 @@ enum class PartitionStyle : quint16 {
     Gpt = 2,
 };
 
+// The filesystem a restore writes. Backends advertise which of these they can
+// actually format; the GUI never assumes the OS from this list.
+enum class FileSystemType : quint16 {
+    ExFat = 0,
+    Fat32 = 1,
+    Ntfs = 2,
+    Ext4 = 3,
+};
+
 enum class HealthStatus : quint16 {
     Healthy = 0,
     Warning = 1,
@@ -67,6 +76,10 @@ struct DiskInfo {
 QString formatByteSize(std::uint64_t bytes);
 QString partitionStyleName(quint16 style);
 QString partitionStyleLabel(PartitionStyle style);
+QString fileSystemTypeName(FileSystemType type);
+QString fileSystemTypeLabel(FileSystemType type);
+QString fileSystemTypeToken(FileSystemType type);
+bool parseFileSystemType(const QString &token, FileSystemType *type = nullptr);
 QString healthStatusName(quint16 status);
 QString busTypeName(quint32 busType);
 

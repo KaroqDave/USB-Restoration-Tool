@@ -1,0 +1,8 @@
+# Fallback include path so clangd can parse the tree before CMake has written
+# compile_commands.json. The Visual Studio generator never emits one; configure
+# synthesises a clang-style database next to CMakeLists.txt instead.
+CompileFlags:
+  Add: [-std=c++20, -Isrc]
+
+Completion:
+  HeaderInsertion: Never

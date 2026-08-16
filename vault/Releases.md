@@ -5,7 +5,7 @@ tags:
 
 # Releases
 
-`PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version. Current: **1.3.0**.
+`PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version. Current: **1.4.0**.
 
 Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`. The workflow fails unless:
 
@@ -18,6 +18,7 @@ There is no 1.2.0. Privilege separation was always planned as 1.3.0 because it d
 
 | Version | Date | What |
 |---|---|---|
+| 1.4.0 | 2026-08-16 | Filesystem choice: exFAT, FAT32, NTFS, ext4 on Linux |
 | 1.3.0 | 2026-08-06 | Linux privilege split (helper + polkit). Unverified on hardware. |
 | 1.1.0 | 2026-08-06 | Linux backend, GPT/MBR, activity window, acknowledgement checkbox |
 | 1.0.0 | | Identity-on-handle, WMI 16-bit property fix, job-queued-as-4096 fix, rebuilt UI |

@@ -26,13 +26,25 @@ namespace usbrestore {
 // EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, in the mixed-endian form GPT stores.
 QByteArray basicDataPartitionTypeGuid();
 
+// The GUID of the GPT Linux filesystem partition type,
+// 0FC63DAF-8483-4772-8E79-3D69D8477DE4. Used for ext4 so Windows does not
+// treat the stick as a RAW volume it should offer to format.
+QByteArray linuxFilesystemPartitionTypeGuid();
+
+QByteArray gptPartitionTypeGuid(FileSystemType fileSystem);
+
 // MBR partition type 0x07: "IFS", which covers exFAT and NTFS. The type byte
 // is what a BIOS-era device reads to decide whether it recognises the stick,
 // so it has to say exFAT rather than "unknown".
 inline constexpr quint8 MbrExFatPartitionType = 0x07;
+inline constexpr quint8 MbrFat32LbaPartitionType = 0x0C;
+inline constexpr quint8 MbrLinuxPartitionType = 0x83;
+
+quint8 mbrPartitionType(FileSystemType fileSystem);
 
 struct PartitionTableRequest {
     PartitionStyle style = PartitionStyle::Gpt;
+    FileSystemType fileSystem = FileSystemType::ExFat;
     std::uint64_t diskSize = 0;
     quint32 sectorSize = 512;
     GptLayout layout;

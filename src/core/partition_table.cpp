@@ -73,7 +73,7 @@ QByteArray buildEntryArray(const PartitionTableRequest &request)
     // partition, not the first one after it.
     const quint64 lastLba = (request.layout.startOffset + request.layout.length) / sector - 1;
 
-    writeBytes(entries, 0, basicDataPartitionTypeGuid(), 16);
+    writeBytes(entries, 0, gptPartitionTypeGuid(request.fileSystem), 16);
     writeBytes(entries, 16, request.partitionGuid, 16);
     writeLe64(entries, 32, firstLba);
     writeLe64(entries, 40, lastLba);
@@ -196,6 +196,53 @@ QByteArray basicDataPartitionTypeGuid()
         static_cast<char>(0xC7),
     };
     return QByteArray(bytes, 16);
+}
+
+QByteArray linuxFilesystemPartitionTypeGuid()
+{
+    // 0FC63DAF-8483-4772-8E79-3D69D8477DE4, mixed-endian the same way as the
+    // basic-data GUID above.
+    static const char bytes[16] = {
+        static_cast<char>(0xAF),
+        static_cast<char>(0x3D),
+        static_cast<char>(0xC6),
+        static_cast<char>(0x0F),
+        static_cast<char>(0x83),
+        static_cast<char>(0x84),
+        static_cast<char>(0x72),
+        static_cast<char>(0x47),
+        static_cast<char>(0x8E),
+        static_cast<char>(0x79),
+        static_cast<char>(0x3D),
+        static_cast<char>(0x69),
+        static_cast<char>(0xD8),
+        static_cast<char>(0x47),
+        static_cast<char>(0x7D),
+        static_cast<char>(0xE4),
+    };
+    return QByteArray(bytes, 16);
+}
+
+QByteArray gptPartitionTypeGuid(FileSystemType fileSystem)
+{
+    if (fileSystem == FileSystemType::Ext4) {
+        return linuxFilesystemPartitionTypeGuid();
+    }
+    return basicDataPartitionTypeGuid();
+}
+
+quint8 mbrPartitionType(FileSystemType fileSystem)
+{
+    switch (fileSystem) {
+    case FileSystemType::Fat32:
+        return MbrFat32LbaPartitionType;
+    case FileSystemType::Ext4:
+        return MbrLinuxPartitionType;
+    case FileSystemType::ExFat:
+    case FileSystemType::Ntfs:
+        break;
+    }
+    return MbrExFatPartitionType;
 }
 
 bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *reason)
@@ -335,7 +382,7 @@ QByteArray buildMbr(const PartitionTableRequest &request)
 
     mbr[446] = static_cast<char>(0x00); // Not bootable: this is a data stick.
     writeChs(mbr, 447, firstLba);
-    mbr[450] = static_cast<char>(MbrExFatPartitionType);
+    mbr[450] = static_cast<char>(mbrPartitionType(request.fileSystem));
     writeChs(mbr, 451, lastLba);
     writeLe32(mbr, 454, static_cast<quint32>(qMin(firstLba, MbrMaxSectors)));
     writeLe32(mbr, 458, static_cast<quint32>(qMin(sectorSpan, MbrMaxSectors)));

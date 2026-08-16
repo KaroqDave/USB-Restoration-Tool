@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.4.0 - 2026-08-16
+
+A choice of filesystem, the same way 1.1.0 added a choice of partition style.
+
+### Added
+
+- **Filesystem selector** in the Restore card: exFAT (default), FAT32, NTFS, and
+  ext4 on Linux. The list comes from `DiskService`, so the GUI does not know
+  which OS it is on.
+- Partition type follows the filesystem: MBR `0x0C` for FAT32, GPT Linux
+  filesystem GUID for ext4. Windows Format confirms the requested filesystem
+  rather than assuming exFAT.
+- Helper protocol version 2, with required `--filesystem`. An unknown token is
+  refused.
+
+### Changed
+
+- Linux resolves the `mkfs` tool before the first write, so a missing
+  `mkfs.vfat` does not leave a blank partition table.
+- Windows blocks FAT32 on volumes larger than 32 GiB, which `MSFT_Volume.Format`
+  cannot create.
+
 ## 1.3.0 - 2026-08-06
 
 Privilege separation on Linux. There is no 1.2.0: the split was always planned

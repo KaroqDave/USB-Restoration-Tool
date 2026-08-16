@@ -5,6 +5,8 @@
 #include "linux/linux_restore.h"
 
 #include <QCoreApplication>
+#include <QtGlobal>
+#include <QVector>
 
 #include <unistd.h>
 
@@ -42,9 +44,10 @@ QString LinuxDiskService::privilegeHint() const
     // Reached only when both routes are closed: not root, and no installed
     // helper to ask polkit about. That is an AppImage or a build directory
     // started without sudo.
-    return QStringLiteral("USB Restoration Tool cannot get permission to restore USB disks.\n\nInstall it, so that "
-                          "it can ask for permission when a restore starts, or start it again with sudo:\n\n    "
-                          "sudo %1")
+    return QStringLiteral(
+               "USB Restoration Tool cannot get permission to restore USB disks.\n\nInstall it, so that "
+               "it can ask for permission when a restore starts, or start it again with sudo:\n\n    "
+               "sudo %1")
         .arg(QCoreApplication::applicationFilePath());
 }
 
@@ -63,6 +66,27 @@ RestoreGuard LinuxDiskService::restoreGuard() const
     return linuxRestoreGuard();
 }
 
+QVector<FileSystemType> LinuxDiskService::supportedFileSystems() const
+{
+    return {FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs, FileSystemType::Ext4};
+}
+
+bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason) const
+{
+    Q_UNUSED(disk);
+    switch (type) {
+    case FileSystemType::ExFat:
+    case FileSystemType::Fat32:
+    case FileSystemType::Ntfs:
+    case FileSystemType::Ext4:
+        return true;
+    }
+    if (reason) {
+        *reason = QStringLiteral("That filesystem is not supported.");
+    }
+    return false;
+}
+
 int LinuxDiskService::totalRestoreSteps() const
 {
     return LinuxRestoreStepCount;
@@ -73,10 +97,8 @@ QString LinuxDiskService::restoredLocationNoun() const
     return QStringLiteral("device");
 }
 
-bool LinuxDiskService::restore(const RestoreRequest &request,
-                               RestoreReporter &reporter,
-                               RestoreResult *result,
-                               QString *error)
+bool LinuxDiskService::restore(
+    const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     // The same restore either way; the only question is which process runs it.
     // Already root means sudo or the AppImage, where there is no privilege to

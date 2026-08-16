@@ -96,6 +96,71 @@ QString partitionStyleLabel(PartitionStyle style)
     return QStringLiteral("Unknown");
 }
 
+QString fileSystemTypeName(FileSystemType type)
+{
+    switch (type) {
+    case FileSystemType::ExFat:
+        return QStringLiteral("exFAT");
+    case FileSystemType::Fat32:
+        return QStringLiteral("FAT32");
+    case FileSystemType::Ntfs:
+        return QStringLiteral("NTFS");
+    case FileSystemType::Ext4:
+        return QStringLiteral("ext4");
+    }
+    return QStringLiteral("Unknown");
+}
+
+QString fileSystemTypeLabel(FileSystemType type)
+{
+    switch (type) {
+    case FileSystemType::ExFat:
+        return QStringLiteral("exFAT (recommended)");
+    case FileSystemType::Fat32:
+        return QStringLiteral("FAT32 (older devices)");
+    case FileSystemType::Ntfs:
+        return QStringLiteral("NTFS");
+    case FileSystemType::Ext4:
+        return QStringLiteral("ext4 (Linux)");
+    }
+    return QStringLiteral("Unknown");
+}
+
+QString fileSystemTypeToken(FileSystemType type)
+{
+    switch (type) {
+    case FileSystemType::ExFat:
+        return QStringLiteral("exfat");
+    case FileSystemType::Fat32:
+        return QStringLiteral("fat32");
+    case FileSystemType::Ntfs:
+        return QStringLiteral("ntfs");
+    case FileSystemType::Ext4:
+        return QStringLiteral("ext4");
+    }
+    return {};
+}
+
+bool parseFileSystemType(const QString &token, FileSystemType *type)
+{
+    FileSystemType parsed = FileSystemType::ExFat;
+    if (token == QLatin1String("exfat")) {
+        parsed = FileSystemType::ExFat;
+    } else if (token == QLatin1String("fat32")) {
+        parsed = FileSystemType::Fat32;
+    } else if (token == QLatin1String("ntfs")) {
+        parsed = FileSystemType::Ntfs;
+    } else if (token == QLatin1String("ext4")) {
+        parsed = FileSystemType::Ext4;
+    } else {
+        return false;
+    }
+    if (type) {
+        *type = parsed;
+    }
+    return true;
+}
+
 QString describeDisk(const DiskInfo &disk)
 {
     const QString name = disk.name.trimmed().isEmpty() ? QStringLiteral("USB disk") : disk.name.trimmed();

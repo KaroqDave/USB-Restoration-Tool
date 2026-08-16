@@ -95,6 +95,22 @@ check "the partition type is exFAT/NTFS" grep -q "HPFS/NTFS/exFAT" <<< "$MbrTabl
 check "the partition starts at 1 MiB" grep -qE "img1[[:space:]]+2048[[:space:]]" <<< "$MbrTable"
 
 echo
+echo "==> MBR FAT32, 512-byte sectors"
+"$Dump" 16000000000 512 mbr "$WorkDir/mbr512fat32.img" fat32
+Fat32Table="$("$Fdisk" -l "$WorkDir/mbr512fat32.img")"
+echo "$Fat32Table" | sed 's/^/    /'
+check "fdisk reads an MBR label" grep -q "Disklabel type: dos" <<< "$Fat32Table"
+check "the partition type is FAT32 LBA" grep -q "W95 FAT32 (LBA)" <<< "$Fat32Table"
+
+echo
+echo "==> GPT ext4, 512-byte sectors"
+"$Dump" 16000000000 512 gpt "$WorkDir/gptext4.img" ext4
+Ext4Table="$("$Fdisk" -l "$WorkDir/gptext4.img")"
+echo "$Ext4Table" | sed 's/^/    /'
+check "fdisk reads a GPT label" grep -q "Disklabel type: gpt" <<< "$Ext4Table"
+check "the partition is Linux filesystem" grep -q "Linux filesystem" <<< "$Ext4Table"
+
+echo
 echo "==> MBR past its addressing limit"
 # 4 TB is more than MBR's 32-bit sector count can describe. Being refused is the
 # correct outcome; silently truncating the partition would not be.

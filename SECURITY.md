@@ -8,9 +8,13 @@ with the privilege the tool holds.
 
 ## Supported Versions
 
+Only the current release line receives security fixes.
+
 | Version | Supported |
 | ------- | --------- |
-| 1.1.x   | Yes       |
+| 1.4.x   | Yes       |
+| 1.3.x   | No        |
+| 1.1.x   | No        |
 | 1.0.x   | No        |
 | 0.1.x   | No        |
 
@@ -86,7 +90,7 @@ Linux:
   root process where the invoking session can read it.
 - The umask is tightened at startup, so files the app creates are not group- or
   world-readable.
-- `mkfs.exfat` is resolved from a fixed list of system directories rather than
+- `mkfs` is resolved from a fixed list of system directories rather than
   through `$PATH`, which a caller reaching root through `sudo` may control. It
   is executed with an argument list, never through a shell.
 - Builds are compiled with `-D_FORTIFY_SOURCE=2 -fstack-protector-strong` and

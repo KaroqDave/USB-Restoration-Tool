@@ -6,11 +6,11 @@ tags:
 
 # USB Restoration Tool
 
-A Qt 6 desktop app that restores an ISO-written USB drive to **one GPT or MBR partition formatted exFAT**, labelled `USB`. It talks to each platform's storage stack directly — no `diskpart`, no PowerShell, no `sfdisk`.
+A Qt 6 desktop app that restores an ISO-written USB drive to **one GPT or MBR partition** labelled `USB`, formatted **exFAT**, **FAT32**, **NTFS**, or (on Linux) **ext4**. It talks to each platform's storage stack directly — no `diskpart`, no PowerShell, no `sfdisk`.
 
 | | |
 |---|---|
-| Version | **1.3.0** |
+| Version | **1.4.0** |
 | Platforms | Windows, Linux |
 | License | MIT |
 | Notes | `vault/` in this repository |

@@ -7,6 +7,7 @@
 // different question and the one that decides whether a restored stick mounts.
 // scripts/verify-partition-tables.sh drives it; CI runs that on every push.
 
+#include "core/disk.h"
 #include "core/partition_table.h"
 #include "core/safety.h"
 
@@ -23,9 +24,9 @@ namespace {
 void printUsage(const char *program)
 {
     std::fprintf(stderr,
-                 "usage: %s <disk-size-bytes> <sector-size> <gpt|mbr> <output-image>\n\n"
+                 "usage: %s <disk-size-bytes> <sector-size> <gpt|mbr> <output-image> [exfat|fat32|ntfs|ext4]\n\n"
                  "Writes a sparse image of the given size with nothing on it but the\n"
-                 "partition table a restore would produce.\n",
+                 "partition table a restore would produce. Filesystem defaults to exfat.\n",
                  program);
 }
 
@@ -33,7 +34,7 @@ void printUsage(const char *program)
 
 int main(int argc, char *argv[])
 {
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         printUsage(argv[0]);
         return 2;
     }
@@ -50,6 +51,13 @@ int main(int argc, char *argv[])
     } else {
         printUsage(argv[0]);
         return 2;
+    }
+
+    if (argc == 6) {
+        if (!parseFileSystemType(QString::fromLatin1(argv[5]), &request.fileSystem)) {
+            printUsage(argv[0]);
+            return 2;
+        }
     }
 
     request.layout = calculateGptLayout(request.diskSize, request.sectorSize);
@@ -89,9 +97,10 @@ int main(int argc, char *argv[])
     }
     image.close();
 
-    std::printf("%s: %s, %u-byte sectors, partition at %llu +%llu\n",
+    std::printf("%s: %s %s, %u-byte sectors, partition at %llu +%llu\n",
                 argv[4],
                 style.constData(),
+                qPrintable(fileSystemTypeToken(request.fileSystem)),
                 request.sectorSize,
                 static_cast<unsigned long long>(request.layout.startOffset),
                 static_cast<unsigned long long>(request.layout.length));

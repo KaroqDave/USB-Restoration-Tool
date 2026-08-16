@@ -14,6 +14,7 @@ namespace usbrestore {
 struct RestoreRequest {
     DiskInfo disk;
     PartitionStyle style = PartitionStyle::Gpt;
+    FileSystemType fileSystem = FileSystemType::ExFat;
     QString volumeLabel;
     RestoreGuard guard;
 };
@@ -72,14 +73,21 @@ class DiskService {
     // The mount points and devices the running system depends on.
     virtual RestoreGuard restoreGuard() const = 0;
 
+    // Filesystems this backend can format. The GUI fills the Restore combo
+    // from this rather than from the OS it was compiled for.
+    virtual QVector<FileSystemType> supportedFileSystems() const = 0;
+
+    // Whether a supported filesystem can actually be used with this disk's
+    // size and sector geometry. Windows imposes FAT32 limits that Linux does
+    // not.
+    virtual bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const = 0;
+
     // How many step() calls a successful restore makes, so progress can be
     // shown as a fraction rather than as a spinner.
     virtual int totalRestoreSteps() const = 0;
 
-    virtual bool restore(const RestoreRequest &request,
-                         RestoreReporter &reporter,
-                         RestoreResult *result,
-                         QString *error) = 0;
+    virtual bool
+    restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) = 0;
 
     // What the app calls the place a restored volume ends up, for the success
     // message: "drive letter" on Windows, "device" on Linux.

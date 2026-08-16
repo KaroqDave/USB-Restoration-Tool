@@ -12,7 +12,7 @@ src/core      DiskInfo, safety refusals, layout arithmetic, GPT/MBR bytes,
               GUI-to-helper protocol. No OS headers. This is what the tests cover.
 src/platform  DiskService, RestoreWorker, logger, startup
 src/win       WMI, DeviceIoControl on \\.\PhysicalDriveN, volumes
-src/linux     sysfs, mountinfo, raw block I/O, mkfs.exfat
+src/linux     sysfs, mountinfo, raw block I/O, mkfs
               enumerate (read-only) vs restore (privileged) are separate units
 src/helper    usb-restoration-helper — Linux only, Qt Core, no widgets
 src/gui       Qt widgets, theme, settings

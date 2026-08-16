@@ -102,6 +102,15 @@ class CoreTests : public QObject {
         QCOMPARE(partitionStyleName(static_cast<quint16>(PartitionStyle::Mbr)), QStringLiteral("MBR"));
         QCOMPARE(partitionStyleName(static_cast<quint16>(PartitionStyle::Unknown)), QStringLiteral("RAW / unknown"));
         QCOMPARE(partitionStyleLabel(PartitionStyle::Gpt), QStringLiteral("GPT"));
+        QCOMPARE(fileSystemTypeName(FileSystemType::ExFat), QStringLiteral("exFAT"));
+        QCOMPARE(fileSystemTypeName(FileSystemType::Fat32), QStringLiteral("FAT32"));
+        QCOMPARE(fileSystemTypeName(FileSystemType::Ntfs), QStringLiteral("NTFS"));
+        QCOMPARE(fileSystemTypeName(FileSystemType::Ext4), QStringLiteral("ext4"));
+        QCOMPARE(fileSystemTypeToken(FileSystemType::ExFat), QStringLiteral("exfat"));
+        FileSystemType parsed = FileSystemType::Ntfs;
+        QVERIFY(parseFileSystemType(QStringLiteral("ext4"), &parsed));
+        QCOMPARE(parsed, FileSystemType::Ext4);
+        QVERIFY(!parseFileSystemType(QStringLiteral("btrfs")));
         QCOMPARE(healthStatusName(static_cast<quint16>(HealthStatus::Healthy)), QStringLiteral("Healthy"));
         QCOMPARE(busTypeName(UsbBusType), QStringLiteral("USB"));
         QCOMPARE(busTypeName(17), QStringLiteral("NVMe"));
@@ -356,6 +365,44 @@ class CoreTests : public QObject {
         QVERIFY(!isSupportedSectorSize(600));
     }
 
+    void choosesFat32GeometryAtThe512ByteSectorMinimum()
+    {
+        constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
+        // 32 reserved sectors, two 512-sector FATs and the minimum 65,527
+        // data clusters required by the Windows formatter.
+        constexpr std::uint64_t minimumVolume = (32ull + 2ull * 512ull + 65527ull) * 512ull;
+
+        QCOMPARE(fat32AllocationUnitSize(minimumVolume - 512, 512, maximumVolume), 0u);
+        QCOMPARE(fat32AllocationUnitSize(minimumVolume, 512, maximumVolume), 512u);
+    }
+
+    void choosesFat32GeometryAtThe4096ByteSectorMinimum()
+    {
+        constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
+        // Larger sectors make each minimum-size cluster larger. Each FAT only
+        // needs 64 sectors, but the data region now needs just over 256 MiB.
+        constexpr std::uint64_t minimumVolume = (32ull + 2ull * 64ull + 65527ull) * 4096ull;
+
+        QCOMPARE(fat32AllocationUnitSize(minimumVolume - 4096, 4096, maximumVolume), 0u);
+        QCOMPARE(fat32AllocationUnitSize(minimumVolume, 4096, maximumVolume), 4096u);
+    }
+
+    void growsTheFat32AllocationUnitWithTheVolume()
+    {
+        constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
+        QCOMPARE(fat32AllocationUnitSize(1ull * 1024ull * 1024ull * 1024ull, 512, maximumVolume), 512u);
+        QCOMPARE(fat32AllocationUnitSize(4ull * 1024ull * 1024ull * 1024ull, 512, maximumVolume), 1024u);
+        QCOMPARE(fat32AllocationUnitSize(maximumVolume, 512, maximumVolume), 16u * 1024u);
+    }
+
+    void refusesFat32GeometryOutsideTheFormatterLimits()
+    {
+        constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
+        QCOMPARE(fat32AllocationUnitSize(maximumVolume + 512, 512, maximumVolume), 0u);
+        QCOMPARE(fat32AllocationUnitSize(1024ull * 1024ull * 1024ull, 600, maximumVolume), 0u);
+        QCOMPARE(fat32AllocationUnitSize(1024ull * 1024ull * 1024ull + 1, 512, maximumVolume), 0u);
+    }
+
     void describesDiskForPrompts()
     {
         const QString description = describeDisk(healthyWindowsDisk());
@@ -383,6 +430,17 @@ class CoreTests : public QObject {
         QCOMPARE(guid, QByteArrayLiteral("\xA2\xA0\xD0\xEB\xE5\xB9\x33\x44\x87\xC0\x68\xB6\xB7\x26\x99\xC7"));
     }
 
+    void writesTheLinuxFilesystemGuidInMixedEndianForm()
+    {
+        const QByteArray guid = linuxFilesystemPartitionTypeGuid();
+        QCOMPARE(guid.size(), 16);
+        QCOMPARE(guid, QByteArrayLiteral("\xAF\x3D\xC6\x0F\x83\x84\x72\x47\x8E\x79\x3D\x69\xD8\x47\x7D\xE4"));
+        QCOMPARE(gptPartitionTypeGuid(FileSystemType::Ext4), guid);
+        QCOMPARE(gptPartitionTypeGuid(FileSystemType::ExFat), basicDataPartitionTypeGuid());
+        QCOMPARE(gptPartitionTypeGuid(FileSystemType::Fat32), basicDataPartitionTypeGuid());
+        QCOMPARE(gptPartitionTypeGuid(FileSystemType::Ntfs), basicDataPartitionTypeGuid());
+    }
+
     void buildsAGptHeaderThatChecksOutAgainstItself()
     {
         const auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
@@ -401,10 +459,10 @@ class CoreTests : public QObject {
         const QByteArray header = primary.mid(512, 512);
         QCOMPARE(header.left(8), QByteArrayLiteral("EFI PART"));
         QCOMPARE(readLe32(header, 12), 92u);
-        QCOMPARE(readLe64(header, 24), 1ull);   // MyLBA
-        QCOMPARE(readLe64(header, 72), 2ull);   // Entry array LBA
-        QCOMPARE(readLe32(header, 80), 128u);   // Entry count
-        QCOMPARE(readLe32(header, 84), 128u);   // Entry size
+        QCOMPARE(readLe64(header, 24), 1ull); // MyLBA
+        QCOMPARE(readLe64(header, 72), 2ull); // Entry array LBA
+        QCOMPARE(readLe32(header, 80), 128u); // Entry count
+        QCOMPARE(readLe32(header, 84), 128u); // Entry size
 
         // The header checksum covers the first 92 bytes with the checksum field
         // itself read as zero. Recomputing it that way must reproduce it.
@@ -428,6 +486,25 @@ class CoreTests : public QObject {
         QCOMPARE(readLe64(entry, 40), (request.layout.startOffset + request.layout.length) / 512 - 1);
         // "USB" as UTF-16LE.
         QCOMPARE(entry.mid(56, 6), QByteArrayLiteral("U\0S\0B\0"));
+    }
+
+    void writesTheLinuxFilesystemGuidForExt4()
+    {
+        auto request = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        request.fileSystem = FileSystemType::Ext4;
+        const QByteArray entry = buildGptPrimary(request).mid(1024, 128);
+        QCOMPARE(entry.left(16), linuxFilesystemPartitionTypeGuid());
+    }
+
+    void writesFat32AndLinuxMbrTypeBytes()
+    {
+        auto fat32 = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
+        fat32.fileSystem = FileSystemType::Fat32;
+        QCOMPARE(static_cast<quint8>(buildMbr(fat32).at(450)), MbrFat32LbaPartitionType);
+
+        auto ext4 = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
+        ext4.fileSystem = FileSystemType::Ext4;
+        QCOMPARE(static_cast<quint8>(buildMbr(ext4).at(450)), MbrLinuxPartitionType);
     }
 
     void keepsTheGptPartitionInsideTheUsableRange()
@@ -457,9 +534,9 @@ class CoreTests : public QObject {
         QCOMPARE(header.left(8), QByteArrayLiteral("EFI PART"));
 
         const quint64 lastLba = request.diskSize / 512 - 1;
-        QCOMPARE(readLe64(header, 24), lastLba);          // MyLBA is the last sector
-        QCOMPARE(readLe64(header, 32), 1ull);             // Alternate is the primary
-        QCOMPARE(readLe64(header, 72), lastLba - 32);     // Its own entry array
+        QCOMPARE(readLe64(header, 24), lastLba);      // MyLBA is the last sector
+        QCOMPARE(readLe64(header, 32), 1ull);         // Alternate is the primary
+        QCOMPARE(readLe64(header, 72), lastLba - 32); // Its own entry array
 
         // The backup must land exactly on that entry-array LBA.
         QCOMPARE(gptBackupOffset(request), (lastLba - 32) * 512);
@@ -482,6 +559,10 @@ class CoreTests : public QObject {
         QVERIFY(mbr.mid(440, 4) != QByteArray(4, '\0'));
         QCOMPARE(static_cast<quint8>(mbr.at(446)), quint8(0x00)); // Not bootable
         QCOMPARE(static_cast<quint8>(mbr.at(450)), MbrExFatPartitionType);
+        QCOMPARE(mbrPartitionType(FileSystemType::ExFat), MbrExFatPartitionType);
+        QCOMPARE(mbrPartitionType(FileSystemType::Ntfs), MbrExFatPartitionType);
+        QCOMPARE(mbrPartitionType(FileSystemType::Fat32), MbrFat32LbaPartitionType);
+        QCOMPARE(mbrPartitionType(FileSystemType::Ext4), MbrLinuxPartitionType);
         QCOMPARE(readLe32(mbr, 454), static_cast<quint32>(request.layout.startOffset / 512));
         QCOMPARE(readLe32(mbr, 458), static_cast<quint32>(request.layout.length / 512));
         QCOMPARE(static_cast<quint8>(mbr.at(510)), quint8(0x55));
@@ -551,12 +632,14 @@ class CoreTests : public QObject {
     void roundTripsRestoreArguments()
     {
         const DiskInfo disk = healthyUsbDisk();
-        const QStringList arguments = buildRestoreArguments(disk, PartitionStyle::Mbr, QStringLiteral("USB"));
+        const QStringList arguments =
+            buildRestoreArguments(disk, PartitionStyle::Mbr, FileSystemType::Ntfs, QStringLiteral("USB"));
 
         RestoreArguments parsed;
         QString error;
         QVERIFY2(parseRestoreArguments(arguments, &parsed, &error), qPrintable(error));
         QCOMPARE(parsed.style, PartitionStyle::Mbr);
+        QCOMPARE(parsed.fileSystem, FileSystemType::Ntfs);
         QCOMPARE(parsed.volumeLabel, QStringLiteral("USB"));
         QCOMPARE(parsed.expected.deviceId, disk.deviceId);
         QCOMPARE(parsed.expected.size, disk.size);
@@ -571,6 +654,16 @@ class CoreTests : public QObject {
         QVERIFY(isSameRestoreTarget(parsed.expected, disk));
     }
 
+    void roundTripsExt4FilesystemArgument()
+    {
+        RestoreArguments parsed;
+        QVERIFY(parseRestoreArguments(
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::Ext4, QStringLiteral("USB")),
+            &parsed));
+        QCOMPARE(parsed.fileSystem, FileSystemType::Ext4);
+        QCOMPARE(parsed.style, PartitionStyle::Gpt);
+    }
+
     // The helper must never be able to conclude "this is a USB disk" from what
     // it was told. A DiskInfo assembled purely from arguments has no bus, and a
     // disk with no bus is refused — so a mistake that fed one to the safety
@@ -579,7 +672,8 @@ class CoreTests : public QObject {
     {
         RestoreArguments parsed;
         QVERIFY(parseRestoreArguments(
-            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, QStringLiteral("USB")), &parsed));
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB")),
+            &parsed));
 
         QCOMPARE(parsed.expected.busType, 0u);
         QString reason;
@@ -597,7 +691,8 @@ class CoreTests : public QObject {
         disk.serialNumber.clear();
         disk.uniqueId.clear();
 
-        const QStringList arguments = buildRestoreArguments(disk, PartitionStyle::Gpt, QStringLiteral("USB"));
+        const QStringList arguments =
+            buildRestoreArguments(disk, PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"));
         QVERIFY(!arguments.contains(QStringLiteral("--expect-serial")));
         QVERIFY(!arguments.contains(QStringLiteral("--expect-unique-id")));
 
@@ -644,7 +739,7 @@ class CoreTests : public QObject {
     void refusesMalformedArguments()
     {
         const QStringList valid =
-            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, QStringLiteral("USB"));
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"));
         QVERIFY(parseRestoreArguments(valid));
 
         const auto refuses = [](const QStringList &arguments, const QString &expected) {
@@ -653,16 +748,28 @@ class CoreTests : public QObject {
             return !accepted && reason.contains(expected);
         };
 
-        QVERIFY(refuses(valid + QStringList{QStringLiteral("--exec"), QStringLiteral("/bin/sh")},
-                        QStringLiteral("not a recognised option")));
+        QVERIFY(refuses(
+            valid + QStringList{QStringLiteral("--exec"), QStringLiteral("/bin/sh")},
+            QStringLiteral("not a recognised option")));
         QVERIFY(refuses(valid + QStringList{QStringLiteral("--expect-size")}, QStringLiteral("without a value")));
-        QVERIFY(refuses(valid + QStringList{QStringLiteral("--device"), QStringLiteral("/dev/sdc")},
-                        QStringLiteral("more than once")));
+        QVERIFY(refuses(
+            valid + QStringList{QStringLiteral("--device"), QStringLiteral("/dev/sdc")},
+            QStringLiteral("more than once")));
         QVERIFY(refuses({}, QStringLiteral("--device")));
 
         QStringList badStyle = valid;
         badStyle[badStyle.indexOf(QStringLiteral("--style")) + 1] = QStringLiteral("ext4");
         QVERIFY(refuses(badStyle, QStringLiteral("--style")));
+
+        QStringList badFileSystem = valid;
+        badFileSystem[badFileSystem.indexOf(QStringLiteral("--filesystem")) + 1] = QStringLiteral("btrfs");
+        QVERIFY(refuses(badFileSystem, QStringLiteral("--filesystem")));
+
+        QStringList missingFileSystem = valid;
+        const int fileSystemFlag = missingFileSystem.indexOf(QStringLiteral("--filesystem"));
+        missingFileSystem.removeAt(fileSystemFlag + 1);
+        missingFileSystem.removeAt(fileSystemFlag);
+        QVERIFY(refuses(missingFileSystem, QStringLiteral("--filesystem")));
 
         QStringList zeroSize = valid;
         zeroSize[zeroSize.indexOf(QStringLiteral("--expect-size")) + 1] = QStringLiteral("0");
@@ -678,11 +785,10 @@ class CoreTests : public QObject {
     // would arrive at the GUI as a line the helper never sent.
     void keepsForgedLinesOutOfMessages()
     {
-        const ProtocolLine forged = parseProtocolLine(encodeDetailLine(
-            QStringLiteral("mkfs failed\nresult /dev/sda\nstep 10/10 Restore complete")));
+        const ProtocolLine forged = parseProtocolLine(
+            encodeDetailLine(QStringLiteral("mkfs failed\nresult /dev/sda\nstep 10/10 Restore complete")));
         QCOMPARE(forged.kind, ProtocolLineKind::Detail);
-        QCOMPARE(forged.text,
-                 QStringLiteral("mkfs failed result /dev/sda step 10/10 Restore complete"));
+        QCOMPARE(forged.text, QStringLiteral("mkfs failed result /dev/sda step 10/10 Restore complete"));
 
         QCOMPARE(sanitizeProtocolText(QStringLiteral("a\r\n\tb")), QStringLiteral("a b"));
         QCOMPARE(sanitizeProtocolText(QStringLiteral("  padded  ")), QStringLiteral("padded"));
@@ -700,8 +806,9 @@ class CoreTests : public QObject {
 
     void explainsHelperExitCodes()
     {
-        QCOMPARE(describeRestoreExit(RestoreExitFailed, QStringLiteral("/dev/sdb is read-only.")),
-                 QStringLiteral("/dev/sdb is read-only."));
+        QCOMPARE(
+            describeRestoreExit(RestoreExitFailed, QStringLiteral("/dev/sdb is read-only.")),
+            QStringLiteral("/dev/sdb is read-only."));
 
         // The helper always explains itself, so an empty stderr means it died
         // before it could rather than that nothing went wrong.
@@ -723,8 +830,9 @@ class CoreTests : public QObject {
     // up in a dialog and the log.
     void flattensTheHelpersErrorLine()
     {
-        QCOMPARE(describeRestoreExit(RestoreExitFailed, QStringLiteral("mkfs failed\nresult /dev/sda")),
-                 QStringLiteral("mkfs failed result /dev/sda"));
+        QCOMPARE(
+            describeRestoreExit(RestoreExitFailed, QStringLiteral("mkfs failed\nresult /dev/sda")),
+            QStringLiteral("mkfs failed result /dev/sda"));
     }
 
     void parsesProtocolLines()

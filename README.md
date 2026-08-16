@@ -7,7 +7,7 @@
 
 A desktop app that gives a USB drive back after an ISO writer has been over it.
 
-Writing a Linux ISO to a USB stick leaves it in a state the system barely understands: a hybrid partition table, a read-only ISO9660 volume, a few hundred megabytes of a drive that used to hold 64 GB. This app restores the whole drive to **one partition formatted exFAT and labelled `USB`** — the layout it shipped with — under either **GPT** or **MBR**.
+Writing a Linux ISO to a USB stick leaves it in a state the system barely understands: a hybrid partition table, a read-only ISO9660 volume, a few hundred megabytes of a drive that used to hold 64 GB. This app restores the whole drive to **one partition labelled `USB`** — under either **GPT** or **MBR**, formatted **exFAT**, **FAT32**, **NTFS**, or (on Linux) **ext4**.
 
 It drives each platform's storage stack directly: `DeviceIoControl` and the `MSFT_Storage` WMI classes on Windows, sysfs and raw block-device I/O on Linux. There is no `diskpart`, no PowerShell, and no shelling out to `sfdisk`.
 
@@ -15,7 +15,16 @@ Built with C++ and Qt 6.
 
 > **Restoring erases every partition and file on the selected disk.** Only USB disks are listed, and boot, system, offline, and read-only disks are refused outright — but the drive you pick is erased completely.
 
-## What's New in 1.3.0
+## What's New in 1.4.0
+
+- **A filesystem selector in the Restore card.** exFAT is still the default. FAT32 and NTFS are offered on both platforms; Linux also offers ext4. The list comes from the platform backend, so the GUI does not hard-code the OS.
+- **Partition type follows the filesystem.** FAT32 uses MBR type `0x0C` so BIOS-era devices recognise it. ext4 uses the GPT Linux filesystem GUID so Windows does not offer to format the stick as RAW.
+- **Windows cannot Format FAT32 above 32 GB.** That is a Format API limit; the Restore button is blocked with that reason rather than failing after the disk has been wiped.
+- **Linux looks up `mkfs` before the first write.** A missing `mkfs.vfat` no longer leaves a blank partition table. The helper protocol is version 2 and carries `--filesystem` as another claim it may only refuse on.
+
+> **Neither Linux path has been tested on real hardware.** That was already true of 1.3.0. Use a drive you can afford to lose. The Windows path has been verified on hardware for the original exFAT restore; FAT32 and NTFS on Windows, and every Linux filesystem, still need a disposable stick.
+
+### Previously, in 1.3.0
 
 - **The Linux app no longer runs as root.** An installed build runs the application as you, and hands the restore to a separate `usb-restoration-helper` that holds privilege for the duration of one restore and exits. Your desktop asks for the password when you press **Restore**, through polkit, the same way every other privileged action on the system does. It also means the app is launchable from the applications menu, and that its settings and log belong to you rather than to root.
 - **The helper links Qt Core and nothing else.** Running the GUI as root meant every Qt plugin it loaded — widgets, theming, SVG and image formats, input methods — ran as root too, for the sake of the few hundred lines that actually needed it. None of that is loaded in the privileged process any more.
@@ -48,10 +57,11 @@ See [CHANGELOG.md](CHANGELOG.md) for the rest.
 - **USB disks only.** The list comes from a bus-filtered query on each platform, and the bus is checked again through the raw device handle before anything is written.
 - **Layered refusals.** Boot disks, system disks, disks holding a protected location (`C:` and the Windows drive; `/`, `/boot`, `/home` and the rest on Linux), the disk the running system boots from, offline disks, read-only and write-protected disks, disks too small for a valid layout, and disks reporting an unsupported sector size are all refused rather than warned about.
 - **GPT or MBR**, both written to the same 1 MiB-aligned layout, so switching the style never changes where the data starts or ends.
+- **exFAT, FAT32 or NTFS**, plus ext4 on Linux. The choice is remembered between runs. Partition type bytes follow the filesystem.
 - **A summary dialog** listing the mount points and volume labels that are about to disappear, gated behind an acknowledgement checkbox, with an extra warning above 128 GB.
 - **Revalidation at every step**, including a final identity check on the open handle immediately before the first destructive write.
 - **Step-by-step progress**, with an activity log written to disk for when a step fails.
-- **Light, dark and system themes**, remembered along with the window geometry and the layout choice.
+- **Light, dark and system themes**, remembered along with the window geometry, the layout choice, and the filesystem.
 
 ## Download
 
@@ -98,13 +108,14 @@ of a few hundred lines that actually need it — see
 [docs/polkit-helper.md](docs/polkit-helper.md) for what the split does about
 that.
 
-Formatting uses the `mkfs.exfat` already on your machine, because a filesystem tool has to match the kernel it is writing for. Install it first if it is missing:
+Formatting uses the `mkfs` already on your machine, because a filesystem tool has to match the kernel it is writing for. Install the tool for the filesystem you pick if it is missing:
 
-| Distro | Package |
-|--------|---------|
-| Debian/Ubuntu | `exfatprogs` |
-| Fedora | `exfatprogs` |
-| Arch | `exfatprogs` |
+| Filesystem | Debian/Ubuntu | Fedora | Arch |
+|------------|---------------|--------|------|
+| exFAT | `exfatprogs` | `exfatprogs` | `exfatprogs` |
+| FAT32 | `dosfstools` | `dosfstools` | `dosfstools` |
+| NTFS | `ntfs-3g` | `ntfsprogs` | `ntfs-3g` |
+| ext4 | `e2fsprogs` | `e2fsprogs` | `e2fsprogs` |
 
 On systems without FUSE2 (some Ubuntu 24.04+ setups), install `libfuse2` or extract and run manually:
 
@@ -117,12 +128,12 @@ sudo ./squashfs-root/AppRun
 
 1. Plug in the USB drive and start the app. Detected USB disks are listed with their size, current partition style, and where they are mounted.
 2. Select the disk. The **Selected disk** card shows what the system reports about it, and the status badge says whether it can be restored — or why it cannot.
-3. Pick **GPT** or **MBR** under **Layout**. GPT unless you know the device that has to read the stick predates it.
+3. Pick **GPT** or **MBR** under **Layout**, and **exFAT**, **FAT32**, **NTFS**, or (on Linux) **ext4** under **Filesystem**. GPT and exFAT unless you know the device that has to read the stick needs something else.
 4. Choose **Restore USB**, tick the acknowledgement in the dialog, and confirm.
 
 The restore takes a few seconds on a typical stick. **Cancel** stops it while it is still reversible; once the first sector has been rewritten it runs to completion, because a half-written partition table is worse than a finished one.
 
-Afterwards the drive is one exFAT volume labelled `USB`. Windows assigns it a drive letter; on Linux mounting is left to the desktop, so that the volume belongs to you rather than to root.
+Afterwards the drive is one volume labelled `USB`. Windows assigns it a drive letter; on Linux mounting is left to the desktop, so that the volume belongs to you rather than to root.
 
 ### When something goes wrong
 
@@ -200,9 +211,9 @@ Linux development packages by distro:
 
 | Distro | Packages |
 |--------|----------|
-| Ubuntu/Debian | `qt6-base-dev`, `cmake`, `g++`, `libgl1-mesa-dev`, `libxkbcommon-dev`, `exfatprogs` |
-| Fedora | `qt6-qtbase-devel`, `cmake`, `gcc-c++`, `mesa-libGL-devel`, `libxkbcommon-devel`, `exfatprogs` |
-| Arch | `qt6-base`, `cmake`, `gcc`, `mesa`, `libxkbcommon`, `exfatprogs` |
+| Ubuntu/Debian | `qt6-base-dev`, `cmake`, `g++`, `libgl1-mesa-dev`, `libxkbcommon-dev`, `exfatprogs`, `dosfstools` |
+| Fedora | `qt6-qtbase-devel`, `cmake`, `gcc-c++`, `mesa-libGL-devel`, `libxkbcommon-devel`, `exfatprogs`, `dosfstools` |
+| Arch | `qt6-base`, `cmake`, `gcc`, `mesa`, `libxkbcommon`, `exfatprogs`, `dosfstools` |
 
 ### Packaging
 
@@ -235,7 +246,7 @@ cmake --build build --target usb-partition-dump
 ./scripts/verify-partition-tables.sh build
 ```
 
-This writes what a restore would produce into sparse image files and asks `sgdisk` and `fdisk` whether they accept them — GPT at 512 and 4096 bytes per sector, MBR, and an oversized MBR layout that must be refused. It needs `gdisk` and `util-linux`, touches no real disk, and runs in CI on every push.
+This writes what a restore would produce into sparse image files and asks `sgdisk` and `fdisk` whether they accept them — GPT at 512 and 4096 bytes per sector, MBR, FAT32 MBR, ext4 GPT, and an oversized MBR layout that must be refused. It needs `gdisk` and `util-linux`, touches no real disk, and runs in CI on every push.
 
 The platform backends drive real hardware and have no automated coverage. **Do not test a restore on a drive you are not willing to lose.**
 
@@ -252,7 +263,7 @@ src/core      Safety policy, layout arithmetic, GPT/MBR serialisation, the
               GUI-to-helper protocol — no OS headers
 src/platform  The DiskService interface, the restore worker, the log
 src/win       Windows backend: WMI, DeviceIoControl, drive letters
-src/linux     Linux backend: sysfs, mountinfo, raw block I/O, mkfs.exfat
+src/linux     Linux backend: sysfs, mountinfo, raw block I/O, mkfs
 src/helper    usb-restoration-helper: the privileged Linux restore, Qt Core only
 src/gui       Qt widgets, theme, settings
 tests         Tests for src/core

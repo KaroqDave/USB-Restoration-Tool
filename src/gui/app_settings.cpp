@@ -28,6 +28,18 @@ AppSettings loadAppSettings()
                                      static_cast<int>(PartitionStyle::Gpt))
                           .toInt();
     result.partitionStyle = style == static_cast<int>(PartitionStyle::Mbr) ? PartitionStyle::Mbr : PartitionStyle::Gpt;
+
+    const int fileSystem = settings.value(QStringLiteral("fileSystem"), static_cast<int>(FileSystemType::ExFat)).toInt();
+    FileSystemType parsed = FileSystemType::ExFat;
+    switch (static_cast<FileSystemType>(fileSystem)) {
+    case FileSystemType::ExFat:
+    case FileSystemType::Fat32:
+    case FileSystemType::Ntfs:
+    case FileSystemType::Ext4:
+        parsed = static_cast<FileSystemType>(fileSystem);
+        break;
+    }
+    result.fileSystem = parsed;
     return result;
 }
 
@@ -37,6 +49,7 @@ void saveAppSettings(const AppSettings &settings)
     store.setValue(QStringLiteral("theme"), themeToSettings(settings.theme));
     store.setValue(QStringLiteral("geometry"), settings.geometry);
     store.setValue(QStringLiteral("partitionStyle"), static_cast<int>(settings.partitionStyle));
+    store.setValue(QStringLiteral("fileSystem"), static_cast<int>(settings.fileSystem));
 }
 
 } // namespace usbrestore

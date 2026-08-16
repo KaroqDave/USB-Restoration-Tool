@@ -6,6 +6,7 @@
 
 #include <QElapsedTimer>
 #include <QThread>
+#include <QVector>
 
 #include <winioctl.h>
 
@@ -106,12 +107,13 @@ bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, QString *error) 
     }
 
     for (const WmiObject &partition : partitions) {
-        if (!storage.callMethodAndWait(QStringLiteral("MSFT_Partition"),
-                                       partition.objectPath(),
-                                       L"DeleteObject",
-                                       {},
-                                       DeleteJobTimeoutMs,
-                                       error)) {
+        if (!storage.callMethodAndWait(
+                QStringLiteral("MSFT_Partition"),
+                partition.objectPath(),
+                L"DeleteObject",
+                {},
+                DeleteJobTimeoutMs,
+                error)) {
             return false;
         }
     }
@@ -119,9 +121,8 @@ bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, QString *error) 
     return true;
 }
 
-bool VolumeManager::removeMountPointsForDisk(quint32 diskNumber,
-                                             const QStringList &protectedLetters,
-                                             QString *error) const
+bool VolumeManager::removeMountPointsForDisk(
+    quint32 diskNumber, const QStringList &protectedLetters, QString *error) const
 {
     QStringList protectedSet{QStringLiteral("C")};
     for (const QString &letter : protectedLetters) {
@@ -156,17 +157,18 @@ bool VolumeManager::removeMountPointsForDisk(quint32 diskNumber,
         }
 
         const QString devicePath = QStringLiteral("\\\\.\\%1:").arg(QChar(letter));
-        const HANDLE handle = CreateFileW(reinterpret_cast<LPCWSTR>(devicePath.utf16()),
-                                          GENERIC_READ | GENERIC_WRITE,
-                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                          nullptr,
-                                          OPEN_EXISTING,
-                                          0,
-                                          nullptr);
+        const HANDLE handle = CreateFileW(
+            reinterpret_cast<LPCWSTR>(devicePath.utf16()),
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr);
         if (handle == INVALID_HANDLE_VALUE) {
             if (error) {
-                *error = windowsErrorMessage(QStringLiteral("Could not open volume %1 before restore").arg(devicePath),
-                                             GetLastError());
+                *error = windowsErrorMessage(
+                    QStringLiteral("Could not open volume %1 before restore").arg(devicePath), GetLastError());
             }
             return false;
         }
@@ -208,8 +210,8 @@ bool VolumeManager::removeMountPointsForDisk(quint32 diskNumber,
             if (code != ERROR_DIR_NOT_EMPTY && code != ERROR_FILE_NOT_FOUND && code != ERROR_PATH_NOT_FOUND &&
                 code != ERROR_NOT_A_REPARSE_POINT) {
                 if (error) {
-                    *error = windowsErrorMessage(QStringLiteral("Could not remove mount point %1").arg(mountPoint),
-                                                 code);
+                    *error =
+                        windowsErrorMessage(QStringLiteral("Could not remove mount point %1").arg(mountPoint), code);
                 }
                 CloseHandle(handle);
                 return false;
@@ -234,13 +236,14 @@ QString VolumeManager::findVolumeNameForDisk(quint32 diskNumber) const
     for (;;) {
         const QString current = QString::fromWCharArray(volumeName);
         const QString openName = withoutTrailingSlash(current);
-        const HANDLE handle = CreateFileW(reinterpret_cast<LPCWSTR>(openName.utf16()),
-                                          0,
-                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                          nullptr,
-                                          OPEN_EXISTING,
-                                          0,
-                                          nullptr);
+        const HANDLE handle = CreateFileW(
+            reinterpret_cast<LPCWSTR>(openName.utf16()),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr);
         if (handle != INVALID_HANDLE_VALUE) {
             const bool belongs = volumeHasDiskExtent(handle, diskNumber);
             CloseHandle(handle);
@@ -302,8 +305,8 @@ QString VolumeManager::mountVolume(const QString &volumeName, QString *error) co
         return {};
     }
 
-    if (!SetVolumeMountPointW(reinterpret_cast<LPCWSTR>(mountPoint.utf16()),
-                              reinterpret_cast<LPCWSTR>(volumeName.utf16()))) {
+    if (!SetVolumeMountPointW(
+            reinterpret_cast<LPCWSTR>(mountPoint.utf16()), reinterpret_cast<LPCWSTR>(volumeName.utf16()))) {
         if (error) {
             *error = windowsErrorMessage(
                 QStringLiteral("Could not mount the restored volume at %1").arg(mountPoint), GetLastError());
@@ -317,13 +320,14 @@ QString VolumeManager::mountVolume(const QString &volumeName, QString *error) co
 bool VolumeManager::volumePathBelongsToDisk(const QString &volumeName, quint32 diskNumber, QString *error) const
 {
     const QString openName = withoutTrailingSlash(volumeName);
-    const HANDLE handle = CreateFileW(reinterpret_cast<LPCWSTR>(openName.utf16()),
-                                      0,
-                                      FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                      nullptr,
-                                      OPEN_EXISTING,
-                                      0,
-                                      nullptr);
+    const HANDLE handle = CreateFileW(
+        reinterpret_cast<LPCWSTR>(openName.utf16()),
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         if (error) {
             *error = windowsErrorMessage(QStringLiteral("Could not reopen the restored volume"), GetLastError());
@@ -339,12 +343,41 @@ bool VolumeManager::volumePathBelongsToDisk(const QString &volumeName, quint32 d
     return belongs;
 }
 
-bool VolumeManager::formatExFat(const QString &volumeName,
-                                const QString &driveRoot,
-                                quint32 diskNumber,
-                                const QString &label,
-                                QString *error) const
+bool VolumeManager::formatVolume(
+    const QString &volumeName,
+    const QString &driveRoot,
+    quint32 diskNumber,
+    FileSystemType fileSystem,
+    quint32 allocationUnitSize,
+    const QString &label,
+    QString *error) const
 {
+    const QString formatName = [&]() -> QString {
+        switch (fileSystem) {
+        case FileSystemType::Fat32:
+            return QStringLiteral("FAT32");
+        case FileSystemType::Ntfs:
+            return QStringLiteral("NTFS");
+        case FileSystemType::ExFat:
+            return QStringLiteral("exFAT");
+        case FileSystemType::Ext4:
+            break;
+        }
+        return {};
+    }();
+    if (formatName.isEmpty()) {
+        if (error) {
+            *error = QStringLiteral("Windows cannot format a volume as %1.").arg(fileSystemTypeName(fileSystem));
+        }
+        return false;
+    }
+    if (fileSystem == FileSystemType::Fat32 && allocationUnitSize == 0) {
+        if (error) {
+            *error = QStringLiteral("No valid FAT32 allocation unit was selected before formatting.");
+        }
+        return false;
+    }
+
     // Last check before the format: a volume that has wandered onto another
     // disk is not the one that was just created here.
     if (!volumePathBelongsToDisk(volumeName, diskNumber, error)) {
@@ -394,43 +427,43 @@ bool VolumeManager::formatExFat(const QString &volumeName,
     // The label goes in as a format parameter. Setting it afterwards with
     // SetVolumeLabelW meant a window where the drive was mounted under
     // whatever name the previous filesystem had left behind.
-    const QVector<QPair<QString, QVariant>> inputs = {
-        {QStringLiteral("FileSystem"), QStringLiteral("exFAT")},
+    QVector<QPair<QString, QVariant>> inputs = {
+        {QStringLiteral("FileSystem"), formatName},
         {QStringLiteral("FileSystemLabel"), label},
         {QStringLiteral("Full"), false},
         {QStringLiteral("Force"), true},
     };
-    if (!storage.callMethodAndWait(QStringLiteral("MSFT_Volume"),
-                                   targetVolume.objectPath(),
-                                   L"Format",
-                                   inputs,
-                                   FormatJobTimeoutMs,
-                                   error)) {
+    if (fileSystem == FileSystemType::Fat32) {
+        inputs.append({QStringLiteral("AllocationUnitSize"), allocationUnitSize});
+    }
+    if (!storage.callMethodAndWait(
+            QStringLiteral("MSFT_Volume"), targetVolume.objectPath(), L"Format", inputs, FormatJobTimeoutMs, error)) {
         return false;
     }
 
     // Confirm through the filesystem, not through the return value: the format
-    // is only done when Windows serves an exFAT volume at the drive root.
+    // is only done when Windows serves the requested filesystem at the drive root.
     timer.restart();
     while (timer.elapsed() < 60 * 1000) {
         wchar_t volumeLabel[MAX_PATH + 1] = {};
-        wchar_t fileSystem[MAX_PATH + 1] = {};
-        if (GetVolumeInformationW(reinterpret_cast<LPCWSTR>(driveRoot.utf16()),
-                                  volumeLabel,
-                                  MAX_PATH,
-                                  nullptr,
-                                  nullptr,
-                                  nullptr,
-                                  fileSystem,
-                                  MAX_PATH)) {
-            if (QString::fromWCharArray(fileSystem).compare(QStringLiteral("exFAT"), Qt::CaseInsensitive) == 0) {
+        wchar_t fileSystemName[MAX_PATH + 1] = {};
+        if (GetVolumeInformationW(
+                reinterpret_cast<LPCWSTR>(driveRoot.utf16()),
+                volumeLabel,
+                MAX_PATH,
+                nullptr,
+                nullptr,
+                nullptr,
+                fileSystemName,
+                MAX_PATH)) {
+            if (QString::fromWCharArray(fileSystemName).compare(formatName, Qt::CaseInsensitive) == 0) {
                 if (QString::fromWCharArray(volumeLabel).compare(label, Qt::CaseInsensitive) == 0) {
                     return true;
                 }
                 // Formatted, but the label did not take. Retry it directly
                 // rather than failing a restore that has otherwise finished.
-                if (SetVolumeLabelW(reinterpret_cast<LPCWSTR>(driveRoot.utf16()),
-                                    reinterpret_cast<LPCWSTR>(label.utf16()))) {
+                if (SetVolumeLabelW(
+                        reinterpret_cast<LPCWSTR>(driveRoot.utf16()), reinterpret_cast<LPCWSTR>(label.utf16()))) {
                     return true;
                 }
             }
@@ -439,8 +472,8 @@ bool VolumeManager::formatExFat(const QString &volumeName,
     }
 
     if (error) {
-        *error = QStringLiteral("The format completed, but Windows did not report an exFAT volume labelled %1 at %2.")
-                     .arg(label, driveRoot);
+        *error = QStringLiteral("The format completed, but Windows did not report a %1 volume labelled %2 at %3.")
+                     .arg(formatName, label, driveRoot);
     }
     return false;
 }

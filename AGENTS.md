@@ -3,8 +3,8 @@
 ## Project Structure & Module Organization
 
 USB Restoration Tool is a Qt 6 desktop app for Windows and Linux that restores
-an ISO-written USB drive to one GPT or MBR partition formatted exFAT. Source
-lives in `src/`:
+an ISO-written USB drive to one GPT or MBR partition formatted exFAT, FAT32,
+NTFS, or (on Linux) ext4. Source lives in `src/`:
 
 - `src/core/` — `disk.*` (the `DiskInfo` model and formatting), `safety.*`
   (every rule that decides whether a disk may be erased, plus the layout
@@ -34,7 +34,10 @@ Working notes (the task list, hardware log, decisions) live in `vault/`.
 ## Build, Test, and Development Commands
 
 - `cmake --preset windows` / `--preset linux` — configure. Set
-  `CMAKE_PREFIX_PATH` if Qt is not found.
+  `CMAKE_PREFIX_PATH` if Qt is not found. Configure also writes
+  `compile_commands.json` at the source root for clangd: the Visual Studio
+  generator ignores `CMAKE_EXPORT_COMPILE_COMMANDS`, so without that file the
+  language server reports `core/disk.h` and every Qt header as missing.
 - `cmake --build --preset windows` — build Release; `windeployqt` runs after on
   Windows.
 - `ctest --preset windows` — run the `src/core` tests.

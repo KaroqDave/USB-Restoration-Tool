@@ -188,6 +188,7 @@ int main(int argc, char *argv[])
     usbrestore::RestoreRequest request;
     request.disk = disk;
     request.style = parsed.style;
+    request.fileSystem = parsed.fileSystem;
     request.volumeLabel = parsed.volumeLabel;
     request.guard = guard;
 

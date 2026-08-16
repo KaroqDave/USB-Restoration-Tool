@@ -5,7 +5,7 @@
 namespace usbrestore {
 
 // The Linux backend: sysfs and /proc for what exists and what state it is in,
-// a plain file descriptor on /dev/sdX for the raw work, and mkfs.exfat for the
+// a plain file descriptor on /dev/sdX for the raw work, and mkfs for the
 // filesystem.
 //
 // Almost nothing happens here. Enumeration lives in linux_enumerate.* and the
@@ -23,11 +23,11 @@ class LinuxDiskService : public DiskService {
     QVector<DiskInfo> listUsbDisks(QString *error = nullptr) const override;
     bool refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error = nullptr) const override;
     RestoreGuard restoreGuard() const override;
+    QVector<FileSystemType> supportedFileSystems() const override;
+    bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const override;
     int totalRestoreSteps() const override;
-    bool restore(const RestoreRequest &request,
-                 RestoreReporter &reporter,
-                 RestoreResult *result,
-                 QString *error) override;
+    bool
+    restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) override;
     QString restoredLocationNoun() const override;
 };
 

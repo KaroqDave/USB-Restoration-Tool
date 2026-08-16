@@ -94,12 +94,14 @@ bool isValidVolumeLabel(const QString &label)
     return true;
 }
 
-QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, const QString &volumeLabel)
+QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem,
+                                  const QString &volumeLabel)
 {
     QStringList arguments;
     arguments << QStringLiteral("--device") << disk.deviceId;
     arguments << QStringLiteral("--style")
               << (style == PartitionStyle::Mbr ? QStringLiteral("mbr") : QStringLiteral("gpt"));
+    arguments << QStringLiteral("--filesystem") << fileSystemTypeToken(fileSystem);
     arguments << QStringLiteral("--label") << volumeLabel;
     arguments << QStringLiteral("--expect-size") << QString::number(disk.size);
     arguments << QStringLiteral("--expect-sector-size") << QString::number(disk.sectorSize);
@@ -126,6 +128,7 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     RestoreArguments result;
     QString device;
     QString style;
+    QString fileSystem;
     QString size;
     QString sectorSize;
     QStringList seen;
@@ -145,6 +148,8 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
             device = value;
         } else if (flag == QStringLiteral("--style")) {
             style = value;
+        } else if (flag == QStringLiteral("--filesystem")) {
+            fileSystem = value;
         } else if (flag == QStringLiteral("--label")) {
             result.volumeLabel = value;
         } else if (flag == QStringLiteral("--expect-size")) {
@@ -173,6 +178,9 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
         result.style = PartitionStyle::Mbr;
     } else {
         return fail(error, QStringLiteral("--style must be \"gpt\" or \"mbr\"."));
+    }
+    if (!parseFileSystemType(fileSystem, &result.fileSystem)) {
+        return fail(error, QStringLiteral("--filesystem must be \"exfat\", \"fat32\", \"ntfs\" or \"ext4\"."));
     }
     if (!isValidVolumeLabel(result.volumeLabel)) {
         return fail(error, QStringLiteral("--label must be 1 to %1 letters, digits, spaces, \"-\" or \"_\".")

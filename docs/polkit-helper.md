@@ -58,7 +58,7 @@ The helper must not trust anything it is told. Everything the GUI sends is a
 *request*, and the helper re-derives the facts itself:
 
 ```
-GUI  -> helper   device path, partition style, volume label,
+GUI  -> helper   device path, partition style, filesystem, volume label,
                  and the identity the user was shown: size, sector size,
                  serial, unique id, sysfs path, model name
 helper           re-enumerates the disk from sysfs

@@ -1,9 +1,12 @@
 #include "win/windows_disk_service.h"
 
+#include "core/safety.h"
 #include "win/admin.h"
 #include "win/raw_disk.h"
 #include "win/volume_manager.h"
 #include "win/windows_util.h"
+
+#include <QVector>
 
 #include <memory>
 
@@ -14,6 +17,13 @@ namespace {
 // How long Windows is given to publish the volume it has just been told to
 // create. Slow flash media on a busy machine can take well over ten seconds.
 constexpr int NewVolumeTimeoutMs = 60 * 1000;
+constexpr std::uint64_t MaximumWindowsFat32VolumeBytes = 32ull * 1024ull * 1024ull * 1024ull;
+
+quint32 windowsFat32AllocationUnitSize(const DiskInfo &disk)
+{
+    const GptLayout layout = calculateGptLayout(disk.size, disk.sectorSize);
+    return fat32AllocationUnitSize(layout.length, disk.sectorSize, MaximumWindowsFat32VolumeBytes);
+}
 
 } // namespace
 
@@ -29,8 +39,9 @@ bool WindowsDiskService::isPrivileged() const
 
 QString WindowsDiskService::privilegeHint() const
 {
-    return QStringLiteral("USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
-                          "window and start the app again, approving the Windows permission prompt.");
+    return QStringLiteral(
+        "USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
+        "window and start the app again, approving the Windows permission prompt.");
 }
 
 QVector<DiskInfo> WindowsDiskService::listUsbDisks(QString *error) const
@@ -53,6 +64,45 @@ RestoreGuard WindowsDiskService::restoreGuard() const
     return guard;
 }
 
+QVector<FileSystemType> WindowsDiskService::supportedFileSystems() const
+{
+    return {FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs};
+}
+
+bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason) const
+{
+    const auto refuse = [reason](const QString &text) {
+        if (reason) {
+            *reason = text;
+        }
+        return false;
+    };
+
+    switch (type) {
+    case FileSystemType::ExFat:
+    case FileSystemType::Ntfs:
+        return true;
+    case FileSystemType::Fat32:
+        // MSFT_Volume.Format refuses FAT32 above 32 GiB. The partition is a
+        // megabyte smaller than the disk, so the layout length is what matters.
+        if (calculateGptLayout(disk.size, disk.sectorSize).length > MaximumWindowsFat32VolumeBytes) {
+            return refuse(QStringLiteral(
+                "Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
+                "NTFS."));
+        }
+        if (windowsFat32AllocationUnitSize(disk) == 0) {
+            return refuse(QStringLiteral(
+                              "Windows cannot format FAT32 on a volume this small with %1-byte sectors. "
+                              "Choose exFAT or NTFS.")
+                              .arg(disk.sectorSize));
+        }
+        return true;
+    case FileSystemType::Ext4:
+        return refuse(QStringLiteral("ext4 is not available on Windows."));
+    }
+    return refuse(QStringLiteral("That filesystem is not supported."));
+}
+
 int WindowsDiskService::totalRestoreSteps() const
 {
     return 14;
@@ -63,10 +113,8 @@ QString WindowsDiskService::restoredLocationNoun() const
     return QStringLiteral("drive letter");
 }
 
-bool WindowsDiskService::restore(const RestoreRequest &request,
-                                 RestoreReporter &reporter,
-                                 RestoreResult *result,
-                                 QString *error)
+bool WindowsDiskService::restore(
+    const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     DiskInfo disk = request.disk;
     QString reason;
@@ -76,6 +124,14 @@ bool WindowsDiskService::restore(const RestoreRequest &request,
         }
         return false;
     }
+    if (!canFormatFileSystem(request.fileSystem, disk, &reason)) {
+        if (error) {
+            *error = reason;
+        }
+        return false;
+    }
+    const quint32 allocationUnitSize =
+        request.fileSystem == FileSystemType::Fat32 ? windowsFat32AllocationUnitSize(disk) : 0;
 
     VolumeManager volumes;
 
@@ -84,8 +140,7 @@ bool WindowsDiskService::restore(const RestoreRequest &request,
     if (!m_enumerator.diskByNumber(disk.number, &currentDisk, error)) {
         return false;
     }
-    if (!isSameRestoreTarget(disk, currentDisk, &reason) ||
-        !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
+    if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
         if (error) {
             *error = reason;
         }
@@ -154,7 +209,7 @@ bool WindowsDiskService::restore(const RestoreRequest &request,
     }
 
     reporter.step(QStringLiteral("Creating one %1 data partition").arg(partitionStyleLabel(request.style)));
-    if (!rawDisk.createSinglePartition(request.style, disk.size, disk.sectorSize, error)) {
+    if (!rawDisk.createSinglePartition(request.style, request.fileSystem, disk.size, disk.sectorSize, error)) {
         return false;
     }
 
@@ -165,8 +220,7 @@ bool WindowsDiskService::restore(const RestoreRequest &request,
     }
 
     reporter.step(QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error) ||
-        !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
+    if (!volumes.refreshDisk(disk.number, error) || !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
         return false;
     }
 
@@ -176,8 +230,9 @@ bool WindowsDiskService::restore(const RestoreRequest &request,
         return false;
     }
 
-    reporter.step(QStringLiteral("Formatting as exFAT"));
-    if (!volumes.formatExFat(volumeName, driveRoot, disk.number, request.volumeLabel, error)) {
+    reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!volumes.formatVolume(
+            volumeName, driveRoot, disk.number, request.fileSystem, allocationUnitSize, request.volumeLabel, error)) {
         return false;
     }
 

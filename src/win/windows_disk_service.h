@@ -14,11 +14,11 @@ class WindowsDiskService : public DiskService {
     QVector<DiskInfo> listUsbDisks(QString *error = nullptr) const override;
     bool refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error = nullptr) const override;
     RestoreGuard restoreGuard() const override;
+    QVector<FileSystemType> supportedFileSystems() const override;
+    bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const override;
     int totalRestoreSteps() const override;
-    bool restore(const RestoreRequest &request,
-                 RestoreReporter &reporter,
-                 RestoreResult *result,
-                 QString *error) override;
+    bool
+    restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) override;
     QString restoredLocationNoun() const override;
 
   private:

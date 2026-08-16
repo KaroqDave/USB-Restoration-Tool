@@ -46,12 +46,14 @@ class RawDisk {
     // partition style. Windows writes the table itself from this description,
     // so unlike the Linux backend there are no partition-table bytes here.
     bool createSinglePartition(PartitionStyle style,
+                               FileSystemType fileSystem,
                                std::uint64_t diskSize,
                                quint32 sectorSize,
                                QString *error = nullptr);
 
   private:
-    bool createSingleMbrPartition(const GptLayout &layout, quint32 sectorSize, QString *error);
+    bool createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
+                                  QString *error);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
     QString lastError(const QString &context) const;
 

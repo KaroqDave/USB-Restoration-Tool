@@ -11,7 +11,7 @@ The Linux backend lives in `src/linux/`, split so the helper can link the restor
 | Unit | Role |
 |---|---|
 | `linux_enumerate.*` | Read-only: sysfs, `/proc/self/mountinfo`, partition-style probe |
-| `linux_restore.*` | Privileged sequence: exclusive open, partition table, `mkfs.exfat` |
+| `linux_restore.*` | Privileged sequence: exclusive open, partition table, `mkfs` |
 | `linux_disk_service.*` | Thin `DiskService` over both; picks in-process vs helper |
 | `helper_client.*` | `pkexec` spawn, protocol parse |
 | `src/helper/main.cpp` | `usb-restoration-helper` |
@@ -32,7 +32,7 @@ The helper's installed path is baked in at **configure** time (`CMAKE_INSTALL_PR
 - Unmount what is about to be erased
 - Open the block device `O_EXCL` (kernel-refused while mounted)
 - Write GPT or MBR from `src/core/partition_table.cpp` (no `sfdisk`)
-- Hand the new partition to `mkfs.exfat`, resolved from a fixed list of system directories, never `$PATH`, never a shell
+- Hand the new partition to `mkfs` (exFAT, FAT32, NTFS or ext4), resolved from a fixed list of system directories, never `$PATH`, never a shell
 
 `detectPartitionStyle()` falls back to udev's `ID_PART_TABLE_TYPE` when the unprivileged GUI cannot open the node, so the list still shows GPT/MBR. That label is second-hand. **No safety rule reads `partitionStyle`.**
 

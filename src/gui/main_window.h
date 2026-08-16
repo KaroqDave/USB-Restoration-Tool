@@ -69,8 +69,9 @@ class MainWindow : public QMainWindow {
     void setStatus(StatusKind status, const QString &message, const QString &detail = {});
     void setRunning(bool running);
     void appendLog(const QString &message);
-    bool confirmErase(const DiskInfo &disk, PartitionStyle style);
+    bool confirmErase(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem);
     PartitionStyle selectedPartitionStyle() const;
+    FileSystemType selectedFileSystem() const;
     const DiskInfo *selectedDisk() const;
     bool waitForRestoreThread(int timeoutMs = 30000);
 
@@ -91,6 +92,7 @@ class MainWindow : public QMainWindow {
     QLabel *m_statusLabel = nullptr;
     QLabel *m_detailLabel = nullptr;
     QComboBox *m_styleCombo = nullptr;
+    QComboBox *m_fileSystemCombo = nullptr;
     QPushButton *m_refreshButton = nullptr;
     QPushButton *m_restoreButton = nullptr;
     QPushButton *m_themeButton = nullptr;

@@ -97,17 +97,30 @@ QString joinOrDash(const QStringList &values)
     return values.isEmpty() ? QStringLiteral("—") : values.join(QStringLiteral(", "));
 }
 
+void styleComboPopup(QComboBox *combo)
+{
+    // A QListView popup so the item styling in the stylesheet applies; the
+    // native popup ignores it.
+    auto *popupView = new QListView(combo);
+    popupView->setFrameShape(QFrame::NoFrame);
+    combo->setView(popupView);
+    for (int i = 0; i < combo->count(); ++i) {
+        combo->setItemData(i, QSize(0, 32), Qt::SizeHintRole);
+    }
+}
+
 QString diskListEntry(const DiskInfo &disk)
 {
     const QString name = disk.name.isEmpty() ? QStringLiteral("USB disk") : disk.name;
     const QString mounts =
         disk.mountPoints.isEmpty() ? QStringLiteral("not mounted") : disk.mountPoints.join(QStringLiteral(", "));
     return QStringLiteral("%1  ·  %2\n%3  ·  %4  ·  %5")
-        .arg(disk.displayId.isEmpty() ? disk.deviceId : disk.displayId,
-             name,
-             formatByteSize(disk.size),
-             partitionStyleName(disk.partitionStyle),
-             mounts);
+        .arg(
+            disk.displayId.isEmpty() ? disk.deviceId : disk.displayId,
+            name,
+            formatByteSize(disk.size),
+            partitionStyleName(disk.partitionStyle),
+            mounts);
 }
 
 // Opens a file or link without dragging the elevated process's privileges into
@@ -210,7 +223,7 @@ QLayout *MainWindow::buildHeaderLayout()
     auto *title = new QLabel(QStringLiteral("USB Restoration Tool"));
     title->setObjectName(QStringLiteral("title"));
     auto *subtitle =
-        new QLabel(QStringLiteral("Restore a USB drive written by an ISO writer back to one clean exFAT volume."));
+        new QLabel(QStringLiteral("Restore a USB drive written by an ISO writer back to one clean volume."));
     subtitle->setObjectName(QStringLiteral("subtitle"));
 
     auto *badge = new QLabel(
@@ -306,17 +319,23 @@ QWidget *MainWindow::buildRestoreSection()
     m_styleCombo->setToolTip(QStringLiteral(
         "GPT is what current systems expect and what Windows itself writes.\n"
         "MBR is for devices that predate it and refuse to read a GPT stick:\n"
-        "BIOS-era PCs, car stereos, older TVs and set-top boxes.\n"
-        "Either way the drive is formatted exFAT."));
-    // A QListView popup so the item styling in the stylesheet applies; the
-    // native popup ignores it.
-    auto *popupView = new QListView(m_styleCombo);
-    popupView->setFrameShape(QFrame::NoFrame);
-    m_styleCombo->setView(popupView);
-    for (int i = 0; i < m_styleCombo->count(); ++i) {
-        m_styleCombo->setItemData(i, QSize(0, 32), Qt::SizeHintRole);
-    }
+        "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
+    styleComboPopup(m_styleCombo);
     connect(m_styleCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
+
+    m_fileSystemCombo = new QComboBox;
+    m_fileSystemCombo->setCursor(Qt::PointingHandCursor);
+    m_fileSystemCombo->setAccessibleName(QStringLiteral("Filesystem"));
+    m_fileSystemCombo->setToolTip(QStringLiteral(
+        "exFAT (recommended) works on Windows, Linux and macOS.\n"
+        "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
+        "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
+        "ext4 is Linux-only; Windows will not mount it without extra software."));
+    for (const FileSystemType type : m_service.supportedFileSystems()) {
+        m_fileSystemCombo->addItem(fileSystemTypeLabel(type), static_cast<int>(type));
+    }
+    styleComboPopup(m_fileSystemCombo);
+    connect(m_fileSystemCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
 
     m_planLabel = new QLabel;
     m_planLabel->setObjectName(QStringLiteral("footnote"));
@@ -334,9 +353,11 @@ QWidget *MainWindow::buildRestoreSection()
 
     layout->addWidget(fieldLabel(QStringLiteral("Layout")), 0, 0);
     layout->addWidget(m_styleCombo, 0, 1);
-    layout->addWidget(m_planLabel, 1, 0, 1, 2);
-    layout->addWidget(m_statusLabel, 2, 0, 1, 2);
-    layout->addWidget(m_detailLabel, 3, 0, 1, 2);
+    layout->addWidget(fieldLabel(QStringLiteral("Filesystem")), 1, 0);
+    layout->addWidget(m_fileSystemCombo, 1, 1);
+    layout->addWidget(m_planLabel, 2, 0, 1, 2);
+    layout->addWidget(m_statusLabel, 3, 0, 1, 2);
+    layout->addWidget(m_detailLabel, 4, 0, 1, 2);
     layout->setColumnStretch(1, 1);
     return box;
 }
@@ -397,8 +418,9 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    auto *caption = new QLabel(QStringLiteral("Every step of this session. The same lines are written to the log "
-                                              "file, which survives a restart."));
+    auto *caption = new QLabel(QStringLiteral(
+        "Every step of this session. The same lines are written to the log "
+        "file, which survives a restart."));
     caption->setObjectName(QStringLiteral("footnote"));
     caption->setWordWrap(true);
     layout->addWidget(caption);
@@ -439,6 +461,12 @@ void MainWindow::loadSettings()
             m_styleCombo->setCurrentIndex(index);
         }
     }
+    if (m_fileSystemCombo) {
+        const int index = m_fileSystemCombo->findData(static_cast<int>(m_settings.fileSystem));
+        if (index >= 0) {
+            m_fileSystemCombo->setCurrentIndex(index);
+        }
+    }
 }
 
 void MainWindow::saveSettings()
@@ -446,6 +474,7 @@ void MainWindow::saveSettings()
     m_settings.theme = m_theme;
     m_settings.geometry = saveGeometry();
     m_settings.partitionStyle = selectedPartitionStyle();
+    m_settings.fileSystem = selectedFileSystem();
     saveAppSettings(m_settings);
 }
 
@@ -456,6 +485,22 @@ PartitionStyle MainWindow::selectedPartitionStyle() const
     }
     const int value = m_styleCombo->currentData().toInt();
     return value == static_cast<int>(PartitionStyle::Mbr) ? PartitionStyle::Mbr : PartitionStyle::Gpt;
+}
+
+FileSystemType MainWindow::selectedFileSystem() const
+{
+    if (!m_fileSystemCombo) {
+        return FileSystemType::ExFat;
+    }
+    const auto type = static_cast<FileSystemType>(m_fileSystemCombo->currentData().toInt());
+    switch (type) {
+    case FileSystemType::ExFat:
+    case FileSystemType::Fat32:
+    case FileSystemType::Ntfs:
+    case FileSystemType::Ext4:
+        return type;
+    }
+    return FileSystemType::ExFat;
 }
 
 void MainWindow::refreshDisks()
@@ -493,8 +538,9 @@ void MainWindow::renderDisks()
     if (m_disks.isEmpty()) {
         m_diskCount->setText(QStringLiteral("No USB disks detected. Plug the drive in and select Refresh."));
     } else {
-        m_diskCount->setText(m_disks.size() == 1 ? QStringLiteral("1 USB disk detected.")
-                                                 : QStringLiteral("%1 USB disks detected.").arg(m_disks.size()));
+        m_diskCount->setText(
+            m_disks.size() == 1 ? QStringLiteral("1 USB disk detected.")
+                                : QStringLiteral("%1 USB disks detected.").arg(m_disks.size()));
     }
 
     if (!m_disks.isEmpty()) {
@@ -527,9 +573,10 @@ void MainWindow::renderSelectedDisk()
     }
 
     m_detailTitle->setText(describeDisk(*disk));
-    m_detailValues->setText(QStringLiteral("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
-                                           "Mounted at: %4\n"
-                                           "Volume labels: %5")
+    m_detailValues->setText(QStringLiteral(
+                                "Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
+                                "Mounted at: %4\n"
+                                "Volume labels: %5")
                                 .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
                                 .arg(disk->sectorSize)
                                 .arg(joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
@@ -542,27 +589,37 @@ void MainWindow::updateRestoreState()
     }
 
     const QString style = partitionStyleLabel(selectedPartitionStyle());
-    m_planLabel->setText(QStringLiteral("Every partition and file on the selected disk is erased and replaced with "
-                                        "one %1 partition formatted exFAT and labelled %2.")
-                             .arg(style, RestoreVolumeLabel));
+    const QString fileSystem = fileSystemTypeName(selectedFileSystem());
+    m_planLabel->setText(QStringLiteral(
+                             "Every partition and file on the selected disk is erased and replaced with "
+                             "one %1 partition formatted %2 and labelled %3.")
+                             .arg(style, fileSystem, RestoreVolumeLabel));
 
     const DiskInfo *disk = selectedDisk();
     if (!disk) {
         m_styleCombo->setEnabled(false);
+        m_fileSystemCombo->setEnabled(false);
         m_restoreButton->setEnabled(false);
-        setStatus(StatusKind::Info,
-                  QStringLiteral("Select a USB disk to restore."),
-                  m_disks.isEmpty() ? QStringLiteral("Nothing to restore until a USB disk is plugged in.")
-                                    : QString());
+        setStatus(
+            StatusKind::Info,
+            QStringLiteral("Select a USB disk to restore."),
+            m_disks.isEmpty() ? QStringLiteral("Nothing to restore until a USB disk is plugged in.") : QString());
         return;
     }
 
     m_styleCombo->setEnabled(true);
+    m_fileSystemCombo->setEnabled(true);
 
     QString reason;
     if (!isSafeRestoreTarget(*disk, m_guard, &reason)) {
         m_restoreButton->setEnabled(false);
         setStatus(StatusKind::Blocked, QStringLiteral("This disk will not be restored."), reason);
+        return;
+    }
+
+    if (!m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
+        m_restoreButton->setEnabled(false);
+        setStatus(StatusKind::Blocked, QStringLiteral("This filesystem cannot be used on this disk."), reason);
         return;
     }
 
@@ -573,21 +630,25 @@ void MainWindow::updateRestoreState()
         setStatus(StatusKind::Warning, QStringLiteral("Check this is the right disk."), warning);
         return;
     }
-    setStatus(StatusKind::Ready,
-              QStringLiteral("Ready to restore %1 as %2.").arg(describeDisk(*disk), style),
-              QStringLiteral("Contents: %1").arg(joinOrDash(disk->labels)));
+    setStatus(
+        StatusKind::Ready,
+        QStringLiteral("Ready to restore %1 as %2 %3.").arg(describeDisk(*disk), style, fileSystem),
+        QStringLiteral("Contents: %1").arg(joinOrDash(disk->labels)));
 }
 
-bool MainWindow::confirmErase(const DiskInfo &disk, PartitionStyle style)
+bool MainWindow::confirmErase(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem)
 {
-    QString summary = QStringLiteral("%1\n\nMounted at: %2\nVolume labels: %3\n\n"
-                                     "Every partition and file on this disk will be erased and replaced with one %4 "
-                                     "partition formatted exFAT and labelled %5.")
-                          .arg(describeDisk(disk),
-                               joinOrDash(disk.mountPoints),
-                               joinOrDash(disk.labels),
-                               partitionStyleLabel(style),
-                               RestoreVolumeLabel);
+    QString summary = QStringLiteral(
+                          "%1\n\nMounted at: %2\nVolume labels: %3\n\n"
+                          "Every partition and file on this disk will be erased and replaced with one %4 "
+                          "partition formatted %5 and labelled %6.")
+                          .arg(
+                              describeDisk(disk),
+                              joinOrDash(disk.mountPoints),
+                              joinOrDash(disk.labels),
+                              partitionStyleLabel(style),
+                              fileSystemTypeName(fileSystem),
+                              RestoreVolumeLabel);
     const QString largeWarning = largeRestoreTargetWarning(disk);
     if (!largeWarning.isEmpty()) {
         summary += QStringLiteral("\n\n%1").arg(largeWarning);
@@ -632,22 +693,29 @@ void MainWindow::startRestore()
 
     const DiskInfo disk = *selected;
     const PartitionStyle style = selectedPartitionStyle();
-    if (!confirmErase(disk, style)) {
+    const FileSystemType fileSystem = selectedFileSystem();
+    if (!m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
+        QMessageBox::critical(this, QStringLiteral("Restore refused"), reason);
+        updateRestoreState();
+        return;
+    }
+    if (!confirmErase(disk, style, fileSystem)) {
         return;
     }
 
-    m_logger.log(QStringLiteral("Restore requested for %1 as %2")
-                     .arg(describeDisk(disk), partitionStyleLabel(style)));
-    m_logger.logFileOnly(QStringLiteral("Target details — device %1, bus %2, sector size %3, mounted at [%4], "
-                                        "labels [%5]")
+    m_logger.log(QStringLiteral("Restore requested for %1 as %2 %3")
+                     .arg(describeDisk(disk), partitionStyleLabel(style), fileSystemTypeName(fileSystem)));
+    m_logger.logFileOnly(QStringLiteral(
+                             "Target details — device %1, bus %2, sector size %3, mounted at [%4], "
+                             "labels [%5]")
                              .arg(disk.deviceId, busTypeName(disk.busType))
                              .arg(disk.sectorSize)
-                             .arg(disk.mountPoints.join(QStringLiteral(", ")),
-                                  disk.labels.join(QStringLiteral(", "))));
+                             .arg(disk.mountPoints.join(QStringLiteral(", ")), disk.labels.join(QStringLiteral(", "))));
 
     RestoreRequest request;
     request.disk = disk;
     request.style = style;
+    request.fileSystem = fileSystem;
     request.volumeLabel = RestoreVolumeLabel;
     request.guard = m_guard;
 
@@ -683,10 +751,12 @@ void MainWindow::cancelRestore()
 
     m_restoreWorker->requestCancel();
     m_restoreButton->setEnabled(false);
-    setStatus(StatusKind::Running,
-              QStringLiteral("Stopping..."),
-              QStringLiteral("The restore stops at the next checkpoint. Once the disk has been written to there is "
-                             "nothing left to stop, and it runs to completion."));
+    setStatus(
+        StatusKind::Running,
+        QStringLiteral("Stopping..."),
+        QStringLiteral(
+            "The restore stops at the next checkpoint. Once the disk has been written to there is "
+            "nothing left to stop, and it runs to completion."));
 }
 
 void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &message)
@@ -706,9 +776,8 @@ void MainWindow::onRestoreFailed(const QString &message)
     setRunning(false);
     refreshDisks();
     setStatus(StatusKind::Error, QStringLiteral("The restore failed."), message);
-    QMessageBox::critical(this,
-                          QStringLiteral("Restore failed"),
-                          QStringLiteral("%1\n\nLog file:\n%2").arg(message, m_logger.path()));
+    QMessageBox::critical(
+        this, QStringLiteral("Restore failed"), QStringLiteral("%1\n\nLog file:\n%2").arg(message, m_logger.path()));
 }
 
 void MainWindow::onRestoreCancelled()
@@ -725,13 +794,15 @@ void MainWindow::onRestoreFinished(const QString &location)
     refreshDisks();
     m_progress->setValue(m_progress->maximum());
     m_progress->setFormat(QStringLiteral("Restore complete"));
-    setStatus(StatusKind::Success,
-              QStringLiteral("Restore complete."),
-              QStringLiteral("The disk is now one exFAT volume labelled %1 at %2.").arg(RestoreVolumeLabel, location));
-    QMessageBox::information(this,
-                             QStringLiteral("Restore complete"),
-                             QStringLiteral("The USB disk was restored. New %1: %2")
-                                 .arg(m_service.restoredLocationNoun(), location));
+    setStatus(
+        StatusKind::Success,
+        QStringLiteral("Restore complete."),
+        QStringLiteral("The disk is now one %1 volume labelled %2 at %3.")
+            .arg(fileSystemTypeName(selectedFileSystem()), RestoreVolumeLabel, location));
+    QMessageBox::information(
+        this,
+        QStringLiteral("Restore complete"),
+        QStringLiteral("The USB disk was restored. New %1: %2").arg(m_service.restoredLocationNoun(), location));
 }
 
 void MainWindow::setRunning(bool running)
@@ -741,6 +812,7 @@ void MainWindow::setRunning(bool running)
     m_diskList->setEnabled(!running);
     m_refreshButton->setEnabled(!running);
     m_styleCombo->setEnabled(!running && selectedDisk() != nullptr);
+    m_fileSystemCombo->setEnabled(!running && selectedDisk() != nullptr);
 
     m_restoreButton->setEnabled(true);
     m_restoreButton->setText(running ? QStringLiteral("Cancel") : QStringLiteral("Restore USB"));
@@ -768,8 +840,9 @@ void MainWindow::refreshStatusBadge()
     const QColor bg = statusBadgeBackground(m_status, palette);
     const QColor fg = statusBadgeText(m_status, palette);
 
-    m_statusLabel->setStyleSheet(QStringLiteral("QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
-                                                "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
+    m_statusLabel->setStyleSheet(QStringLiteral(
+                                     "QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
+                                     "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
                                      .arg(bg.red())
                                      .arg(bg.green())
                                      .arg(bg.blue())
@@ -815,11 +888,12 @@ void MainWindow::showAbout()
     QMessageBox about(this);
     about.setWindowTitle(QStringLiteral("About USB Restoration Tool"));
     about.setText(QStringLiteral("USB Restoration Tool %1").arg(QString::fromLatin1(USBRESTORE_APP_VERSION)));
-    about.setInformativeText(QStringLiteral("Created by %1\n\n"
-                                            "Restores a USB drive written by an ISO writer, Linux installer, or boot "
-                                            "media tool back to one GPT or MBR partition formatted exFAT.\n\n"
-                                            "Only USB disks are listed, and boot, system, offline, and read-only "
-                                            "disks are refused.")
+    about.setInformativeText(QStringLiteral(
+                                 "Created by %1\n\n"
+                                 "Restores a USB drive written by an ISO writer, Linux installer, or boot "
+                                 "media tool back to one GPT or MBR partition formatted as you choose.\n\n"
+                                 "Only USB disks are listed, and boot, system, offline, and read-only "
+                                 "disks are refused.")
                                  .arg(QString::fromLatin1(AppAuthor)));
     about.setStandardButtons(QMessageBox::Ok);
     QPushButton *githubButton = about.addButton(QStringLiteral("Open GitHub"), QMessageBox::ActionRole);
@@ -833,9 +907,8 @@ void MainWindow::openLogFile()
 {
     const QString path = m_logger.path();
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        QMessageBox::information(this,
-                                 QStringLiteral("No log file"),
-                                 QStringLiteral("No log file has been written yet."));
+        QMessageBox::information(
+            this, QStringLiteral("No log file"), QStringLiteral("No log file has been written yet."));
         return;
     }
     openExternally(path, true);
@@ -861,10 +934,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
         // Killing the process partway through a partition rewrite leaves a disk
         // that neither the system nor the previous ISO can read, so closing
         // waits rather than offering to abandon the work.
-        QMessageBox::information(this,
-                                 QStringLiteral("Restore in progress"),
-                                 QStringLiteral("A restore is still running. Wait for it to finish before closing; "
-                                                "stopping now would leave the disk unusable."));
+        QMessageBox::information(
+            this,
+            QStringLiteral("Restore in progress"),
+            QStringLiteral(
+                "A restore is still running. Wait for it to finish before closing; "
+                "stopping now would leave the disk unusable."));
         event->ignore();
         return;
     }

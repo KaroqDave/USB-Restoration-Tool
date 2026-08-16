@@ -35,6 +35,18 @@ No OS headers in `src/core`. New refusals go there, with a test, including the c
 
 Adding a platform means implementing `DiskService` and nothing else. If the GUI or `src/core` needs to know which OS it is on, the abstraction is in the wrong place.
 
+## Filesystem list comes from DiskService
+
+The GUI does not know which OS it is on. Windows offers exFAT, FAT32 and NTFS; Linux adds ext4. The helper treats `--filesystem` the same way it treats `--style`: user intent, checked against an allow-list, never a fact it re-derives.
+
+Partition type follows the filesystem: Microsoft basic data and MBR `0x07` for exFAT/NTFS, MBR `0x0C` for FAT32, Linux filesystem GUID and MBR `0x83` for ext4. Otherwise Windows offers to format an ext4 stick as RAW, and BIOS-era devices do not recognise FAT32.
+
+Windows cannot Format FAT32 above 32 GiB. That is a Format API limit, not a safety rule about which disk may be erased, and it lives in the Windows backend.
+
+## Clangd compilation database is synthesised
+
+`CMAKE_EXPORT_COMPILE_COMMANDS` is on, but the Visual Studio generator ignores it, and Ninja writes the database into the build tree, which clangd does not search. Configure writes a clang-style `compile_commands.json` next to `CMakeLists.txt` so the language server sees `src/` and the Qt kit. The file is gitignored; it holds machine-specific include paths.
+
 ## Same layout for GPT and MBR
 
 1 MiB alignment at both ends. Switching style never moves where data starts or ends. The MBR reservation costs a megabyte and matches what `sgdisk -v` expects. MBR carries a real disk signature; Windows tells disks apart by it.

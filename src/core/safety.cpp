@@ -2,6 +2,8 @@
 
 #include <QtGlobal>
 
+#include <array>
+
 namespace usbrestore {
 
 namespace {
@@ -58,6 +60,45 @@ bool bothKnownAndEqual(const QString &left, const QString &right)
     const QString a = normalizedIdentity(left);
     const QString b = normalizedIdentity(right);
     return !a.isEmpty() && !b.isEmpty() && a == b;
+}
+
+std::uint64_t fat32DataClusterCount(std::uint64_t volumeSize, quint32 sectorSize, quint32 allocationUnitSize)
+{
+    constexpr std::uint64_t reservedSectors = 32;
+    constexpr std::uint64_t fatCount = 2;
+    constexpr std::uint64_t fatEntryBytes = 4;
+
+    if (sectorSize == 0 || allocationUnitSize < sectorSize || allocationUnitSize % sectorSize != 0 ||
+        volumeSize % sectorSize != 0) {
+        return 0;
+    }
+
+    const std::uint64_t totalSectors = volumeSize / sectorSize;
+    if (totalSectors <= reservedSectors) {
+        return 0;
+    }
+
+    const std::uint64_t sectorsPerCluster = allocationUnitSize / sectorSize;
+    std::uint64_t low = 0;
+    std::uint64_t high = (totalSectors - reservedSectors) / sectorsPerCluster;
+
+    // Find the greatest data-cluster count whose reserved area, two FATs and
+    // data region all fit. This includes the two reserved FAT entries and
+    // avoids accepting a boundary that raw volumeSize / allocationUnitSize
+    // would put just on the wrong side of FAT16/FAT32.
+    while (low < high) {
+        const std::uint64_t clusters = low + (high - low + 1) / 2;
+        const std::uint64_t fatBytes = (clusters + 2) * fatEntryBytes;
+        const std::uint64_t fatSectors = (fatBytes + sectorSize - 1) / sectorSize;
+        const std::uint64_t requiredSectors = reservedSectors + fatCount * fatSectors + clusters * sectorsPerCluster;
+        if (requiredSectors <= totalSectors) {
+            low = clusters;
+        } else {
+            high = clusters - 1;
+        }
+    }
+
+    return low;
 }
 
 } // namespace
@@ -184,8 +225,8 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
 
     const auto refuse = [reason, &name](const QString &what) {
         if (reason) {
-            *reason = QStringLiteral("%1 no longer reports the same %2. Refresh and select the USB again.")
-                          .arg(name, what);
+            *reason =
+                QStringLiteral("%1 no longer reports the same %2. Refresh and select the USB again.").arg(name, what);
         }
         return false;
     };
@@ -265,6 +306,46 @@ GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize)
         return {};
     }
     return {start, length};
+}
+
+quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, std::uint64_t maximumVolumeSize)
+{
+    // These are the limits enforced by the Windows format stack. Staying
+    // within them also keeps the volume away from FAT16's cluster range.
+    constexpr std::uint64_t minimumClusters = 65527;
+    constexpr std::uint64_t maximumClusters = 4177917;
+    constexpr std::array<quint32, 10> allocationUnitSizes = {
+        512,
+        1024,
+        2048,
+        4096,
+        8192,
+        16 * 1024,
+        32 * 1024,
+        64 * 1024,
+        128 * 1024,
+        256 * 1024,
+    };
+
+    if (!isSupportedSectorSize(sectorSize) || volumeSize == 0 || volumeSize > maximumVolumeSize) {
+        return 0;
+    }
+
+    for (const quint32 allocationUnitSize : allocationUnitSizes) {
+        // Windows only permits 128 KiB and 256 KiB FAT allocation units when
+        // the physical sector is larger than 512 bytes.
+        if ((allocationUnitSize > 64 * 1024 && sectorSize == 512) || allocationUnitSize < sectorSize ||
+            allocationUnitSize % sectorSize != 0) {
+            continue;
+        }
+
+        const std::uint64_t clusterCount = fat32DataClusterCount(volumeSize, sectorSize, allocationUnitSize);
+        if (clusterCount >= minimumClusters && clusterCount <= maximumClusters) {
+            return allocationUnitSize;
+        }
+    }
+
+    return 0;
 }
 
 } // namespace usbrestore

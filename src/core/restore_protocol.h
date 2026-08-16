@@ -21,7 +21,7 @@ namespace usbrestore {
 // Bumped whenever the meaning of any argument or output line changes. The GUI
 // asks the helper for its version before asking it to do anything, so a
 // mismatched pair says so instead of misreading each other.
-inline constexpr int RestoreProtocolVersion = 1;
+inline constexpr int RestoreProtocolVersion = 2;
 
 // Asks the helper to print RestoreProtocolVersion and exit without touching a
 // disk. The only invocation that is not a restore.
@@ -55,6 +55,7 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr);
 struct RestoreArguments {
     DiskInfo expected;
     PartitionStyle style = PartitionStyle::Gpt;
+    FileSystemType fileSystem = FileSystemType::ExFat;
     QString volumeLabel;
 };
 
@@ -71,7 +72,8 @@ bool isPlausibleDeviceNodePath(const QString &path);
 bool isValidVolumeLabel(const QString &label);
 
 // The argv the GUI invokes the helper with, excluding the program name.
-QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, const QString &volumeLabel);
+QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem,
+                                  const QString &volumeLabel);
 
 // The reverse. Returns false with a reason on anything unrecognised, repeated,
 // missing or malformed: a helper that guesses at its arguments is a helper that
