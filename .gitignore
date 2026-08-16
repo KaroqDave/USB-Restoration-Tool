@@ -34,6 +34,11 @@ CMakeUserPresets.json
 *.dll
 .deps/
 
+# Obsidian local UI state
+vault/.obsidian/workspace.json
+vault/.obsidian/workspace-mobile.json
+vault/.obsidian/cache/
+
 # Local scratch
 *.log
 *.tmp

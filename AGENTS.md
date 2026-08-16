@@ -29,6 +29,7 @@ lives in `src/`:
 
 Tests live in `tests/test_core.cpp`. `tools/partition_dump.cpp` backs
 `scripts/verify-partition-tables.sh`. Docs beyond the README go in `docs/`.
+Working notes (the task list, hardware log, decisions) live in `vault/`.
 
 ## Build, Test, and Development Commands
 
@@ -114,3 +115,12 @@ none of it has been exercised on hardware. Read it before restructuring
 Tagging `vX.Y.Z` triggers `release.yml`, which fails unless the tag matches that
 version and the README has a `## What's New in X.Y.Z` section to use as the
 release body.
+
+## Working notes (Obsidian)
+
+The task list and hardware-test log live in `vault/` at the repository root.
+Read `vault/TODO.md` when planning work; update it when a task is added,
+finished, or blocked. Log physical restores in `vault/Hardware Testing.md`.
+Repo files remain the published source of truth — do not duplicate README,
+SECURITY.md, or `docs/` into the vault. Details:
+`.cursor/rules/obsidian-vault.mdc`.
