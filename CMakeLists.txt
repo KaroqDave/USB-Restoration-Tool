@@ -33,17 +33,44 @@ option(USBRESTORE_BUILD_TESTS "Build the USB Restoration Tool C++ tests" ON)
 option(USBRESTORE_INSTALL_HELPER "Install the privileged Linux restore helper" ON)
 
 # Fallback Qt discovery: when configuring without a preset or CMAKE_PREFIX_PATH
-# (straight from an IDE, say), locate the newest Qt MSVC kit under C:/Qt so
-# find_package(Qt6) works out of the box.
-if(WIN32 AND NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
-    file(GLOB _usbrestore_qt_configs "C:/Qt/*/msvc*_64/lib/cmake/Qt6/Qt6Config.cmake")
-    if(_usbrestore_qt_configs)
-        list(SORT _usbrestore_qt_configs COMPARE NATURAL)
-        list(GET _usbrestore_qt_configs -1 _usbrestore_qt_config)
-        get_filename_component(_usbrestore_qt_cmake_dir "${_usbrestore_qt_config}" DIRECTORY)
-        get_filename_component(_usbrestore_qt_prefix "${_usbrestore_qt_cmake_dir}/../../.." ABSOLUTE)
-        list(APPEND CMAKE_PREFIX_PATH "${_usbrestore_qt_prefix}")
-        message(STATUS "Auto-detected Qt at ${_usbrestore_qt_prefix}")
+# (straight from an IDE, say), locate the newest C:/Qt kit that matches this
+# compiler so find_package(Qt6) works out of the box. A MinGW kit cannot be
+# linked by MSVC (GNU import libs), so the globs stay compiler-specific.
+if(WIN32)
+    # A previous failed configure caches Qt6_DIR as *-NOTFOUND, which would
+    # skip this block and keep find_package from seeing a kit we just found.
+    if(Qt6_DIR MATCHES "-NOTFOUND$")
+        unset(Qt6_DIR CACHE)
+    endif()
+    if(NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND NOT DEFINED ENV{CMAKE_PREFIX_PATH})
+        if(MSVC)
+            set(_usbrestore_qt_kit_glob "C:/Qt/*/msvc*_64/lib/cmake/Qt6/Qt6Config.cmake")
+            set(_usbrestore_qt_kit_name "MSVC 64-bit")
+        else()
+            set(_usbrestore_qt_kit_glob "C:/Qt/*/mingw*_64/lib/cmake/Qt6/Qt6Config.cmake")
+            set(_usbrestore_qt_kit_name "MinGW 64-bit")
+        endif()
+        file(GLOB _usbrestore_qt_configs "${_usbrestore_qt_kit_glob}")
+        if(_usbrestore_qt_configs)
+            list(SORT _usbrestore_qt_configs COMPARE NATURAL)
+            list(GET _usbrestore_qt_configs -1 _usbrestore_qt_config)
+            get_filename_component(_usbrestore_qt_cmake_dir "${_usbrestore_qt_config}" DIRECTORY)
+            get_filename_component(_usbrestore_qt_prefix "${_usbrestore_qt_cmake_dir}/../../.." ABSOLUTE)
+            list(APPEND CMAKE_PREFIX_PATH "${_usbrestore_qt_prefix}")
+            message(STATUS "Auto-detected Qt at ${_usbrestore_qt_prefix}")
+        else()
+            file(GLOB _usbrestore_other_qt "C:/Qt/*/*_64/lib/cmake/Qt6/Qt6Config.cmake")
+            if(_usbrestore_other_qt)
+                list(SORT _usbrestore_other_qt COMPARE NATURAL)
+                list(GET _usbrestore_other_qt -1 _usbrestore_other_config)
+                get_filename_component(_usbrestore_other_cmake_dir "${_usbrestore_other_config}" DIRECTORY)
+                get_filename_component(_usbrestore_other_prefix "${_usbrestore_other_cmake_dir}/../../.." ABSOLUTE)
+                message(FATAL_ERROR
+                    "Qt was found at ${_usbrestore_other_prefix}, but that kit does not match this "
+                    "compiler (need a ${_usbrestore_qt_kit_name} kit). Install that component with "
+                    "Qt Maintenance Tool, or set CMAKE_PREFIX_PATH to it.")
+            endif()
+        endif()
     endif()
 endif()
 
@@ -57,10 +84,12 @@ if(NOT WIN32)
     set(USBRESTORE_HELPER_PATH "${CMAKE_INSTALL_FULL_LIBEXECDIR}/usb-restoration-helper")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+set(_usbrestore_qt_components Core Widgets)
 if(USBRESTORE_BUILD_TESTS)
-    find_package(Qt6 REQUIRED COMPONENTS Test)
+    list(APPEND _usbrestore_qt_components Test)
 endif()
+find_package(Qt6 REQUIRED COMPONENTS ${_usbrestore_qt_components})
+unset(_usbrestore_qt_components)
 get_filename_component(QT_INSTALL_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 
 # Policy, formatting and partition-table bytes, with no OS headers behind any
