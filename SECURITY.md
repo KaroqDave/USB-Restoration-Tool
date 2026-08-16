@@ -12,8 +12,7 @@ Only the current release line receives security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| 1.4.x   | Yes       |
-| 1.3.x   | No        |
+| 1.3.x   | Yes       |
 | 1.1.x   | No        |
 | 1.0.x   | No        |
 | 0.1.x   | No        |

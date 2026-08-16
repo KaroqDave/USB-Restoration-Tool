@@ -15,7 +15,7 @@ Built with C++ and Qt 6.
 
 > **Restoring erases every partition and file on the selected disk.** Only USB disks are listed, and boot, system, offline, and read-only disks are refused outright — but the drive you pick is erased completely.
 
-## What's New in 1.4.0
+## What's New in 1.4.0 (unreleased)
 
 - **A filesystem selector in the Restore card.** exFAT is still the default. FAT32 and NTFS are offered on both platforms; Linux also offers ext4. The list comes from the platform backend, so the GUI does not hard-code the OS.
 - **Partition type follows the filesystem.** FAT32 uses MBR type `0x0C` so BIOS-era devices recognise it. ext4 uses the GPT Linux filesystem GUID so Windows does not offer to format the stick as RAW.
