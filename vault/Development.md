@@ -29,7 +29,7 @@ ctest --preset windows
 
 Set `CMAKE_PREFIX_PATH` if Qt is not found. On Windows, a kit under `C:\Qt` is located automatically when neither `CMAKE_PREFIX_PATH` nor `Qt6_DIR` is set.
 
-Clangd: the Visual Studio generator never writes `compile_commands.json`. Configure synthesises a clang-style one next to `CMakeLists.txt` (gitignored) so the language server can see `src/` and Qt. Restart clangd after a fresh configure. See [[Decisions]].
+Clangd: configure puts `compile_commands.json` next to `CMakeLists.txt` (gitignored). On Windows it is synthesised, because the Visual Studio generator never emits one; on Linux it is a symlink to the build-tree database so the editor sees the real per-target flags. Configure also writes a `.clangd` under the inactive platform directory (`src/win` on Linux, `src/linux` and `src/helper` on Windows) so those files are not parsed without their OS headers. Restart clangd after a fresh configure. See [[Decisions]].
 
 - Windows output: `build\Release\usb-restoration-tool.exe` (`windeployqt` runs after)
 - Linux output: `build/usb-restoration-tool`

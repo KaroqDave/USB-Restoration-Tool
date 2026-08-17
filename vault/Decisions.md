@@ -43,9 +43,13 @@ Partition type follows the filesystem: Microsoft basic data and MBR `0x07` for e
 
 Windows cannot Format FAT32 above 32 GiB. That is a Format API limit, not a safety rule about which disk may be erased, and it lives in the Windows backend.
 
-## Clangd compilation database is synthesised
+## Clangd compilation database is host-specific
 
-`CMAKE_EXPORT_COMPILE_COMMANDS` is on, but the Visual Studio generator ignores it, and Ninja writes the database into the build tree, which clangd does not search. Configure writes a clang-style `compile_commands.json` next to `CMakeLists.txt` so the language server sees `src/` and the Qt kit. The file is gitignored; it holds machine-specific include paths.
+`CMAKE_EXPORT_COMPILE_COMMANDS` is on, but the Visual Studio generator ignores it, and Ninja writes the database into the build tree, which clangd does not search. Configure therefore puts a `compile_commands.json` next to `CMakeLists.txt` (gitignored, machine-specific Qt paths).
+
+On Windows that file is synthesised with Clang flags and `--target=windows-msvc`, because clangd is Clang even when the project is built with MSVC. On Linux it is a symlink to the generator's database: the hand-rolled copy would shadow the real per-target flags. Source-tree writes are best-effort so a read-only checkout is not a configure error.
+
+Clangd still opens files that are not in the database, using fallback flags. Configure writes a directory `.clangd` (also gitignored) under the inactive backend so `src/win` is not parsed without `windows.h` on Linux, and `src/linux` is not parsed without Linux headers on Windows.
 
 ## Same layout for GPT and MBR
 

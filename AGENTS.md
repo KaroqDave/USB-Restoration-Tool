@@ -34,10 +34,11 @@ Working notes (the task list, hardware log, decisions) live in `vault/`.
 ## Build, Test, and Development Commands
 
 - `cmake --preset windows` / `--preset linux` — configure. Set
-  `CMAKE_PREFIX_PATH` if Qt is not found. Configure also writes
-  `compile_commands.json` at the source root for clangd: the Visual Studio
-  generator ignores `CMAKE_EXPORT_COMPILE_COMMANDS`, so without that file the
-  language server reports `core/disk.h` and every Qt header as missing.
+ `CMAKE_PREFIX_PATH` if Qt is not found. Configure also puts
+ `compile_commands.json` at the source root for clangd: synthesised on
+ Windows (the Visual Studio generator ignores `CMAKE_EXPORT_COMPILE_COMMANDS`),
+ and a symlink to the build-tree database on Linux. Restart clangd after
+ configure, or `src/win` is parsed as Linux and reports `Windows.h` as missing.
 - `cmake --build --preset windows` — build Release; `windeployqt` runs after on
   Windows.
 - `ctest --preset windows` — run the `src/core` tests.

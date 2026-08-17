@@ -1,8 +1,18 @@
 # Fallback include path so clangd can parse the tree before CMake has written
-# compile_commands.json. The Visual Studio generator never emits one; configure
-# synthesises a clang-style database next to CMakeLists.txt instead.
+# compile_commands.json. Configure puts one next to CMakeLists.txt: synthesised
+# on Windows (the Visual Studio generator never emits one), and a symlink to
+# the build-tree database on Linux. Restart clangd after configure.
+#
+# Files under src/win (on Linux) or src/linux and src/helper (on Windows) are
+# not in that database. Configure writes a .clangd in those directories that
+# suppresses the missing-system-header noise from parsing them with fallback
+# flags.
+#
+# Qt's GCC interface flags include -mno-direct-extern-access, which Clang does
+# not accept; drop it so the real Linux database does not fail every file.
 CompileFlags:
   Add: [-std=c++20, -Isrc]
+  Remove: [-mno-direct-extern-access]
 
 Completion:
   HeaderInsertion: Never
