@@ -10,7 +10,7 @@ tags:
 Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`. The workflow fails unless:
 
 1. The tag matches `PROJECT_VERSION`
-2. `README.md` has a `## What's New in X.Y.Z` section (used as the release body; `### Previously, in X.Y.Z` is also accepted after a later version has demoted it)
+2. `README.md` has a `## What's New in X.Y.Z` section (used as the release body; `### Previously, in X.Y.Z` is also accepted after a later version has demoted it). The version is matched as a prefix, so the heading may carry a trailing note — `## What's New in 1.4.2 (unreleased)` is the section for 1.4.2. The suffix has to start with a space, so 1.4.2 does not match the heading for 1.4.20.
 
 There is no 1.2.0. Privilege separation was always planned as 1.3.0 because it depends on a real install, which is a packaging project of its own.
 

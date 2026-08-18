@@ -40,11 +40,21 @@ jobs:
       # The release body comes from the README so the two cannot drift. Both
       # heading forms are accepted: a release re-run after the README has moved
       # on to a later version finds its notes demoted to "Previously, in X.Y.Z".
+      #
+      # The version is matched as a prefix, so a heading may carry a trailing
+      # note - "## What's New in 1.4.2 (unreleased)" is the section for 1.4.2.
+      # The suffix has to start with whitespace, or 1.4.2 would also match the
+      # heading for 1.4.20.
       - name: Extract release notes from the README
         run: |
           version="${GITHUB_REF_NAME#v}"
           awk -v cur="## What's New in ${version}" -v prev="### Previously, in ${version}" '
-            !capture && ($0 == cur || $0 == prev) { capture = 1; next }
+            function opens(line, head,   rest) {
+              if (substr(line, 1, length(head)) != head) return 0
+              rest = substr(line, length(head) + 1)
+              return rest == "" || rest ~ /^[ \t]/
+            }
+            !capture && (opens($0, cur) || opens($0, prev)) { capture = 1; next }
             capture && /^```/         { fence = !fence }
             capture && !fence && /^#/ { exit }
             capture                   { buf = buf $0 "\n" }
