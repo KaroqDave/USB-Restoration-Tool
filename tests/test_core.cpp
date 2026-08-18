@@ -274,6 +274,32 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("serial")));
     }
 
+    // udev's usb- form is vendor_product_serial, but the product itself may
+    // contain underscores. Taking the last field invented a serial from the
+    // product name, and isSameRestoreTarget() then treated two identical
+    // serial-less sticks as the same disk.
+    void parsesSerialFromUsbByIdLink()
+    {
+        struct Case {
+            const char *link;
+            const char *product;
+            const char *serial;
+        };
+        const Case cases[] = {
+            {"usb-SanDisk_Ultra_4C530001-0:0", "SanDisk Ultra", "4C530001"},
+            {"usb-SanDisk_Ultra_USB123-0:0", "SanDisk Ultra USB 3.0", "USB123"},
+            {"usb-Generic_Flash_Disk-0:0", "Generic Flash Disk", ""},
+            {"usb-Vendor_Model-0:0", "Vendor Model", ""},
+            {"wwn-0x5000c500", "Vendor", ""},
+            {"", "", ""},
+        };
+        for (const auto &c : cases) {
+            QCOMPARE(
+                serialFromUsbByIdLink(QString::fromUtf8(c.link), QString::fromUtf8(c.product)),
+                QString::fromUtf8(c.serial));
+        }
+    }
+
     // The 0.1.0 check stopped at the first strong identifier that matched, so a
     // device keeping its serial while changing its path slipped past.
     void rejectsChangedPathEvenWhenSerialMatches()
@@ -663,6 +689,19 @@ class CoreTests : public QObject {
         pastTheEnd.layout.length += 64ull * 1024ull * 1024ull;
         QVERIFY(!isWritablePartitionRequest(pastTheEnd, &reason));
         QVERIFY(reason.contains(QStringLiteral("past the end")));
+
+        auto insideHeaders = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        insideHeaders.layout.startOffset = 2 * 512;
+        QVERIFY(!isWritablePartitionRequest(insideHeaders, &reason));
+        QVERIFY(reason.contains(QStringLiteral("GPT")));
+
+        // Covers the last sector of the disk, so it is still "inside" the
+        // disk, but it overwrites the backup GPT. The past-the-end check
+        // used to let this through.
+        auto overlapsBackup = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
+        overlapsBackup.layout.length = overlapsBackup.diskSize - overlapsBackup.layout.startOffset;
+        QVERIFY(!isWritablePartitionRequest(overlapsBackup, &reason));
+        QVERIFY(reason.contains(QStringLiteral("GPT")));
     }
 
     // MBR addresses sectors in 32 bits, which runs out at 2 TiB. A 4 TB

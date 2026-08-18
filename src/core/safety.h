@@ -52,6 +52,15 @@ bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QStrin
 // match.
 bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QString *reason = nullptr);
 
+// udev names a USB disk "usb-<vendor>_<product>_<serial>-<host>:<lun>". The
+// product itself may contain underscores, so counting fields is not enough:
+// "usb-Generic_Flash_Disk-0:0" has three parts whose tail is the last word of
+// the product. A candidate that is a substring of the product name is dropped
+// rather than presented as a serial that isSameRestoreTarget() would treat
+// as identity. Empty means "no serial", which is what the helper already
+// does when the GUI has nothing to send.
+QString serialFromUsbByIdLink(const QString &link, const QString &productName);
+
 bool isLargeRestoreTarget(const DiskInfo &disk);
 QString largeRestoreTargetWarning(const DiskInfo &disk);
 

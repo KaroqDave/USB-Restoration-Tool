@@ -63,6 +63,26 @@ quint32 entryArraySectors(quint32 sectorSize)
     return (bytes + sector - 1) / sector;
 }
 
+// Inclusive LBA range a GPT partition may occupy. Primary header at LBA 1,
+// entry array from LBA 2, matching backup at the end of the disk. Shared by
+// the header writer and the write gate so a layout cannot pass the gate and
+// then overlap the headers that get written.
+struct GptUsableLbas {
+    quint64 first = 0;
+    quint64 last = 0;
+};
+
+GptUsableLbas gptUsableLbas(const PartitionTableRequest &request)
+{
+    const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint64 sectors = sectorCount(request);
+    const quint64 lastLba = sectors == 0 ? 0 : sectors - 1;
+    const quint32 arraySectors = entryArraySectors(sector);
+    const quint64 primaryEntryLba = 2;
+    const quint64 backupEntryLba = lastLba - arraySectors;
+    return {primaryEntryLba + arraySectors, backupEntryLba - 1};
+}
+
 QByteArray buildEntryArray(const PartitionTableRequest &request)
 {
     QByteArray entries(static_cast<int>(GptEntryCount * GptEntrySize), '\0');
@@ -94,11 +114,10 @@ QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &e
     const quint64 sectors = sectorCount(request);
     const quint64 lastLba = sectors - 1;
     const quint32 arraySectors = entryArraySectors(sector);
+    const auto usable = gptUsableLbas(request);
 
     const quint64 primaryEntryLba = 2;
     const quint64 backupEntryLba = lastLba - arraySectors;
-    const quint64 firstUsable = primaryEntryLba + arraySectors;
-    const quint64 lastUsable = backupEntryLba - 1;
 
     QByteArray header(static_cast<int>(sector), '\0');
     writeBytes(header, 0, QByteArrayLiteral("EFI PART"), 8);
@@ -108,8 +127,8 @@ QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &e
     writeLe32(header, 20, 0); // Reserved.
     writeLe64(header, 24, primary ? 1 : lastLba);
     writeLe64(header, 32, primary ? lastLba : 1);
-    writeLe64(header, 40, firstUsable);
-    writeLe64(header, 48, lastUsable);
+    writeLe64(header, 40, usable.first);
+    writeLe64(header, 48, usable.last);
     writeBytes(header, 56, request.diskGuid, 16);
     writeLe64(header, 72, primary ? primaryEntryLba : backupEntryLba);
     writeLe32(header, 80, GptEntryCount);
@@ -279,6 +298,12 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
         }
         if (request.diskGuid.size() != 16 || request.partitionGuid.size() != 16) {
             return refuse(QStringLiteral("A GPT layout needs a disk and partition identifier."));
+        }
+        const quint64 firstLba = request.layout.startOffset / sector;
+        const quint64 lastLba = endLba - 1;
+        const auto usable = gptUsableLbas(request);
+        if (firstLba < usable.first || lastLba > usable.last) {
+            return refuse(QStringLiteral("The partition layout overlaps the GPT headers."));
         }
         return true;
     }

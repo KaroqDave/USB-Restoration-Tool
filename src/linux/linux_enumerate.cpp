@@ -1,11 +1,11 @@
 #include "linux/linux_enumerate.h"
 
 #include "core/partition_table.h"
+#include "core/safety.h"
 #include "linux/sysfs.h"
 
 #include <QDir>
 #include <QFileInfo>
-#include <QRegularExpression>
 
 namespace usbrestore {
 
@@ -15,23 +15,6 @@ namespace {
 // sector size. Multiplying by the logical sector size instead is a mistake that
 // silently quadruples the size of every 4 Kn disk.
 constexpr std::uint64_t SysfsSectorUnit = 512;
-
-// udev names a USB disk "usb-<vendor>_<product>_<serial>-0:0". The trailing
-// "-<host>:<lun>" is udev's own, and the serial is whatever follows the last
-// underscore once it is gone.
-QString serialFromByIdLink(const QString &link)
-{
-    if (!link.startsWith(QStringLiteral("usb-"))) {
-        return {};
-    }
-
-    QString value = link;
-    static const QRegularExpression hostSuffix(QStringLiteral("-[0-9]+:[0-9]+$"));
-    value.remove(hostSuffix);
-
-    const int lastSeparator = value.lastIndexOf(QLatin1Char('_'));
-    return lastSeparator > 0 ? value.mid(lastSeparator + 1) : QString();
-}
 
 } // namespace
 
@@ -77,7 +60,7 @@ DiskInfo diskInfoFor(const QString &diskName)
     }
 
     disk.uniqueId = stableDeviceIdLink(diskName);
-    disk.serialNumber = serialFromByIdLink(disk.uniqueId);
+    disk.serialNumber = serialFromUsbByIdLink(disk.uniqueId, disk.name);
     disk.path = QFileInfo(sysfs).canonicalFilePath();
 
     disk.size = readSysfsAttribute(QStringLiteral("%1/size").arg(sysfs)).toULongLong() * SysfsSectorUnit;

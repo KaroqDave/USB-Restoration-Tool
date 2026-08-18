@@ -124,14 +124,6 @@ bool WindowsDiskService::restore(
         }
         return false;
     }
-    if (!canFormatFileSystem(request.fileSystem, disk, &reason)) {
-        if (error) {
-            *error = reason;
-        }
-        return false;
-    }
-    const quint32 allocationUnitSize =
-        request.fileSystem == FileSystemType::Fat32 ? windowsFat32AllocationUnitSize(disk) : 0;
 
     VolumeManager volumes;
 
@@ -147,6 +139,19 @@ bool WindowsDiskService::restore(
         return false;
     }
     disk = currentDisk;
+
+    // Asked against the disk this process just re-derived, not the one it was
+    // handed. isSameRestoreTarget() and isSafeRestoreTarget() happen to refuse
+    // a size or sector-size change, but that is two unrelated checks holding
+    // up a third.
+    if (!canFormatFileSystem(request.fileSystem, disk, &reason)) {
+        if (error) {
+            *error = reason;
+        }
+        return false;
+    }
+    const quint32 allocationUnitSize =
+        request.fileSystem == FileSystemType::Fat32 ? windowsFat32AllocationUnitSize(disk) : 0;
 
     // The handle is opened and checked before anything is changed, and it stays
     // open for the rest of the restore. Every raw operation below therefore

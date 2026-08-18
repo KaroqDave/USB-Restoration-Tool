@@ -1,5 +1,6 @@
 #include "core/safety.h"
 
+#include <QRegularExpression>
 #include <QtGlobal>
 
 #include <array>
@@ -265,6 +266,37 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
     }
 
     return true;
+}
+
+QString serialFromUsbByIdLink(const QString &link, const QString &productName)
+{
+    if (!link.startsWith(QStringLiteral("usb-"))) {
+        return {};
+    }
+
+    QString value = link;
+    static const QRegularExpression hostSuffix(QStringLiteral("-[0-9]+:[0-9]+$"));
+    value.remove(hostSuffix);
+
+    if (!value.startsWith(QStringLiteral("usb-"))) {
+        return {};
+    }
+
+    // "usb-" is a prefix, not a field. Counting parts of the remainder is what
+    // distinguishes vendor_product_serial from vendor_product.
+    const QStringList parts = value.mid(4).split(QLatin1Char('_'), Qt::SkipEmptyParts);
+    if (parts.size() < 3) {
+        return {};
+    }
+
+    const QString candidate = parts.last();
+    // Product names with underscores already satisfy the three-part rule
+    // ("Generic_Flash_Disk"). A tail that appears in the product is the
+    // product, not a serial.
+    if (!productName.isEmpty() && productName.contains(candidate, Qt::CaseInsensitive)) {
+        return {};
+    }
+    return candidate;
 }
 
 bool isLargeRestoreTarget(const DiskInfo &disk)
