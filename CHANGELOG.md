@@ -29,6 +29,10 @@ A choice of filesystem, the same way 1.1.0 added a choice of partition style.
   `mkfs.vfat` does not leave a blank partition table.
 - Windows blocks FAT32 on volumes larger than 32 GiB, which `MSFT_Volume.Format`
   cannot create.
+- Dropped the second `mkntfs` attempt on Linux. `-f`/`--fast` is the same flag
+  as `-Q`/`--quick`, so the retry could never rescue a run the first form
+  failed; it read like the genuine second-dialect coverage the
+  exfatprogs/exfat-utils pair provides.
 - Linux blocks FAT32 on volumes outside the range `mkfs.vfat` can actually
   describe — under 33 MiB or over 2 TiB with 512-byte sectors, and the
   equivalents for 4096. dosfstools refuses neither end on its own: it warns and

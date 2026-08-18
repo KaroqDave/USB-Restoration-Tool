@@ -225,10 +225,11 @@ bool formatPartition(FileSystemType fileSystem,
     case FileSystemType::Ntfs:
         // -Q is a quick format; a full zero-fill of a 64 GB stick can take
         // hours and is not what anyone restoring a USB drive asked for.
-        attempts = {
-            {QStringLiteral("-Q"), QStringLiteral("-L"), label, partitionPath},
-            {QStringLiteral("-f"), QStringLiteral("-L"), label, partitionPath},
-        };
+        //
+        // One form only. -f/--fast is the same mkntfs flag as -Q/--quick, not a
+        // second dialect, so retrying with it could never rescue a run the
+        // first form failed — unlike the exfatprogs/exfat-utils pair above.
+        attempts = {{QStringLiteral("-Q"), QStringLiteral("-L"), label, partitionPath}};
         break;
     case FileSystemType::Ext4: {
         // -F so mkfs does not ask; -m 0 so a USB stick does not reserve 5%

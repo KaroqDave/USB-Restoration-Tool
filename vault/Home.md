@@ -10,7 +10,7 @@ A Qt 6 desktop app that restores an ISO-written USB drive to **one GPT or MBR pa
 
 | | |
 |---|---|
-| Version | **1.4.0** |
+| Version | **1.4.2** |
 | Platforms | Windows, Linux |
 | License | MIT |
 | Notes | `vault/` in this repository |

@@ -9,7 +9,7 @@ Working list for USB Restoration Tool. Check a box when it is done, then move th
 
 ## Now
 
-These are the gaps that currently matter. Both code-review items that blocked 1.4.0 are done; what is left is hardware.
+These are the gaps that currently matter. Both code-review items that blocked 1.4.2 are done; what is left is hardware.
 
 - [ ] **Linux hardware: restore a real USB stick.** No restore has ever run against physical media on Linux. Use a drive you can afford to lose. Cover at least: an ISO-written stick, a multi-partition stick, and a stick with no partition table. Both GPT and MBR. Log results in [[Hardware Testing]].
 - [ ] **Exercise the polkit helper path.** `pkexec` → `usb-restoration-helper` has never run, even once. Needs a machine with polkit, an installed build (not the AppImage), and a disposable stick. Confirm the desktop password prompt, progress lines, cancel-while-reversible, and a finished exFAT volume.
@@ -38,7 +38,7 @@ These are the gaps that currently matter. Both code-review items that blocked 1.
 - [x] **Block undersized FAT32 targets before erasing** — 2026-08-16. Windows now derives the partition from the disk's real sector size, selects an explicit valid FAT32 allocation unit, and refuses volumes outside the formatter's cluster and 32 GiB limits. Windows Release build and boundary tests pass; not verified on hardware.
 - [x] **Update `SECURITY.md` supported versions** — 2026-08-16. Only the current 1.4.x release line is supported; 1.3.x and older releases are not.
 - [x] **Clangd errors (`core/disk.h` / Qt headers not found)** — 2026-08-16. Visual Studio generator never emits `compile_commands.json`; configure now writes a clang-style one at the source root. Restart clangd after configure.
-- [x] **Filesystem choice (exFAT, FAT32, NTFS, ext4 on Linux)** — 1.4.0, 2026-08-16. Unit tests pass. Partition-dump cases for FAT32 MBR and ext4 GPT added to `verify-partition-tables.sh`. Not verified on hardware.
+- [x] **Filesystem choice (exFAT, FAT32, NTFS, ext4 on Linux)** — 1.4.2, 2026-08-16. Unit tests pass. Partition-dump cases for FAT32 MBR and ext4 GPT added to `verify-partition-tables.sh`. Not verified on hardware.
 - [x] Linux backend (sysfs, mountinfo, raw block I/O, `mkfs.exfat`) — 1.1.0, compile-tested only
 - [x] GPT or MBR, same 1 MiB-aligned layout — 1.1.0
 - [x] `DiskService` interface; GUI and safety rules platform-agnostic — 1.1.0
