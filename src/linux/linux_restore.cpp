@@ -13,11 +13,15 @@
 #include <QStringList>
 #include <QThread>
 
+#include <pwd.h>
 #include <sys/mount.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <limits>
+#include <optional>
 
 namespace usbrestore {
 
@@ -138,6 +142,61 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
     return true;
 }
 
+// The account a finished ext4 volume should belong to. ext4 is the only
+// filesystem offered here that stores POSIX ownership on the volume itself; for
+// exFAT, FAT32 and NTFS the mount options decide, so the question does not
+// arise. This code is root either way it was reached, so without this the new
+// root directory is root:root 0755 and every write to the auto-mounted stick
+// fails with EACCES.
+struct DesktopOwner {
+    quint32 uid = 0;
+    quint32 gid = 0;
+};
+
+std::optional<quint32> environmentId(const char *name)
+{
+    const QByteArray raw = qgetenv(name);
+    if (raw.isEmpty()) {
+        return std::nullopt;
+    }
+    bool ok = false;
+    const qulonglong value = QString::fromLatin1(raw).toULongLong(&ok);
+    if (!ok || value > std::numeric_limits<quint32>::max()) {
+        return std::nullopt;
+    }
+    return static_cast<quint32>(value);
+}
+
+// pkexec sets PKEXEC_UID and sudo sets SUDO_UID, and both do so in the
+// privileged child's environment rather than passing along the caller's. That
+// makes them facts about who asked rather than claims the caller wrote, which
+// is the only reason this is allowed to read them at all. Worst case, a caller
+// that somehow controls PKEXEC_UID names a different account to own a disk it
+// was already erasing.
+std::optional<DesktopOwner> desktopOwner()
+{
+    std::optional<quint32> uid = environmentId("PKEXEC_UID");
+    if (!uid) {
+        uid = environmentId("SUDO_UID");
+    }
+    if (!uid || *uid == 0) {
+        // A root login, reached through neither. There is no unprivileged
+        // account to name, and root:root is what mkfs would write anyway.
+        return std::nullopt;
+    }
+
+    // The group is not in the environment under pkexec, so take the login group
+    // the account actually has. SUDO_GID is a fallback for the case where that
+    // lookup fails, which means an account with no passwd entry at all.
+    if (const passwd *entry = ::getpwuid(static_cast<uid_t>(*uid))) {
+        return DesktopOwner{*uid, static_cast<quint32>(entry->pw_gid)};
+    }
+    if (const std::optional<quint32> gid = environmentId("SUDO_GID")) {
+        return DesktopOwner{*uid, *gid};
+    }
+    return std::nullopt;
+}
+
 bool formatPartition(FileSystemType fileSystem,
                      const QString &tool,
                      const QString &partitionPath,
@@ -169,16 +228,27 @@ bool formatPartition(FileSystemType fileSystem,
             {QStringLiteral("-f"), QStringLiteral("-L"), label, partitionPath},
         };
         break;
-    case FileSystemType::Ext4:
+    case FileSystemType::Ext4: {
         // -F so mkfs does not ask; -m 0 so a USB stick does not reserve 5%
         // of itself for root.
-        attempts = {{QStringLiteral("-F"),
-                     QStringLiteral("-L"),
-                     label,
-                     QStringLiteral("-m"),
-                     QStringLiteral("0"),
-                     partitionPath}};
+        QStringList arguments = {QStringLiteral("-F"),
+                                 QStringLiteral("-L"),
+                                 label,
+                                 QStringLiteral("-m"),
+                                 QStringLiteral("0")};
+        if (const std::optional<DesktopOwner> owner = desktopOwner()) {
+            arguments << QStringLiteral("-E")
+                      << QStringLiteral("root_owner=%1:%2").arg(owner->uid).arg(owner->gid);
+            reporter.detail(
+                QStringLiteral("New filesystem will belong to uid %1, gid %2").arg(owner->uid).arg(owner->gid));
+        } else {
+            reporter.detail(
+                QStringLiteral("No unprivileged caller to give the new filesystem to; it will belong to root."));
+        }
+        arguments << partitionPath;
+        attempts = {arguments};
         break;
+    }
     }
 
     QString lastOutput;

@@ -18,6 +18,10 @@ A choice of filesystem, the same way 1.1.0 added a choice of partition style.
   rather than assuming exFAT.
 - Helper protocol version 2, with required `--filesystem`. An unknown token is
   refused.
+- New ext4 volumes belong to the user who asked for the restore, through
+  `mkfs.ext4 -E root_owner=`, taken from `PKEXEC_UID` or `SUDO_UID`. ext4 is the
+  only filesystem here that stores ownership on the volume itself; for exFAT,
+  FAT32 and NTFS the mount options decide.
 
 ### Changed
 
