@@ -89,6 +89,13 @@ Keep commits scoped. Pull requests should state the problem, summarise the
 change, and report test results — including which physical drives a restore was
 verified on, when the change touches a backend.
 
+**No AI attribution anywhere in this repository.** Commits and pull requests
+carry no `Co-Authored-By:` trailer naming an assistant, no "Generated with"
+footer, and no tool byline. The author of a commit is the person who owns the
+work. This applies whether or not a tool's default settings add one — check the
+message before committing, and strip it if it appeared. The same goes for
+generated files, code comments, and release notes.
+
 ## Safety & Release Notes
 
 The destructive path is gated by the acknowledgement dialog and an identity
