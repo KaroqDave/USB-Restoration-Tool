@@ -29,6 +29,13 @@ A choice of filesystem, the same way 1.1.0 added a choice of partition style.
   `mkfs.vfat` does not leave a blank partition table.
 - Windows blocks FAT32 on volumes larger than 32 GiB, which `MSFT_Volume.Format`
   cannot create.
+- Linux blocks FAT32 on volumes outside the range `mkfs.vfat` can actually
+  describe — under 33 MiB or over 2 TiB with 512-byte sectors, and the
+  equivalents for 4096. dosfstools refuses neither end on its own: it warns and
+  writes an out-of-spec filesystem below the cluster minimum, and silently
+  clamps a disk too large for its 32-bit sector count. The refusal happens
+  before anything is erased, and the helper applies it again to the disk it
+  re-derives.
 
 ## 1.3.0 - 2026-08-06
 

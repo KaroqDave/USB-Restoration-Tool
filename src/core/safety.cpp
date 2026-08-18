@@ -3,6 +3,7 @@
 #include <QtGlobal>
 
 #include <array>
+#include <limits>
 
 namespace usbrestore {
 
@@ -346,6 +347,47 @@ quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, st
     }
 
     return 0;
+}
+
+std::uint64_t minimumMkfsFat32VolumeBytes(quint32 sectorSize)
+{
+    if (!isSupportedSectorSize(sectorSize)) {
+        return 0;
+    }
+
+    // MIN_CLUST_32 in mkfs.fat.c. Two clusters short of the 65,527 the Windows
+    // formatter demands, because the two came from different vendors; the
+    // stricter number is not the one dosfstools checks against.
+    constexpr std::uint64_t minimumClusters = 65525;
+    constexpr std::uint64_t reservedSectors = 32;
+    constexpr std::uint64_t fatCount = 2;
+    constexpr std::uint64_t fatEntryBytes = 4;
+
+    // One sector per cluster: the smallest cluster mkfs.vfat can pick, and so
+    // the geometry that reaches the cluster minimum on the smallest volume.
+    // Anything below this cannot reach it at any cluster size.
+    const std::uint64_t fatBytes = (minimumClusters + 2) * fatEntryBytes;
+    const std::uint64_t fatSectors = (fatBytes + sectorSize - 1) / sectorSize;
+    const std::uint64_t bare = (reservedSectors + fatCount * fatSectors + minimumClusters) * sectorSize;
+
+    // Rounded up to a whole mebibyte. mkfs.vfat aligns the reserved area, each
+    // FAT and the sector count itself, which moves the real floor up by a
+    // handful of sectors — measured at eleven with 512-byte sectors, and not a
+    // calculation worth reproducing here to chase. A megabyte is the alignment
+    // the partition already uses, and the floor is around 33 MiB either way.
+    constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
+    return ((bare + oneMiB - 1) / oneMiB) * oneMiB;
+}
+
+std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize)
+{
+    if (!isSupportedSectorSize(sectorSize)) {
+        return 0;
+    }
+
+    // num_sectors in mkfs.fat.c is a uint32_t, so the largest volume it can
+    // describe is that many sectors — 2 TiB at 512 bytes, 16 TiB at 4096.
+    return static_cast<std::uint64_t>(std::numeric_limits<quint32>::max()) * sectorSize;
 }
 
 } // namespace usbrestore

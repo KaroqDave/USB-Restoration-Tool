@@ -1,6 +1,7 @@
 #include "linux/linux_restore.h"
 
 #include "core/partition_table.h"
+#include "core/safety.h"
 #include "linux/block_device.h"
 #include "linux/linux_enumerate.h"
 #include "linux/sysfs.h"
@@ -8,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QList>
+#include <QLocale>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QStringList>
@@ -365,6 +367,55 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
 
 } // namespace
 
+// Whether mkfs can be trusted to produce this filesystem on this disk, asked
+// before anything is erased. Only FAT32 has anything to say: dosfstools refuses
+// neither edge of its own range, so a volume outside it comes back as a
+// successful exit and a wrong filesystem. See minimumMkfsFat32VolumeBytes().
+bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason)
+{
+    const auto refuse = [reason](const QString &text) {
+        if (reason) {
+            *reason = text;
+        }
+        return false;
+    };
+
+    switch (fileSystem) {
+    case FileSystemType::ExFat:
+    case FileSystemType::Ntfs:
+    case FileSystemType::Ext4:
+        return true;
+    case FileSystemType::Fat32: {
+        // The partition, not the disk: it is a megabyte shorter, and it is what
+        // mkfs.vfat is pointed at.
+        const std::uint64_t length = calculateGptLayout(disk.size, disk.sectorSize).length;
+        const std::uint64_t maximum = maximumMkfsFat32VolumeBytes(disk.sectorSize);
+        const std::uint64_t minimum = minimumMkfsFat32VolumeBytes(disk.sectorSize);
+        if (maximum == 0 || minimum == 0) {
+            return refuse(
+                QStringLiteral("A disk with %1-byte sectors cannot be formatted as FAT32.").arg(disk.sectorSize));
+        }
+        if (length > maximum) {
+            // mkfs.vfat would not refuse this. It clamps, warns, and leaves the
+            // tail of the disk unreachable.
+            return refuse(QStringLiteral("FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
+                                         "the rest of the drive would be left unused. Choose exFAT or NTFS.")
+                              .arg(QLocale().formattedDataSize(static_cast<qint64>(maximum)))
+                              .arg(disk.sectorSize));
+        }
+        if (length < minimum) {
+            // Nor this one: it warns that the cluster count is below FAT32's
+            // minimum and writes the filesystem anyway.
+            return refuse(QStringLiteral("This drive is too small for a valid FAT32 filesystem; it needs at least "
+                                         "%1. Choose exFAT.")
+                              .arg(QLocale().formattedDataSize(static_cast<qint64>(minimum))));
+        }
+        return true;
+    }
+    }
+    return refuse(QStringLiteral("That filesystem is not supported."));
+}
+
 bool performLinuxRestore(const RestoreRequest &request,
                          RestoreReporter &reporter,
                          RestoreResult *result,
@@ -399,6 +450,17 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
     disk = currentDisk;
+
+    // Asked against the disk this process just re-derived, not the one it was
+    // handed. The GUI asks the same question before the acknowledgement dialog,
+    // but a check that only ran there would be one a caller could skip by
+    // starting the helper itself.
+    if (!canCreateFileSystemOn(request.fileSystem, disk, &reason)) {
+        if (error) {
+            *error = reason;
+        }
+        return false;
+    }
 
     // Identified before anything is unmounted, so a wrong device is caught
     // while the only thing that has happened is a read-only open.

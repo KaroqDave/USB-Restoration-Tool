@@ -18,6 +18,12 @@ namespace usbrestore {
 // How many step() calls a successful restore makes.
 inline constexpr int LinuxRestoreStepCount = 10;
 
+// Whether mkfs can produce this filesystem on this disk at all. Lives here
+// rather than on the DiskService so that both halves of the privilege split ask
+// the same question: the GUI before it offers the restore, and the helper again
+// against the disk it re-derived for itself.
+bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason);
+
 bool performLinuxRestore(const RestoreRequest &request,
                          RestoreReporter &reporter,
                          RestoreResult *result,

@@ -67,6 +67,20 @@ GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize);
 // produce FAT32's required data-cluster count.
 quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, std::uint64_t maximumVolumeSize);
 
+// The FAT32 volume sizes mkfs.vfat can be trusted with, which are not the ones
+// the Windows formatter enforces and are not a single number: both ends move
+// with the sector size. dosfstools refuses neither edge on its own. Given an
+// explicit -F 32 it waives its own minimum-cluster rule and only warns
+// (mkfs.fat.c:898), and it clamps a sector count that overflows the 32-bit
+// field it stores rather than failing (mkfs.fat.c:780). Both exit successfully
+// and leave a wrong volume behind — an out-of-spec filesystem that strict FAT
+// drivers may read as FAT16, or one that covers only the first part of the
+// disk — so the refusal has to happen before anything is erased.
+//
+// Zero from either means the sector size is not one this tool writes.
+std::uint64_t minimumMkfsFat32VolumeBytes(quint32 sectorSize);
+std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize);
+
 // Whether a reported sector size can be trusted for raw writes. Anything else
 // would make every offset this tool computes wrong.
 bool isSupportedSectorSize(quint32 sectorSize);

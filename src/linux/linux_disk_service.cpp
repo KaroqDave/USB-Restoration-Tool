@@ -73,18 +73,9 @@ QVector<FileSystemType> LinuxDiskService::supportedFileSystems() const
 
 bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason) const
 {
-    Q_UNUSED(disk);
-    switch (type) {
-    case FileSystemType::ExFat:
-    case FileSystemType::Fat32:
-    case FileSystemType::Ntfs:
-    case FileSystemType::Ext4:
-        return true;
-    }
-    if (reason) {
-        *reason = QStringLiteral("That filesystem is not supported.");
-    }
-    return false;
+    // Delegated so that the helper applies exactly this rule to the disk it
+    // re-derived for itself. See canCreateFileSystemOn().
+    return canCreateFileSystemOn(type, disk, reason);
 }
 
 int LinuxDiskService::totalRestoreSteps() const

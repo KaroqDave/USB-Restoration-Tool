@@ -403,6 +403,61 @@ class CoreTests : public QObject {
         QCOMPARE(fat32AllocationUnitSize(1024ull * 1024ull * 1024ull + 1, 512, maximumVolume), 0u);
     }
 
+    // The numbers below were read out of dosfstools 4.2 (mkfs.fat.c) and then
+    // checked against the binary itself: at each limit mkfs.vfat writes a clean
+    // filesystem, and one mebibyte outside it warns instead of refusing. That
+    // silent warning is the whole reason these limits are enforced here.
+    void pinsTheMkfsFat32Minimum()
+    {
+        // Enough sectors for the 32 reserved, two FATs and MIN_CLUST_32 =
+        // 65,525 single-sector clusters, rounded up to a whole mebibyte.
+        QCOMPARE(minimumMkfsFat32VolumeBytes(512), 33ull * 1024ull * 1024ull);
+        QCOMPARE(minimumMkfsFat32VolumeBytes(4096), 257ull * 1024ull * 1024ull);
+    }
+
+    void pinsTheMkfsFat32Maximum()
+    {
+        // UINT32_MAX sectors: mkfs.fat stores the count in 32 bits and clamps
+        // anything longer, leaving the end of the disk unreachable.
+        QCOMPARE(maximumMkfsFat32VolumeBytes(512), 4294967295ull * 512ull);
+        QCOMPARE(maximumMkfsFat32VolumeBytes(4096), 4294967295ull * 4096ull);
+
+        // Not the Windows limit. Copying that 32 GiB constant here would refuse
+        // volumes mkfs.vfat handles perfectly well.
+        QVERIFY(maximumMkfsFat32VolumeBytes(512) > 32ull * 1024ull * 1024ull * 1024ull);
+    }
+
+    void refusesMkfsFat32LimitsForUnsupportedSectorSizes()
+    {
+        QCOMPARE(minimumMkfsFat32VolumeBytes(600), 0ull);
+        QCOMPARE(maximumMkfsFat32VolumeBytes(600), 0ull);
+        QCOMPARE(minimumMkfsFat32VolumeBytes(0), 0ull);
+        QCOMPARE(maximumMkfsFat32VolumeBytes(0), 0ull);
+    }
+
+    void leavesEveryOrdinaryUsbSizeBetweenTheMkfsFat32Limits()
+    {
+        for (const quint32 sectorSize : {512u, 4096u}) {
+            QVERIFY(minimumMkfsFat32VolumeBytes(sectorSize) < maximumMkfsFat32VolumeBytes(sectorSize));
+
+            // A 16 GB stick, the case the check must not get in the way of.
+            const std::uint64_t length = calculateGptLayout(16ull * 1024ull * 1024ull * 1024ull, sectorSize).length;
+            QVERIFY(length > minimumMkfsFat32VolumeBytes(sectorSize));
+            QVERIFY(length < maximumMkfsFat32VolumeBytes(sectorSize));
+        }
+
+        // A 4 TB USB hard disk with 512-byte sectors is over the limit, which
+        // is what the Windows-shaped 32 GiB constant would have got wrong in
+        // the other direction.
+        const std::uint64_t large = calculateGptLayout(4000ull * 1000ull * 1000ull * 1000ull, 512).length;
+        QVERIFY(large > maximumMkfsFat32VolumeBytes(512));
+
+        // The same disk reporting 4096-byte sectors is not.
+        const std::uint64_t largeWithBigSectors =
+            calculateGptLayout(4000ull * 1000ull * 1000ull * 1000ull, 4096).length;
+        QVERIFY(largeWithBigSectors < maximumMkfsFat32VolumeBytes(4096));
+    }
+
     void describesDiskForPrompts()
     {
         const QString description = describeDisk(healthyWindowsDisk());
