@@ -278,10 +278,6 @@ QString serialFromUsbByIdLink(const QString &link, const QString &productName)
     static const QRegularExpression hostSuffix(QStringLiteral("-[0-9]+:[0-9]+$"));
     value.remove(hostSuffix);
 
-    if (!value.startsWith(QStringLiteral("usb-"))) {
-        return {};
-    }
-
     // "usb-" is a prefix, not a field. Counting parts of the remainder is what
     // distinguishes vendor_product_serial from vendor_product.
     const QStringList parts = value.mid(4).split(QLatin1Char('_'), Qt::SkipEmptyParts);
@@ -314,15 +310,24 @@ QString largeRestoreTargetWarning(const DiskInfo &disk)
         .arg(formatByteSize(disk.size));
 }
 
+quint32 gptEntryArraySectors(quint32 sectorSize)
+{
+    const quint32 sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    const quint32 bytes = GptEntryCount * GptEntrySize;
+    return (bytes + sector - 1) / sector;
+}
+
 GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize)
 {
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
     const std::uint64_t oneMiB = 1024ull * 1024ull;
     const std::uint64_t start = ((oneMiB + sector - 1) / sector) * sector;
-    // The backup GPT is one header plus a 128-entry partition array, which is
-    // 33 sectors at 512 bytes each. Reserved under MBR too, so switching the
-    // partition style never changes where the data starts or ends.
-    const std::uint64_t backupGpt = 33ull * sector;
+    // The backup GPT is one entry array plus its header: 33 sectors at 512
+    // bytes, 5 at 4096. Derived rather than stated, because the write gate
+    // refuses a partition that reaches into the same sectors and the two have
+    // to agree. Reserved under MBR too, so switching the partition style never
+    // changes where the data starts or ends.
+    const std::uint64_t backupGpt = (gptEntryArraySectors(sectorSize) + 1ull) * sector;
 
     if (diskSize <= start + backupGpt + sector) {
         return {};

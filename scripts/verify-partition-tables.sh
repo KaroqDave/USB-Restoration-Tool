@@ -16,6 +16,10 @@
 
 set -euo pipefail
 
+# Every check below greps sgdisk and fdisk output for English phrases, so a
+# localised machine would fail all of them for the wrong reason.
+export LC_ALL=C
+
 RepoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BuildDir="${1:-$RepoRoot/build-linux}"
 WorkDir="$(mktemp -d)"

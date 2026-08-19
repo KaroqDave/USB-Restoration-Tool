@@ -363,7 +363,54 @@ class CoreTests : public QObject {
         QCOMPARE(layout.startOffset % oneMiB, 0ull);
         QCOMPARE(layout.length % oneMiB, 0ull);
         QCOMPARE(layout.length % 4096ull, 0ull);
-        QVERIFY(layout.startOffset + layout.length + 33ull * 4096ull <= 32ull * 1024ull * 1024ull * 1024ull);
+        const std::uint64_t backupGpt = (gptEntryArraySectors(4096) + 1ull) * 4096ull;
+        QVERIFY(layout.startOffset + layout.length + backupGpt <= 32ull * 1024ull * 1024ull * 1024ull);
+    }
+
+    // The entry array is sized in sectors, so the tail a GPT needs is 33
+    // sectors at 512 bytes and 5 at 4096 - not one constant for both.
+    void sizesTheGptEntryArrayInSectors()
+    {
+        QCOMPARE(gptEntryArraySectors(512), 32u);
+        QCOMPARE(gptEntryArraySectors(4096), 4u);
+        // An unsupported size falls back to the same 512 the rest of the
+        // layout arithmetic assumes, rather than to arithmetic of its own.
+        QCOMPARE(gptEntryArraySectors(0), 32u);
+        QCOMPARE(gptEntryArraySectors(999), 32u);
+    }
+
+    // calculateGptLayout() reserves a tail for the backup GPT and
+    // isWritablePartitionRequest() refuses a partition that reaches into it.
+    // Two derivations of one number, so a layout the calculator produced must
+    // never be one the gate turns down. A disagreement, if there were one,
+    // would only show where the rounding leaves almost nothing to spare, so
+    // walk the last megabyte a sector at a time.
+    void acceptsEveryLayoutTheCalculatorProduces()
+    {
+        constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
+        constexpr std::uint64_t base = 16ull * 1024ull * 1024ull * 1024ull;
+
+        for (const quint32 sectorSize : {512u, 4096u}) {
+            for (std::uint64_t sectors = 0; sectors <= oneMiB / sectorSize + 1; ++sectors) {
+                const std::uint64_t diskSize = base + sectors * sectorSize;
+                const auto request = tableRequestFor(diskSize, sectorSize, PartitionStyle::Gpt);
+                QVERIFY(request.layout.length > 0);
+
+                QString reason;
+                if (!isWritablePartitionRequest(request, &reason)) {
+                    QFAIL(qPrintable(QStringLiteral("%1-byte sectors, %2 bytes: %3")
+                                         .arg(sectorSize)
+                                         .arg(diskSize)
+                                         .arg(reason)));
+                }
+
+                // And the backup image ends on the last whole sector of the
+                // disk rather than past it, which is the other half of the
+                // same reservation.
+                QCOMPARE(gptBackupOffset(request) + static_cast<std::uint64_t>(buildGptBackup(request).size()),
+                         (diskSize / sectorSize) * static_cast<std::uint64_t>(sectorSize));
+            }
+        }
     }
 
     // A disk whose size is not a whole number of megabytes still gets a legal

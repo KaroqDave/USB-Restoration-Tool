@@ -9,8 +9,6 @@ namespace usbrestore {
 
 namespace {
 
-constexpr quint32 GptEntryCount = 128;
-constexpr quint32 GptEntrySize = 128;
 constexpr quint32 GptHeaderSize = 92;
 constexpr quint64 MbrMaxSectors = 0xFFFFFFFFull;
 
@@ -54,33 +52,44 @@ quint64 sectorCount(const PartitionTableRequest &request)
     return request.diskSize / sector;
 }
 
-// Sectors taken by the 128-entry, 128-byte-per-entry partition array, rounded
-// up to whole sectors: 32 at 512 bytes per sector, 4 at 4096.
-quint32 entryArraySectors(quint32 sectorSize)
-{
-    const quint32 sector = sectorSize == 0 ? 512 : sectorSize;
-    const quint32 bytes = GptEntryCount * GptEntrySize;
-    return (bytes + sector - 1) / sector;
-}
-
-// Inclusive LBA range a GPT partition may occupy. Primary header at LBA 1,
-// entry array from LBA 2, matching backup at the end of the disk. Shared by
-// the header writer and the write gate so a layout cannot pass the gate and
-// then overlap the headers that get written.
-struct GptUsableLbas {
-    quint64 first = 0;
-    quint64 last = 0;
+// Every LBA the GPT layout is built out of: protective MBR at LBA 0, primary
+// header at LBA 1, entry array from LBA 2, and a matching array and header at
+// the end of the disk. Derived once and shared by the header writer, the
+// backup image offset and the write gate, so that a layout cannot pass the
+// gate and then overlap the headers that get written, and so that moving the
+// entry array is one edit rather than three that have to stay in lockstep.
+//
+// `fits` is false when the disk cannot hold both copies, which is the only
+// case in which the end-of-disk fields would underflow. Nothing else in the
+// struct is meaningful then.
+struct GptGeometry {
+    bool fits = false;
+    quint32 arraySectors = 0;
+    quint64 lastLba = 0;
+    quint64 primaryEntryLba = 2;
+    quint64 backupEntryLba = 0;
+    // Inclusive: the first and last sector a partition may occupy.
+    quint64 firstUsableLba = 0;
+    quint64 lastUsableLba = 0;
 };
 
-GptUsableLbas gptUsableLbas(const PartitionTableRequest &request)
+GptGeometry gptGeometry(const PartitionTableRequest &request)
 {
-    const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    GptGeometry geometry;
+    geometry.arraySectors = gptEntryArraySectors(request.sectorSize);
+
     const quint64 sectors = sectorCount(request);
-    const quint64 lastLba = sectors == 0 ? 0 : sectors - 1;
-    const quint32 arraySectors = entryArraySectors(sector);
-    const quint64 primaryEntryLba = 2;
-    const quint64 backupEntryLba = lastLba - arraySectors;
-    return {primaryEntryLba + arraySectors, backupEntryLba - 1};
+    // Both entry arrays, both headers, and the protective MBR.
+    if (sectors < static_cast<quint64>(geometry.arraySectors) * 2 + 3) {
+        return geometry;
+    }
+
+    geometry.fits = true;
+    geometry.lastLba = sectors - 1;
+    geometry.backupEntryLba = geometry.lastLba - geometry.arraySectors;
+    geometry.firstUsableLba = geometry.primaryEntryLba + geometry.arraySectors;
+    geometry.lastUsableLba = geometry.backupEntryLba - 1;
+    return geometry;
 }
 
 QByteArray buildEntryArray(const PartitionTableRequest &request)
@@ -111,13 +120,8 @@ QByteArray buildEntryArray(const PartitionTableRequest &request)
 QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &entries, bool primary)
 {
     const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
-    const quint64 sectors = sectorCount(request);
-    const quint64 lastLba = sectors - 1;
-    const quint32 arraySectors = entryArraySectors(sector);
-    const auto usable = gptUsableLbas(request);
-
-    const quint64 primaryEntryLba = 2;
-    const quint64 backupEntryLba = lastLba - arraySectors;
+    const auto geometry = gptGeometry(request);
+    const quint64 lastLba = geometry.lastLba;
 
     QByteArray header(static_cast<int>(sector), '\0');
     writeBytes(header, 0, QByteArrayLiteral("EFI PART"), 8);
@@ -127,10 +131,10 @@ QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &e
     writeLe32(header, 20, 0); // Reserved.
     writeLe64(header, 24, primary ? 1 : lastLba);
     writeLe64(header, 32, primary ? lastLba : 1);
-    writeLe64(header, 40, usable.first);
-    writeLe64(header, 48, usable.last);
+    writeLe64(header, 40, geometry.firstUsableLba);
+    writeLe64(header, 48, geometry.lastUsableLba);
     writeBytes(header, 56, request.diskGuid, 16);
-    writeLe64(header, 72, primary ? primaryEntryLba : backupEntryLba);
+    writeLe64(header, 72, primary ? geometry.primaryEntryLba : geometry.backupEntryLba);
     writeLe32(header, 80, GptEntryCount);
     writeLe32(header, 84, GptEntrySize);
     writeLe32(header, 88, gptCrc32(entries));
@@ -292,8 +296,8 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
     }
 
     if (request.style == PartitionStyle::Gpt) {
-        const quint32 arraySectors = entryArraySectors(request.sectorSize);
-        if (sectors < static_cast<quint64>(arraySectors) * 2 + 3) {
+        const auto geometry = gptGeometry(request);
+        if (!geometry.fits) {
             return refuse(QStringLiteral("The disk is too small to hold both GPT headers."));
         }
         if (request.diskGuid.size() != 16 || request.partitionGuid.size() != 16) {
@@ -301,8 +305,7 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
         }
         const quint64 firstLba = request.layout.startOffset / sector;
         const quint64 lastLba = endLba - 1;
-        const auto usable = gptUsableLbas(request);
-        if (firstLba < usable.first || lastLba > usable.last) {
+        if (firstLba < geometry.firstUsableLba || lastLba > geometry.lastUsableLba) {
             return refuse(QStringLiteral("The partition layout overlaps the GPT headers."));
         }
         return true;
@@ -353,7 +356,7 @@ QByteArray buildGptPrimary(const PartitionTableRequest &request)
 
     // The entry array is padded to whole sectors so the buffer can be written
     // in one call starting at offset 0.
-    const int arrayBytes = static_cast<int>(entryArraySectors(sector) * sector);
+    const int arrayBytes = static_cast<int>(gptEntryArraySectors(sector) * sector);
     image.append(arrayBytes - entries.size(), '\0');
     return image;
 }
@@ -365,7 +368,7 @@ QByteArray buildGptBackup(const PartitionTableRequest &request)
     const QByteArray header = buildHeader(request, entries, false);
 
     QByteArray image;
-    const int arrayBytes = static_cast<int>(entryArraySectors(sector) * sector);
+    const int arrayBytes = static_cast<int>(gptEntryArraySectors(sector) * sector);
     image.reserve(arrayBytes + header.size());
     image.append(entries);
     image.append(arrayBytes - entries.size(), '\0');
@@ -376,14 +379,13 @@ QByteArray buildGptBackup(const PartitionTableRequest &request)
 std::uint64_t gptBackupOffset(const PartitionTableRequest &request)
 {
     const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
-    const quint64 sectors = sectorCount(request);
-    const quint64 arraySectors = entryArraySectors(request.sectorSize);
-    if (sectors <= arraySectors) {
+    const auto geometry = gptGeometry(request);
+    if (!geometry.fits) {
         return 0;
     }
     // The array starts arraySectors before the last sector, and the backup
     // header occupies that last sector.
-    return (sectors - 1 - arraySectors) * sector;
+    return geometry.backupEntryLba * sector;
 }
 
 QByteArray buildMbr(const PartitionTableRequest &request)

@@ -64,6 +64,19 @@ QString serialFromUsbByIdLink(const QString &link, const QString &productName);
 bool isLargeRestoreTarget(const DiskInfo &disk);
 QString largeRestoreTargetWarning(const DiskInfo &disk);
 
+// A GPT entry array is 128 entries of 128 bytes each. The constants live here
+// rather than in the table writer because the layout calculator has to reserve
+// exactly what the writer will go on to occupy: two places deriving the same
+// number separately is how a layout comes to pass the write gate and then
+// overlap a header.
+inline constexpr quint32 GptEntryCount = 128;
+inline constexpr quint32 GptEntrySize = 128;
+
+// Sectors taken by one copy of the entry array, rounded up to whole sectors:
+// 32 at 512 bytes per sector, 4 at 4096. One GPT copy is this plus its own
+// header sector.
+quint32 gptEntryArraySectors(quint32 sectorSize);
+
 // The single 1 MiB-aligned data partition a restore creates, leaving room for
 // the partition table at the start and, under GPT, the backup header at the
 // end. A zero length means the disk is too small to lay out safely. The
