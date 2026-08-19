@@ -103,6 +103,13 @@ class DiskService {
     // shown as a fraction rather than as a spinner.
     virtual int totalRestoreSteps() const = 0;
 
+    // The 1-based step at which the restore first changes the disk. Steps
+    // before it only read, unmount, or open. The GUI uses this for a single
+    // sentence — whether unplugging a stalled stick is still safe — so a
+    // backend must never answer later than its true first write; when a step
+    // is added to a restore sequence, this moves with it.
+    virtual int firstDestructiveStep() const = 0;
+
     virtual bool
     restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) = 0;
 

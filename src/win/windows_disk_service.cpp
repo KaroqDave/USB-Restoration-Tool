@@ -110,6 +110,15 @@ int WindowsDiskService::totalRestoreSteps() const
     return 14;
 }
 
+int WindowsDiskService::firstDestructiveStep() const
+{
+    // "Deleting existing partition records": the first change to the disk
+    // itself. Detaching drive letters (step 4) edits the mount manager's
+    // database on the system disk, not the stick. Must move with the step
+    // list in restore().
+    return 5;
+}
+
 QString WindowsDiskService::restoredLocationNoun() const
 {
     return QStringLiteral("drive letter");

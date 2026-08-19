@@ -6,6 +6,7 @@
 #include "platform/disk_service.h"
 #include "platform/logger.h"
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QPointer>
 #include <QVector>
@@ -21,6 +22,7 @@ class QProgressBar;
 class QPushButton;
 class QTextEdit;
 class QThread;
+class QTimer;
 
 namespace usbrestore {
 
@@ -44,6 +46,7 @@ class MainWindow : public QMainWindow {
     void onRestoreFailed(const QString &message);
     void onRestoreCancelled();
     void onRestoreFinished(const QString &location);
+    void onStallTick();
     void toggleTheme();
     void showAbout();
     void showActivity();
@@ -68,6 +71,7 @@ class MainWindow : public QMainWindow {
     void renderSelectedDisk();
     void setStatus(StatusKind status, const QString &message, const QString &detail = {});
     void setRunning(bool running);
+    void noteRestoreActivity();
     void appendLog(const QString &message);
     bool confirmErase(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem);
     PartitionStyle selectedPartitionStyle() const;
@@ -84,6 +88,14 @@ class MainWindow : public QMainWindow {
     StatusKind m_status = StatusKind::Info;
     bool m_restoreRunning = false;
 
+    // The stall watch: how long the backend has been silent on the current
+    // step, so a stick stuck in uninterruptible sleep looks different from a
+    // hung program.
+    QElapsedTimer m_restoreActivity;
+    int m_restoreStep = 0;
+    QString m_restoreStepText;
+    bool m_stallNoticeShown = false;
+
     QListWidget *m_diskList = nullptr;
     QLabel *m_diskCount = nullptr;
     QLabel *m_detailTitle = nullptr;
@@ -98,6 +110,7 @@ class MainWindow : public QMainWindow {
     QPushButton *m_themeButton = nullptr;
     QPushButton *m_activityButton = nullptr;
     QProgressBar *m_progress = nullptr;
+    QTimer *m_stallTimer = nullptr;
     QTextEdit *m_log = nullptr;
     QPointer<QDialog> m_activityDialog;
     QPointer<QThread> m_restoreThread;

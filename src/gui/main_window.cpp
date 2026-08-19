@@ -37,6 +37,7 @@
 #include <QStyleHints>
 #include <QTextEdit>
 #include <QThread>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -54,6 +55,14 @@ constexpr auto AppProfileUrl = "https://github.com/KaroqDave/USB-Restoration-Too
 // What every restore produces. Named once so the plan shown to the user and
 // the label actually written cannot drift apart.
 const QString RestoreVolumeLabel = QStringLiteral("USB");
+
+// How long a restore step may stay silent before the progress bar starts
+// counting the silence, and before the status spells out that the device may
+// have stalled. A USB stick can sit in uninterruptible sleep for minutes and
+// recover — seen on hardware, 2026-08-19: four and a half minutes in D state
+// while the GUI gave no hint which side was stuck.
+constexpr qint64 StallCountSeconds = 15;
+constexpr qint64 StallExplainSeconds = 60;
 
 QGroupBox *card(const QString &title)
 {
@@ -203,6 +212,10 @@ void MainWindow::buildUi()
 
     scroll->setWidget(central);
     setCentralWidget(scroll);
+
+    m_stallTimer = new QTimer(this);
+    m_stallTimer->setInterval(1000);
+    connect(m_stallTimer, &QTimer::timeout, this, &MainWindow::onStallTick);
 
     // Lives outside the layout: it is the activity dialog's contents, and it
     // accumulates lines whether or not that dialog is open.
@@ -755,6 +768,10 @@ void MainWindow::startRestore()
     connect(worker, &RestoreWorker::progress, this, &MainWindow::onRestoreProgress);
     connect(worker, &RestoreWorker::logMessage, &m_logger, &Logger::log, Qt::QueuedConnection);
     connect(worker, &RestoreWorker::logFileOnly, &m_logger, &Logger::logFileOnly, Qt::QueuedConnection);
+    // Any line from the backend is proof the device is still answering, detail
+    // lines included — a long mkfs that keeps talking is not a stall.
+    connect(worker, &RestoreWorker::logMessage, this, &MainWindow::noteRestoreActivity);
+    connect(worker, &RestoreWorker::logFileOnly, this, &MainWindow::noteRestoreActivity);
     connect(worker, &RestoreWorker::failed, this, &MainWindow::onRestoreFailed);
     connect(worker, &RestoreWorker::cancelled, this, &MainWindow::onRestoreCancelled);
     connect(worker, &RestoreWorker::finished, this, &MainWindow::onRestoreFinished);
@@ -784,11 +801,76 @@ void MainWindow::cancelRestore()
 
 void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &message)
 {
+    m_restoreStep = step;
+    m_restoreStepText = message;
+    noteRestoreActivity();
+    m_stallNoticeShown = false;
+
     m_progress->setRange(0, totalSteps);
     m_progress->setValue(step);
     m_progress->setFormat(QStringLiteral("%1 / %2 — %3").arg(step).arg(totalSteps).arg(message));
     m_progress->setAccessibleDescription(message);
     setStatus(StatusKind::Running, message, QStringLiteral("Step %1 of %2.").arg(step).arg(totalSteps));
+}
+
+void MainWindow::noteRestoreActivity()
+{
+    m_restoreActivity.restart();
+}
+
+// Once a second while a restore runs: how long has the backend been silent?
+// Before the first step there is nothing to time — that quiet belongs to the
+// authentication dialog, where the user is allowed to think. The elapsed count
+// and the explanation are display only; nothing here stops or decides
+// anything, because a stalled device usually recovers and the backend already
+// handles the failure if it does not.
+void MainWindow::onStallTick()
+{
+    if (!m_restoreRunning || m_restoreStep == 0) {
+        return;
+    }
+
+    const qint64 seconds = m_restoreActivity.elapsed() / 1000;
+    if (seconds < StallCountSeconds) {
+        if (m_stallNoticeShown) {
+            // The device came back: put the plain step display back.
+            m_stallNoticeShown = false;
+            m_progress->setFormat(QStringLiteral("%1 / %2 — %3")
+                                      .arg(m_restoreStep)
+                                      .arg(m_progress->maximum())
+                                      .arg(m_restoreStepText));
+            m_detailLabel->setText(
+                QStringLiteral("Step %1 of %2.").arg(m_restoreStep).arg(m_progress->maximum()));
+        }
+        return;
+    }
+
+    m_stallNoticeShown = true;
+    const QString silence =
+        QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+    m_progress->setFormat(QStringLiteral("%1 / %2 — %3 — no response for %4")
+                              .arg(m_restoreStep)
+                              .arg(m_progress->maximum())
+                              .arg(m_restoreStepText, silence));
+
+    if (seconds < StallExplainSeconds) {
+        return;
+    }
+
+    // The one sentence that must not be wrong: unplugging is called safe only
+    // strictly before the backend's first write.
+    if (m_restoreStep < m_service.firstDestructiveStep()) {
+        m_detailLabel->setText(QStringLiteral(
+            "The device has not responded for %1. Some sticks stall for minutes and then recover on "
+            "their own. Nothing has been written to the disk yet, so if it never recovers, unplugging "
+            "the stick is safe.")
+                                   .arg(silence));
+    } else {
+        m_detailLabel->setText(QStringLiteral(
+            "The device has not responded for %1. Some sticks stall for minutes and then recover on "
+            "their own. The disk is being rewritten — leave it plugged in and wait.")
+                                   .arg(silence));
+    }
 }
 
 // The three endings share a shape: stop, rescan — because the disk on screen
@@ -831,6 +913,16 @@ void MainWindow::onRestoreFinished(const QString &location)
 void MainWindow::setRunning(bool running)
 {
     m_restoreRunning = running;
+
+    if (running) {
+        m_restoreStep = 0;
+        m_restoreStepText.clear();
+        m_stallNoticeShown = false;
+        m_restoreActivity.start();
+        m_stallTimer->start();
+    } else {
+        m_stallTimer->stop();
+    }
 
     m_diskList->setEnabled(!running);
     m_refreshButton->setEnabled(!running);

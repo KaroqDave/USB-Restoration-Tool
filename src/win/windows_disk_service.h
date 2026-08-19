@@ -17,6 +17,7 @@ class WindowsDiskService : public DiskService {
     QVector<FileSystemType> supportedFileSystems() const override;
     bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const override;
     int totalRestoreSteps() const override;
+    int firstDestructiveStep() const override;
     bool
     restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) override;
     QString restoredLocationNoun() const override;

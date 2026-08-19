@@ -86,6 +86,11 @@ int LinuxDiskService::totalRestoreSteps() const
     return LinuxRestoreStepCount;
 }
 
+int LinuxDiskService::firstDestructiveStep() const
+{
+    return LinuxFirstDestructiveStep;
+}
+
 QString LinuxDiskService::restoredLocationNoun() const
 {
     return QStringLiteral("device");

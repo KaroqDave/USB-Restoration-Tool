@@ -18,6 +18,13 @@ namespace usbrestore {
 // How many step() calls a successful restore makes.
 inline constexpr int LinuxRestoreStepCount = 10;
 
+// The step at which the disk is first written: "Clearing old MBR, GPT and ISO
+// signatures". Everything before it verifies, unmounts, or opens. Must move
+// with the step list in performLinuxRestore() — the GUI tells the user that
+// unplugging is safe strictly before this step, so being late here is worse
+// than being early.
+inline constexpr int LinuxFirstDestructiveStep = 5;
+
 // Whether mkfs can produce this filesystem on this disk at all. Lives here
 // rather than on the DiskService so that both halves of the privilege split ask
 // the same question: the GUI before it offers the restore, and the helper again
