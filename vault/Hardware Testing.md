@@ -36,17 +36,38 @@ README: the Windows path has been verified on hardware. Details were not written
 
 ## Linux — installed (helper / polkit)
 
-**Never exercised.** Needs polkit, an installed build, a disposable stick.
+First exercised 2026-08-19: Ubuntu 26.04 (GNOME on Wayland, pkexec 127), build
+installed to `/usr/local` (polkitd picked the action up from
+`/usr/local/share/polkit-1/actions` — no copy to `/usr/share` was needed).
 
 | Date | Distro | Model / size | Prior layout | Style | Result | Notes |
-|---|---|---|---|---|---|
-| | | | | GPT | | pkexec prompt? |
-| | | | | MBR | | |
-| | | ISO-written | | | | |
-| | | Several partitions | | | | |
-| | | No table | | | | |
+|---|---|---|---|---|---|---|
+| 2026-08-19 | Ubuntu 26.04 | SanDisk 3.2Gen1 / 57.3 GB (61504880640 B, 512 B sectors) | ISO-written: Ubuntu 26.04 hybrid (iso9660 spanning the disk + vfat ESP + 300 K stub + ext4 "writable") | GPT | ✓ one exFAT volume "USB" at /dev/sda1 | pkexec prompt shown; mkfs.exfat detail lines arrived in the user log; finished in seconds; desktop automounted the result |
+| 2026-08-19 | Ubuntu 26.04 | same stick | one GPT exFAT partition, mounted, ~18 GB of files | MBR | ✓ dos label, one type 0x07 partition, exFAT "USB" | first attempt failed *clean* at "Unmounting": the stick stalled on writeback (helper in D state ~4½ min, kernel logged "waiting for writeback completion for more than 278 seconds"), then the error was reported and the disk was untouched; retry succeeded in seconds |
 
-Also confirm: unprivileged GUI, settings/log owned by the user, helper exits after one restore, cancel-while-reversible.
+Cancel:
+
+- **During polkit authentication** — Cancel clicked in the GUI while the
+  password dialog was up: "Restore cancelled. The disk was not changed."
+  Disk verified untouched. This is the kill-race fix of 2026-08-19 on hardware.
+- **At a checkpoint** — not reachable by hand: on a quiescent stick both
+  reversible checkpoints pass in about a second. Exercised instead by running
+  the helper directly with the token already on stdin
+  (`echo cancel | sudo …/usb-restoration-helper --device /dev/sda …`):
+  printed steps 1–2 only, exit code 3, disk unchanged.
+- **After writing began** — a run with a pending automounter and 18 GB of
+  files still finished in seconds, too fast to cancel by hand; it completed
+  and was reported as complete, which is the documented contract.
+
+Also confirmed: GUI runs unprivileged (ps shows the desktop user) with only
+the helper as root; settings and log owned by the user, mode 0600; helper exits after one
+restore; `auth_admin_keep` works (a second restore minutes later did not
+re-prompt); mounting is left to the desktop, which automounts the new volume
+immediately.
+
+Still to cover on this path: a stick with several non-ISO partitions, a stick
+with no partition table, the ISO-written → MBR variant, and the FAT32, NTFS
+and ext4 formats.
 
 ## Linux — AppImage (run as root)
 
