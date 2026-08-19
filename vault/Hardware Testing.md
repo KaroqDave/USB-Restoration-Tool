@@ -76,11 +76,15 @@ three cancel behaviours.
 
 ## Linux — AppImage (run as root)
 
-**Never exercised on a physical stick.**
+First exercised 2026-08-20: the 1.4.2 AppImage built by
+`scripts/build-appimage.sh`, run with sudo on the same Ubuntu 26.04 machine as
+the helper-path sessions. A root GUI cannot reach a Wayland session's display
+until the user grants it (`xhost +SI:localuser:root`, revoke with `-` after) —
+worth a line in the README when the AppImage is released.
 
 | Date | Distro | Model / size | Prior layout | Style | Result | Notes |
-|---|---|---|---|---|---|
-| | | | | GPT | | |
+|---|---|---|---|---|---|---|
+| 2026-08-20 | Ubuntu 26.04 | SanDisk 3.2Gen1 / 57.3 GB | one GPT FAT32 partition | GPT | ✓ GPT, one Microsoft-Basic-Data partition at sector 2048, exFAT "USB" | identical geometry to the helper path's output; privilege badge correctly shows ROOT on this route (the whole process is root); unprivileged start refuses with the install-or-sudo dialog |
 | | | | | MBR | | |
 
 ## Related

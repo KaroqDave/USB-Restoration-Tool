@@ -104,6 +104,16 @@ chmod +x USB-Restoration-Tool-*-x86_64.AppImage
 sudo ./USB-Restoration-Tool-*-x86_64.AppImage
 ```
 
+On a Wayland desktop (GNOME's default) the compositor does not let a root
+process reach your display until you allow it. If the window never appears,
+grant it for the session and revoke it afterwards:
+
+```bash
+xhost +SI:localuser:root
+sudo ./USB-Restoration-Tool-*-x86_64.AppImage
+xhost -SI:localuser:root
+```
+
 Prefer the installed form where your distribution offers it. Running a Qt
 application as root means every plugin it loads runs as root too, for the sake
 of a few hundred lines that actually need it — see

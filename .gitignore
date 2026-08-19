@@ -14,6 +14,8 @@ out/
 dist/
 release/
 standalone/
+# Staging tree assembled by scripts/build-appimage.sh
+AppDir/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

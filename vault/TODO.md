@@ -11,7 +11,7 @@ Working list for USB Restoration Tool. Check a box when it is done, then move th
 
 These are the gaps that currently matter: the hardware runs. The 2026-08-18 review findings that lived here are in **Done**.
 
-- [ ] **Exercise the Linux AppImage path.** Still runs the whole app as root. Same hardware matrix as the helper path; they are different code routes.
+- [ ] **Exercise the Linux AppImage path.** First run done 2026-08-20 (GPT + exFAT on hardware, badge and unprivileged refusal confirmed — see [[Hardware Testing]]). Remaining if wanted: an MBR run; the rest of the matrix exercises shared code already covered on the helper path.
 - [ ] **Record which Windows restores were already verified.** The README says the Windows path has been verified on hardware, but not which models, sizes, or layouts. Capture that in [[Hardware Testing]] so it does not have to be rediscovered.
 
 ## Next
