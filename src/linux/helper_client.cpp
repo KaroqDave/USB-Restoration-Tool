@@ -158,8 +158,17 @@ bool runHelperRestore(const RestoreRequest &request,
     QString location;
     bool sawVersion = false;
     bool versionAccepted = false;
-    bool cancelSent = false;
-    bool killedWhileAuthenticating = false;
+    bool cancelTokenWritten = false;
+    bool killRequested = false;
+
+    const auto askHelperToStop = [&]() {
+        if (cancelTokenWritten) {
+            return;
+        }
+        cancelTokenWritten = true;
+        process.write(CancelRequestToken);
+        process.write("\n");
+    };
 
     const auto consume = [&](const QStringList &lines) {
         for (const QString &line : lines) {
@@ -171,6 +180,17 @@ bool runHelperRestore(const RestoreRequest &request,
             case ProtocolLineKind::Version:
                 sawVersion = true;
                 versionAccepted = parsed.version == RestoreProtocolVersion;
+                // The helper announces its version before touching the disk
+                // precisely so that a caller that does not recognise it can
+                // stop the run — so stop it here, not in the verdict after it
+                // has finished. The process is root, so a signal from here
+                // would fail; the cancel token is the one lever, and any
+                // helper honours it at its first checkpoint, before anything
+                // is written. helperSpeaksOurProtocol() makes this reachable
+                // only when the binary changed between the probe and the run.
+                if (!versionAccepted) {
+                    askHelperToStop();
+                }
                 break;
             case ProtocolLineKind::Step:
                 reporter.step(parsed.text);
@@ -195,19 +215,23 @@ bool runHelperRestore(const RestoreRequest &request,
         buffer.append(process.readAllStandardOutput());
         consume(takeCompleteLines(buffer));
 
-        if (reporter.cancelRequested() && !cancelSent) {
-            cancelSent = true;
-            if (!sawVersion) {
-                // Still at the authentication dialog: the helper has not run,
-                // so there is nothing to ask politely and nothing to damage.
-                killedWhileAuthenticating = true;
-                process.kill();
-            } else {
+        if (reporter.cancelRequested() && !cancelTokenWritten) {
+            if (sawVersion) {
                 // Running. Ask, and let it decide — it stops only where
                 // stopping is still harmless, exactly as an in-process restore
                 // does.
-                process.write(CancelRequestToken);
-                process.write("\n");
+                askHelperToStop();
+            } else if (!killRequested) {
+                // No version line yet, so as far as anyone can tell this is
+                // still pkexec at the authentication dialog: nothing to ask
+                // politely and nothing to damage. But the kill is a request,
+                // not a fact — once pkexec authenticates and execs the helper,
+                // the process is root, this process may no longer signal it,
+                // and the SIGKILL fails without a word. If a version line
+                // arrives anyway, that is what happened, and the branch above
+                // writes the cancel token on that turn instead.
+                killRequested = true;
+                process.kill();
             }
         }
     }
@@ -219,49 +243,31 @@ bool runHelperRestore(const RestoreRequest &request,
         consume({QString::fromLocal8Bit(buffer).trimmed()});
     }
 
-    const QString helperStderr = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
+    // The verdict lives in core (judgeHelperRun) rather than here, because the
+    // order of its checks is a safety rule: a requested kill is only believed
+    // when the process died without ever speaking, and a rejected version
+    // outranks whatever the exit code claims.
+    HelperRunObservation run;
+    run.crashed = process.exitStatus() != QProcess::NormalExit;
+    run.exitCode = process.exitCode();
+    run.sawVersion = sawVersion;
+    run.versionAccepted = versionAccepted;
+    run.killRequested = killRequested;
+    run.location = location;
+    run.helperStderr = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
 
-    if (killedWhileAuthenticating) {
-        // Cancelled before anything could happen. RestoreWorker reads "false
-        // with no error" as a cancellation.
+    QString verdictError;
+    switch (judgeHelperRun(run, &verdictError)) {
+    case HelperRunVerdict::Cancelled:
+        // RestoreWorker reads "false with no error" as a cancellation.
         return false;
-    }
-
-    if (process.exitStatus() != QProcess::NormalExit) {
+    case HelperRunVerdict::Failed:
         if (error) {
-            *error = QStringLiteral("The restore helper stopped unexpectedly. Check the drive with a partition "
-                                    "tool before using it.");
+            *error = verdictError;
         }
         return false;
-    }
-
-    const int exitCode = process.exitCode();
-    if (exitCode == RestoreExitCancelled) {
-        return false;
-    }
-    if (exitCode != RestoreExitSuccess) {
-        if (error) {
-            *error = describeRestoreExit(exitCode, helperStderr);
-        }
-        return false;
-    }
-
-    // A helper that never announced a version it agrees on, or that reports
-    // success without saying where the volume ended up, did not do what this
-    // code thinks it did. Neither should be possible; both are refused rather
-    // than reported as a restore that worked.
-    if (!sawVersion || !versionAccepted) {
-        if (error) {
-            *error = describeRestoreExit(RestoreExitUsage, helperStderr);
-        }
-        return false;
-    }
-    if (location.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("The restore helper finished without reporting where the volume ended up. "
-                                    "Check the drive with a partition tool before using it.");
-        }
-        return false;
+    case HelperRunVerdict::Succeeded:
+        break;
     }
 
     if (result) {

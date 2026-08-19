@@ -967,6 +967,101 @@ class CoreTests : public QObject {
         QVERIFY(unexpected.contains(QStringLiteral("9")));
     }
 
+    // The verdict on a finished helper run. The order of its checks is the
+    // safety rule under test: several of these cases document a combination
+    // that used to be reported wrongly, and their comments say how.
+    void judgesHelperRunOutcomes()
+    {
+        const auto observe = [](bool crashed, int exitCode, bool sawVersion, bool versionAccepted,
+                                bool killRequested, const QString &location) {
+            HelperRunObservation run;
+            run.crashed = crashed;
+            run.exitCode = exitCode;
+            run.sawVersion = sawVersion;
+            run.versionAccepted = versionAccepted;
+            run.killRequested = killRequested;
+            run.location = location;
+            return run;
+        };
+
+        QString error;
+
+        // The ordinary endings: a finished restore, and a cancel the helper
+        // honoured at a checkpoint.
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QStringLiteral("/dev/sdb1")),
+                                &error),
+                 HelperRunVerdict::Succeeded);
+        error.clear();
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, true, false, QString()), &error),
+                 HelperRunVerdict::Cancelled);
+        QVERIFY(error.isEmpty());
+
+        // A kill requested before the version line is believed only when the
+        // process also died without speaking (SIGKILL landed on pkexec), or
+        // pkexec itself reported the authentication dismissed. Both mean the
+        // helper never ran.
+        QCOMPARE(judgeHelperRun(observe(true, 0, false, false, true, QString()), &error),
+                 HelperRunVerdict::Cancelled);
+        QVERIFY(error.isEmpty());
+        QCOMPARE(judgeHelperRun(observe(false, 126, false, false, true, QString()), &error),
+                 HelperRunVerdict::Cancelled);
+        QVERIFY(error.isEmpty());
+
+        // The race this verdict exists for: the kill was requested, but pkexec
+        // had already exec'd the root helper, so the SIGKILL failed silently
+        // and the restore ran to completion. This used to be reported as
+        // "cancelled — the disk was not changed" after the disk was erased and
+        // restored; a completed run is a completed run, kill request or not.
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, true, QStringLiteral("/dev/sdb1")),
+                                &error),
+                 HelperRunVerdict::Succeeded);
+        // And when the late cancel token still landed at a checkpoint, it is a
+        // truthful cancellation: the helper stopped before writing anything.
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, true, true, QString()), &error),
+                 HelperRunVerdict::Cancelled);
+
+        // A rejected version outranks the exit code: the lines of a helper
+        // this build cannot parse prove nothing, its "cancelled" and its
+        // "success" included. Both used to be taken at face value.
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, false, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, false, false, QStringLiteral("/dev/sdb1")),
+                                &error),
+                 HelperRunVerdict::Failed);
+
+        // No version line at all: pkexec's own codes pass through with their
+        // real meanings, and a claimed success or cancellation from a process
+        // that never spoke is a protocol failure, not a result.
+        QCOMPARE(judgeHelperRun(observe(false, 126, false, false, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QVERIFY(error.contains(QStringLiteral("Authentication")));
+        QCOMPARE(judgeHelperRun(observe(false, 127, false, false, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QVERIFY(error.contains(QStringLiteral("installed")));
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, false, false, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, false, false, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
+
+        // A crash nobody asked for is an unexpected stop, whatever was said
+        // before it — the drive may hold a half-written table.
+        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QVERIFY(error.contains(QStringLiteral("unexpectedly")));
+        // Even when a kill was requested: a version line means the helper ran,
+        // so a dead process here is not the clean pre-authentication cancel.
+        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, true, QString()), &error),
+                 HelperRunVerdict::Failed);
+
+        // Success without a location is refused rather than trusted.
+        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QString()), &error),
+                 HelperRunVerdict::Failed);
+        QVERIFY(error.contains(QStringLiteral("without reporting")));
+    }
+
     // The error line crosses the same boundary the progress lines do, and ends
     // up in a dialog and the log.
     void flattensTheHelpersErrorLine()

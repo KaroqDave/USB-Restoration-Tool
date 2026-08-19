@@ -246,6 +246,62 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr)
     }
 }
 
+HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
+{
+    const auto failWith = [error](const QString &text) {
+        if (error) {
+            *error = text;
+        }
+        return HelperRunVerdict::Failed;
+    };
+
+    // The kill landed while pkexec was still authenticating: the process died
+    // — or pkexec reported the authentication dismissed — without a version
+    // line ever arriving, so the helper never ran and the disk was never
+    // touched. This is the only place a requested kill is believed, and only
+    // because the process demonstrably did no work.
+    if (run.killRequested && !run.sawVersion && (run.crashed || run.exitCode == 126)) {
+        return HelperRunVerdict::Cancelled;
+    }
+
+    if (run.crashed) {
+        return failWith(QStringLiteral("The restore helper stopped unexpectedly. Check the drive with a partition "
+                                       "tool before using it."));
+    }
+
+    // Before the exit code, not after: a helper that announced a version this
+    // build does not speak was asked to stop the moment it said so, and
+    // however it then exited — cancelled, failed, or "success" — none of its
+    // lines can be trusted to mean what this build would mean by them.
+    if (run.sawVersion && !run.versionAccepted) {
+        return failWith(describeRestoreExit(RestoreExitUsage, run.helperStderr));
+    }
+
+    if (!run.sawVersion) {
+        // The helper never spoke, so the exit code is pkexec's or a
+        // stranger's. 126 and 127 carry real meanings worth passing through;
+        // a success or cancellation claimed by a process that never announced
+        // a version is not believed.
+        const bool claimsFinished =
+            run.exitCode == RestoreExitSuccess || run.exitCode == RestoreExitCancelled;
+        return failWith(describeRestoreExit(claimsFinished ? RestoreExitUsage : run.exitCode, run.helperStderr));
+    }
+
+    if (run.exitCode == RestoreExitCancelled) {
+        return HelperRunVerdict::Cancelled;
+    }
+    if (run.exitCode != RestoreExitSuccess) {
+        return failWith(describeRestoreExit(run.exitCode, run.helperStderr));
+    }
+
+    if (run.location.isEmpty()) {
+        return failWith(QStringLiteral("The restore helper finished without reporting where the volume ended up. "
+                                       "Check the drive with a partition tool before using it."));
+    }
+
+    return HelperRunVerdict::Succeeded;
+}
+
 QString sanitizeProtocolText(const QString &text)
 {
     QString sanitized;

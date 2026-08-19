@@ -49,6 +49,42 @@ inline constexpr int RestoreExitCancelled = 3;
 // collide, because the helper only ever exits 0 to 3.
 QString describeRestoreExit(int exitCode, const QString &helperStderr);
 
+// Everything the GUI observed about one helper run, gathered once the process
+// has exited. `killRequested` records that a SIGKILL was *sent* because a
+// cancel arrived before the version line — deliberately not whether it worked,
+// because the sender cannot know: the moment pkexec authenticates and execs
+// the helper, the process is root and an unprivileged parent's signal fails
+// without a word. The verdict works out what actually happened from the other
+// fields instead.
+struct HelperRunObservation {
+    // exitStatus() != NormalExit: the process was killed or crashed.
+    bool crashed = false;
+    int exitCode = 0;
+    bool sawVersion = false;
+    bool versionAccepted = false;
+    bool killRequested = false;
+    QString location;
+    QString helperStderr;
+};
+
+enum class HelperRunVerdict {
+    // The helper restored the disk and said where the volume ended up.
+    Succeeded,
+    // The run stopped before anything was written. Carries no error text,
+    // which is how RestoreWorker tells a cancellation from a failure.
+    Cancelled,
+    // Everything else; `error` says what, in the user's terms.
+    Failed,
+};
+
+// The one place a helper run's observations become an answer. The order of
+// the checks is the point, and it is easy to get wrong inline: a kill that
+// was requested is only believed to have worked when the process also died
+// without ever speaking, and a version mismatch outranks the exit code,
+// because the lines of a helper this build cannot parse prove nothing — its
+// "cancelled" included.
+HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error = nullptr);
+
 // What the GUI claims about the disk the user selected, as recovered from the
 // helper's argv. Every field is an expectation to be checked against what the
 // helper reads from sysfs itself, never a substitute for reading it.
