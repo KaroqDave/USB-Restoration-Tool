@@ -9,7 +9,7 @@ namespace usbrestore {
 // in, DeviceIoControl on \\.\PhysicalDriveN for the raw work.
 class WindowsDiskService : public DiskService {
   public:
-    bool isPrivileged() const override;
+    PrivilegeMode privilegeMode() const override;
     QString privilegeHint() const override;
     QVector<DiskInfo> listUsbDisks(QString *error = nullptr) const override;
     bool refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error = nullptr) const override;

@@ -97,7 +97,7 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object) const
     disk.isReadOnly = object.boolValue(L"IsReadOnly");
     disk.isOffline = object.boolValue(L"IsOffline");
     disk.mountPoints = driveLettersForDisk(disk.number);
-    disk.labels = labelsForLetters(disk.mountPoints);
+    volumeInfoForLetters(disk.mountPoints, &disk.labels, &disk.fileSystems);
     return disk;
 }
 
@@ -127,27 +127,32 @@ QStringList DiskEnumerator::driveLettersForDisk(quint32 diskNumber) const
     return result;
 }
 
-QStringList DiskEnumerator::labelsForLetters(const QStringList &letters) const
+void DiskEnumerator::volumeInfoForLetters(const QStringList &letters,
+                                          QStringList *labels,
+                                          QStringList *fileSystems) const
 {
-    QStringList labels;
     for (const QString &letter : letters) {
         const QString root = letter.left(1) + QStringLiteral(":\\");
         wchar_t volumeName[MAX_PATH + 1] = {};
+        wchar_t fileSystemName[MAX_PATH + 1] = {};
         if (GetVolumeInformationW(reinterpret_cast<LPCWSTR>(root.utf16()),
                                   volumeName,
                                   MAX_PATH,
                                   nullptr,
                                   nullptr,
                                   nullptr,
-                                  nullptr,
-                                  0)) {
+                                  fileSystemName,
+                                  MAX_PATH)) {
             const QString label = QString::fromWCharArray(volumeName).trimmed();
-            if (!label.isEmpty()) {
-                labels << label;
+            if (labels && !label.isEmpty()) {
+                *labels << label;
+            }
+            const QString fileSystem = QString::fromWCharArray(fileSystemName).trimmed();
+            if (fileSystems && !fileSystem.isEmpty() && !fileSystems->contains(fileSystem)) {
+                *fileSystems << fileSystem;
             }
         }
     }
-    return labels;
 }
 
 } // namespace usbrestore

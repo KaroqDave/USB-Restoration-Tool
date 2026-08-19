@@ -67,6 +67,11 @@ struct DiskInfo {
     QStringList mountPoints;
     QStringList labels;
 
+    // The filesystems found on the disk, as the platform names them: "exFAT"
+    // from Windows, "vfat" or "iso9660" from udev on Linux. Shown to the user
+    // so they can tell what a disk holds; no safety rule reads it.
+    QStringList fileSystems;
+
     bool isBoot = false;
     bool isSystem = false;
     bool isReadOnly = false;

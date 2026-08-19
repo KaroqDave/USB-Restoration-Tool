@@ -44,6 +44,20 @@ class RestoreReporter {
     virtual bool cancelRequested() const = 0;
 };
 
+// How a restore gets the privilege it needs. The GUI reports this to the
+// user; no safety decision may hang off it, because the helper re-derives
+// every fact for itself regardless of what this process believes.
+enum class PrivilegeMode {
+    // This process writes to the disk itself: Windows elevated, or Linux under
+    // sudo / the AppImage run as root.
+    Elevated,
+    // This process stays an ordinary user; a separate root helper does the
+    // writing after polkit grants permission for that one restore.
+    Helper,
+    // Neither route is open. Restores cannot run and the app says so at start.
+    None,
+};
+
 // Everything platform-specific behind one interface: what disks exist, what
 // must never be touched, and how a restore is actually carried out. The GUI
 // and the safety rules are written against this and compile unchanged on
@@ -55,12 +69,15 @@ class DiskService {
     // The backend for the platform this build targets.
     static std::unique_ptr<DiskService> create();
 
-    // Whether a restore can be carried out at all. On Windows that means the
-    // process is elevated, because it does the work itself. On Linux it means
-    // either the process is root or it can reach the helper that will be, so a
-    // false here is a tool that cannot work rather than one that merely was not
-    // started with enough privilege.
-    virtual bool isPrivileged() const = 0;
+    // Where the privilege for a restore would come from, if anywhere. On
+    // Windows the process either is elevated or nothing works; Linux has the
+    // second answer, the installed helper.
+    virtual PrivilegeMode privilegeMode() const = 0;
+
+    // Whether a restore can be carried out at all. A false here is a tool
+    // that cannot work rather than one that merely was not started with
+    // enough privilege.
+    bool isPrivileged() const { return privilegeMode() != PrivilegeMode::None; }
 
     // What to tell the user when it is not, in their platform's terms.
     virtual QString privilegeHint() const = 0;

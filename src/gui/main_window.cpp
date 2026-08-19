@@ -226,15 +226,35 @@ QLayout *MainWindow::buildHeaderLayout()
         new QLabel(QStringLiteral("Restore a USB drive written by an ISO writer back to one clean volume."));
     subtitle->setObjectName(QStringLiteral("subtitle"));
 
-    auto *badge = new QLabel(
-#ifdef Q_OS_WIN
-        QStringLiteral("ADMINISTRATOR")
-#else
-        QStringLiteral("ROOT")
-#endif
-    );
+    // The badge states how this run actually gets its privilege, which on an
+    // installed Linux build is precisely *not* running as root — the helper
+    // is. Claiming ROOT there would misreport the privilege split it exists
+    // to advertise.
+    auto *badge = new QLabel;
     badge->setObjectName(QStringLiteral("adminBadge"));
-    badge->setToolTip(QStringLiteral("Raw disk access needs elevated permission, so the app always runs with it."));
+    switch (m_service.privilegeMode()) {
+    case PrivilegeMode::Elevated:
+#ifdef Q_OS_WIN
+        badge->setText(QStringLiteral("ADMINISTRATOR"));
+#else
+        badge->setText(QStringLiteral("ROOT"));
+#endif
+        badge->setToolTip(
+            QStringLiteral("Raw disk access needs elevated permission, and this process runs with it."));
+        break;
+    case PrivilegeMode::Helper:
+        badge->setText(QStringLiteral("USER"));
+        badge->setToolTip(QStringLiteral(
+            "The app runs as an ordinary user. When a restore starts, the system asks for permission "
+            "and a separate root helper does the writing."));
+        break;
+    case PrivilegeMode::None:
+        // Unreachable in practice: main() refuses to open this window without
+        // a route to privilege. Stated anyway rather than left blank.
+        badge->setText(QStringLiteral("NO ACCESS"));
+        badge->setToolTip(m_service.privilegeHint());
+        break;
+    }
 
     auto *headerButtons = new QHBoxLayout();
     headerButtons->setSpacing(6);
@@ -575,11 +595,14 @@ void MainWindow::renderSelectedDisk()
     m_detailTitle->setText(describeDisk(*disk));
     m_detailValues->setText(QStringLiteral(
                                 "Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
-                                "Mounted at: %4\n"
-                                "Volume labels: %5")
+                                "Filesystems: %4\n"
+                                "Mounted at: %5\n"
+                                "Volume labels: %6")
                                 .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
                                 .arg(disk->sectorSize)
-                                .arg(joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
+                                .arg(joinOrDash(disk->fileSystems),
+                                     joinOrDash(disk->mountPoints),
+                                     joinOrDash(disk->labels)));
 }
 
 void MainWindow::updateRestoreState()

@@ -18,7 +18,7 @@ namespace usbrestore {
 // cannot, and the privilege split this tool wants is one it can make itself.
 class LinuxDiskService : public DiskService {
   public:
-    bool isPrivileged() const override;
+    PrivilegeMode privilegeMode() const override;
     QString privilegeHint() const override;
     QVector<DiskInfo> listUsbDisks(QString *error = nullptr) const override;
     bool refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error = nullptr) const override;

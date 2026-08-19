@@ -32,9 +32,11 @@ std::unique_ptr<DiskService> DiskService::create()
     return std::make_unique<WindowsDiskService>();
 }
 
-bool WindowsDiskService::isPrivileged() const
+PrivilegeMode WindowsDiskService::privilegeMode() const
 {
-    return isProcessElevated();
+    // Windows has no helper: UAC gates the whole process at launch, so either
+    // this process is elevated or nothing can work.
+    return isProcessElevated() ? PrivilegeMode::Elevated : PrivilegeMode::None;
 }
 
 QString WindowsDiskService::privilegeHint() const

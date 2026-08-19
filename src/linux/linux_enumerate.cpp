@@ -73,13 +73,18 @@ DiskInfo diskInfoFor(const QString &diskName)
     disk.health = static_cast<quint16>(HealthStatus::Healthy);
     disk.partitionStyle = static_cast<quint16>(detectPartitionStyle(disk.deviceId, disk.sectorSize));
 
-    // Mount points and labels come from the partitions, plus the whole-disk
-    // device itself for a stick written with a bare filesystem and no table.
+    // Mount points, labels and filesystems come from the partitions, plus the
+    // whole-disk device itself for a stick written with a bare filesystem and
+    // no table — an ISO writer leaves iso9660 on the disk device too.
     const QVector<MountEntry> mounts = readMounts();
     const DeviceNumber diskNumber = readDeviceNumber(sysfs);
     QVector<DeviceNumber> owned;
     if (diskNumber.isValid()) {
         owned.append(diskNumber);
+    }
+    const QString wholeDiskFileSystem = fileSystemTypeForDevice(sysfs);
+    if (!wholeDiskFileSystem.isEmpty()) {
+        disk.fileSystems.append(wholeDiskFileSystem);
     }
     for (const QString &partition : listPartitionNames(diskName)) {
         const DeviceNumber number = readDeviceNumber(QStringLiteral("%1/%2").arg(sysfs, partition));
@@ -89,6 +94,10 @@ DiskInfo diskInfoFor(const QString &diskName)
         const QString label = labelForPartition(partition);
         if (!label.isEmpty() && !disk.labels.contains(label)) {
             disk.labels.append(label);
+        }
+        const QString fileSystem = fileSystemTypeForDevice(QStringLiteral("%1/%2").arg(sysfs, partition));
+        if (!fileSystem.isEmpty() && !disk.fileSystems.contains(fileSystem)) {
+            disk.fileSystems.append(fileSystem);
         }
     }
 

@@ -235,48 +235,71 @@ QString parentDiskName(const QString &partitionName)
 
 namespace {
 
-// What udev recorded when the device appeared. Its database is world-readable,
-// which /dev/sdX is not: since the privileged work moved into the helper the
-// GUI runs as an ordinary user and cannot open a block device at all. Without
-// this every disk in the list would read "RAW / unknown".
+// One property from what udev recorded when the device appeared. Its database
+// is world-readable, which /dev/sdX is not: since the privileged work moved
+// into the helper the GUI runs as an ordinary user and cannot open a block
+// device at all. Without this every disk in the list would read
+// "RAW / unknown".
 //
 // Second-hand and possibly stale — it describes the disk as udev last saw it —
-// so it is only ever consulted when the authoritative read is unavailable, and
-// nothing but the label in the list depends on it.
-PartitionStyle partitionStyleFromUdevDatabase(const QString &devicePath)
+// so nothing but what the user is shown depends on it; the helper re-reads the
+// disk itself. Property lines are "E:KEY=value".
+QByteArray udevProperty(const DeviceNumber &number, const QByteArray &key)
 {
-    const DeviceNumber number =
-        readDeviceNumber(QStringLiteral("%1/%2").arg(SysBlock, QFileInfo(devicePath).fileName()));
     if (!number.isValid()) {
-        return PartitionStyle::Unknown;
+        return {};
     }
 
     QFile database(QStringLiteral("/run/udev/data/b%1:%2").arg(number.major).arg(number.minor));
     if (!database.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return PartitionStyle::Unknown;
+        return {};
     }
 
-    // Property lines are "E:KEY=value". udev spells MBR "dos", the same name
-    // fdisk uses for it.
-    static const QByteArray key = QByteArrayLiteral("E:ID_PART_TABLE_TYPE=");
+    const QByteArray prefix = QByteArrayLiteral("E:") + key + QByteArrayLiteral("=");
     while (!database.atEnd()) {
         const QByteArray line = database.readLine().trimmed();
-        if (!line.startsWith(key)) {
-            continue;
+        if (line.startsWith(prefix)) {
+            return line.mid(prefix.size());
         }
-        const QByteArray value = line.mid(key.size());
-        if (value == QByteArrayLiteral("gpt")) {
-            return PartitionStyle::Gpt;
-        }
-        if (value == QByteArrayLiteral("dos")) {
-            return PartitionStyle::Mbr;
-        }
-        return PartitionStyle::Unknown;
+    }
+    return {};
+}
+
+// Only ever consulted when the authoritative read is unavailable.
+PartitionStyle partitionStyleFromUdevDatabase(const QString &devicePath)
+{
+    const DeviceNumber number =
+        readDeviceNumber(QStringLiteral("%1/%2").arg(SysBlock, QFileInfo(devicePath).fileName()));
+
+    // udev spells MBR "dos", the same name fdisk uses for it.
+    const QByteArray value = udevProperty(number, QByteArrayLiteral("ID_PART_TABLE_TYPE"));
+    if (value == QByteArrayLiteral("gpt")) {
+        return PartitionStyle::Gpt;
+    }
+    if (value == QByteArrayLiteral("dos")) {
+        return PartitionStyle::Mbr;
     }
     return PartitionStyle::Unknown;
 }
 
 } // namespace
+
+QString fileSystemTypeForDevice(const QString &sysfsPath)
+{
+    const DeviceNumber number = readDeviceNumber(sysfsPath);
+    const QByteArray type = udevProperty(number, QByteArrayLiteral("ID_FS_TYPE"));
+
+    // The kernel driver name "vfat" covers the whole FAT family; the variant
+    // the user would recognise — FAT32, FAT16, FAT12 — is recorded separately.
+    // The app formats and talks about "FAT32", so answer in the same terms.
+    if (type == QByteArrayLiteral("vfat")) {
+        const QByteArray version = udevProperty(number, QByteArrayLiteral("ID_FS_VERSION"));
+        if (!version.isEmpty()) {
+            return QString::fromLatin1(version);
+        }
+    }
+    return QString::fromLatin1(type);
+}
 
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize)
 {

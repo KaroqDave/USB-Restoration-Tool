@@ -23,7 +23,9 @@ class DiskEnumerator {
   private:
     DiskInfo diskInfoFromObject(const WmiObject &object) const;
     QStringList driveLettersForDisk(quint32 diskNumber) const;
-    QStringList labelsForLetters(const QStringList &letters) const;
+    // Fills labels and filesystem names for the given drive letters in one
+    // pass, since both come out of the same GetVolumeInformationW call.
+    void volumeInfoForLetters(const QStringList &letters, QStringList *labels, QStringList *fileSystems) const;
 };
 
 } // namespace usbrestore

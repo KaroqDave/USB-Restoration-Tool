@@ -31,12 +31,15 @@ std::unique_ptr<DiskService> DiskService::create()
     return std::make_unique<LinuxDiskService>();
 }
 
-bool LinuxDiskService::isPrivileged() const
+PrivilegeMode LinuxDiskService::privilegeMode() const
 {
     // Nothing this process does needs privilege any more except the restore
     // itself, and that is the helper's job. The question is no longer "am I
     // root" but "can a restore be carried out at all", which has two answers.
-    return runningAsRoot() || isHelperAvailable();
+    if (runningAsRoot()) {
+        return PrivilegeMode::Elevated;
+    }
+    return isHelperAvailable() ? PrivilegeMode::Helper : PrivilegeMode::None;
 }
 
 QString LinuxDiskService::privilegeHint() const

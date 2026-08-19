@@ -58,6 +58,12 @@ QString stableDeviceIdLink(const QString &diskName);
 // The filesystem label of a partition, from /dev/disk/by-label.
 QString labelForPartition(const QString &partitionName);
 
+// The filesystem on a device ("vfat", "ext4", "iso9660"), as udev recorded it
+// when the device appeared. Takes the device's sysfs path, like
+// readDeviceNumber(). Empty when there is none or udev has not seen one.
+// Display only: the restore never trusts it.
+QString fileSystemTypeForDevice(const QString &sysfsPath);
+
 // The disk a partition belongs to, or an empty string when the name is not a
 // partition. "sda1" -> "sda", "nvme0n1p2" -> "nvme0n1".
 QString parentDiskName(const QString &partitionName);
