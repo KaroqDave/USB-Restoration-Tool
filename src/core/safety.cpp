@@ -157,6 +157,18 @@ bool isSupportedSectorSize(quint32 sectorSize)
     }
 }
 
+QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize)
+{
+    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    if (offset % sector == 0 && bytes % sector == 0) {
+        return {};
+    }
+    return QStringLiteral("Refusing to zero %1 bytes at offset %2: not a multiple of the %3-byte sector size.")
+        .arg(bytes)
+        .arg(offset)
+        .arg(sector);
+}
+
 bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QString *reason)
 {
     const auto refuse = [reason](const QString &text) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
+#include "platform/disk_service.h"
 
 #include <QString>
 #include <QStringList>
@@ -27,7 +28,13 @@ class VolumeManager {
 
     // Waits for Windows to publish a volume on the disk, returning its
     // \\?\Volume{...}\ name. An empty result means it never appeared.
-    QString waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QString *error = nullptr) const;
+    // The reporter, when given, hears a detail line every few seconds of the
+    // wait: this loop can legitimately run for most of a minute on slow media,
+    // and silence that long reads as a stalled device.
+    QString waitForVolumeOnDisk(quint32 diskNumber,
+                                int timeoutMs,
+                                QString *error = nullptr,
+                                RestoreReporter *reporter = nullptr) const;
 
     QString mountVolume(const QString &volumeName, QString *error = nullptr) const;
 

@@ -24,9 +24,10 @@ tagged, and everything since 1.3.0 ships here.
   the backend the progress bar counts the silence; after 60 the status says
   plainly that the device has stopped responding, that sticks often stall for
   minutes and recover, and — strictly before the first write, decided by the
-  new `DiskService::firstDestructiveStep()` — that unplugging is still safe.
-  Prompted by a real stick that sat in uninterruptible sleep for four and a
-  half minutes while the GUI showed only "Stopping...".
+  new `DiskService::firstDestructiveStep()` — that the restore has not yet
+  changed the disk, though the system may still be flushing its own writes to
+  it. Prompted by a real stick that sat in uninterruptible sleep for four and
+  a half minutes while the GUI showed only "Stopping...".
 - **The privilege badge states the real mode.** An installed Linux build shows
   USER, because the GUI runs unprivileged and only the helper is root — which
   is the point of the privilege split, and the opposite of what the old

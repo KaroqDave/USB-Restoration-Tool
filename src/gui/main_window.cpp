@@ -806,6 +806,7 @@ void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &mess
     m_restoreStepText = message;
     noteRestoreActivity();
     m_stallNoticeShown = false;
+    m_stallExplained = false;
 
     m_progress->setRange(0, totalSteps);
     m_progress->setValue(step);
@@ -831,17 +832,25 @@ void MainWindow::onStallTick()
         return;
     }
 
+    const QString base = QStringLiteral("%1 / %2 — %3")
+                             .arg(m_restoreStep)
+                             .arg(m_progress->maximum())
+                             .arg(m_restoreStepText);
+
     const qint64 seconds = m_restoreActivity.elapsed() / 1000;
     if (seconds < StallCountSeconds) {
         if (m_stallNoticeShown) {
-            // The device came back: put the plain step display back.
+            // The device came back: put the plain step display back. The
+            // detail label is only restored when the stall explanation itself
+            // overwrote it — anything else there (the cancel explanation, for
+            // one) is not this watch's to erase.
             m_stallNoticeShown = false;
-            m_progress->setFormat(QStringLiteral("%1 / %2 — %3")
-                                      .arg(m_restoreStep)
-                                      .arg(m_progress->maximum())
-                                      .arg(m_restoreStepText));
-            m_detailLabel->setText(
-                QStringLiteral("Step %1 of %2.").arg(m_restoreStep).arg(m_progress->maximum()));
+            m_progress->setFormat(base);
+            if (m_stallExplained) {
+                m_stallExplained = false;
+                m_detailLabel->setText(
+                    QStringLiteral("Step %1 of %2.").arg(m_restoreStep).arg(m_progress->maximum()));
+            }
         }
         return;
     }
@@ -849,22 +858,23 @@ void MainWindow::onStallTick()
     m_stallNoticeShown = true;
     const QString silence =
         QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
-    m_progress->setFormat(QStringLiteral("%1 / %2 — %3 — no response for %4")
-                              .arg(m_restoreStep)
-                              .arg(m_progress->maximum())
-                              .arg(m_restoreStepText, silence));
+    m_progress->setFormat(QStringLiteral("%1 — no response for %2").arg(base, silence));
 
     if (seconds < StallExplainSeconds) {
         return;
     }
 
-    // The one sentence that must not be wrong: unplugging is called safe only
-    // strictly before the backend's first write.
+    // The one sentence that must not be wrong. Before the backend's first
+    // write the restore has not changed the disk — but the system may still
+    // be flushing its own writes to it (an unmount flush is the most likely
+    // place to stall at all), so unplugging is never called flatly "safe".
+    m_stallExplained = true;
     if (m_restoreStep < m_service.firstDestructiveStep()) {
         m_detailLabel->setText(QStringLiteral(
             "The device has not responded for %1. Some sticks stall for minutes and then recover on "
-            "their own. Nothing has been written to the disk yet, so if it never recovers, unplugging "
-            "the stick is safe.")
+            "their own. The restore has not changed the disk, but the system may still be flushing "
+            "its own writes to it — unplug only if it never recovers, and expect to run the restore "
+            "again afterwards.")
                                    .arg(silence));
     } else {
         m_detailLabel->setText(QStringLiteral(
@@ -919,6 +929,7 @@ void MainWindow::setRunning(bool running)
         m_restoreStep = 0;
         m_restoreStepText.clear();
         m_stallNoticeShown = false;
+        m_stallExplained = false;
         m_restoreActivity.start();
         m_stallTimer->start();
     } else {

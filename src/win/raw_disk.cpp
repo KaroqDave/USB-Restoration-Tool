@@ -521,17 +521,12 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
         return true;
     }
 
-    // Raw writes to a physical drive have to be whole sectors at whole-sector
-    // offsets. Refused rather than rounded: rounding down would silently leave
-    // the tail of the range unzeroed, and every current caller aligns first.
-    const std::uint64_t alignSector = sectorSize == 0 ? 512 : sectorSize;
-    if (offset % alignSector != 0 || bytes % alignSector != 0) {
+    // The range has to cover whole sectors at a whole-sector offset; the
+    // shared refusal lives in core, where it is tested.
+    const QString unaligned = unalignedZeroRangeError(offset, bytes, sectorSize);
+    if (!unaligned.isEmpty()) {
         if (error) {
-            *error = QStringLiteral("Refusing to zero %1 bytes at offset %2: not a multiple of the "
-                                    "%3-byte sector size.")
-                         .arg(bytes)
-                         .arg(offset)
-                         .arg(alignSector);
+            *error = unaligned;
         }
         return false;
     }

@@ -438,6 +438,25 @@ class CoreTests : public QObject {
         QVERIFY(!isSupportedSectorSize(600));
     }
 
+    void refusesUnalignedZeroRanges()
+    {
+        // Aligned ranges pass, for both supported sector sizes.
+        QVERIFY(unalignedZeroRangeError(0, 1024 * 1024, 512).isEmpty());
+        QVERIFY(unalignedZeroRangeError(4096, 8192, 4096).isEmpty());
+
+        // A partial-sector length or offset is refused, not rounded — rounding
+        // down would silently leave the tail of the range unzeroed.
+        QVERIFY(!unalignedZeroRangeError(0, 1000, 512).isEmpty());
+        QVERIFY(!unalignedZeroRangeError(100, 4096, 4096).isEmpty());
+        QVERIFY(!unalignedZeroRangeError(512, 512, 4096).isEmpty());
+
+        // An unsupported sector size falls back to validating against 512 on
+        // both platforms — the shared home exists so the fallbacks cannot
+        // drift apart again.
+        QVERIFY(unalignedZeroRangeError(512, 1024, 600).isEmpty());
+        QVERIFY(!unalignedZeroRangeError(0, 600, 600).isEmpty());
+    }
+
     void choosesFat32GeometryAtThe512ByteSectorMinimum()
     {
         constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;

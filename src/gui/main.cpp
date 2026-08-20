@@ -62,13 +62,16 @@ int main(int argc, char *argv[])
     usbrestore::hardenProcessStartup();
 
 #ifdef Q_OS_LINUX
-    // A root process has no session D-Bus — sudo strips the address — so Qt's
-    // GNOME platform theme opens every sudo and AppImage run with four stderr
-    // lines about a bus it was never going to reach. Nothing is lost: the
-    // app's own theming does not use the session bus. Silence that one
-    // category rather than let every root start look like an error, and leave
+    // A root process usually has no session D-Bus — sudo strips the address —
+    // so Qt's GNOME platform theme opens every sudo and AppImage run with four
+    // stderr lines about a bus it was never going to reach. Nothing is lost:
+    // the app's own theming does not use the session bus. Silence that one
+    // category rather than let every root start look like an error — but only
+    // when the bus really is absent (a root session that kept its address
+    // would reach it fine, and its warnings would then be real), and leave
     // any user-provided logging rules alone.
-    if (::geteuid() == 0 && !qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
+    if (::geteuid() == 0 && !qEnvironmentVariableIsSet("DBUS_SESSION_BUS_ADDRESS")
+        && !qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
         qputenv("QT_LOGGING_RULES", QByteArrayLiteral("qt.qpa.theme.*=false"));
     }
 

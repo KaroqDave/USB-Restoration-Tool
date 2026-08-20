@@ -581,8 +581,16 @@ bool performLinuxRestore(const RestoreRequest &request,
     const QString partitionPath = devicePathFor(partitionNameFor(diskName, 1));
     QElapsedTimer timer;
     timer.start();
+    qint64 lastWaitNote = 0;
     while (!QFileInfo::exists(partitionPath) && timer.elapsed() < NewPartitionTimeoutMs) {
         QThread::msleep(250);
+        // Say so every few seconds: this loop can legitimately run for tens of
+        // seconds on slow media, and silence here reads as a stalled device.
+        if (timer.elapsed() - lastWaitNote >= 5000) {
+            lastWaitNote = timer.elapsed();
+            reporter.detail(
+                QStringLiteral("Still waiting for %1 (%2 s)").arg(partitionPath).arg(lastWaitNote / 1000));
+        }
     }
     if (!QFileInfo::exists(partitionPath)) {
         if (error) {

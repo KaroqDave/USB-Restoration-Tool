@@ -242,7 +242,7 @@ bool WindowsDiskService::restore(
     }
 
     reporter.step(QStringLiteral("Waiting for Windows to discover the new volume"));
-    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error);
+    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error, &reporter);
     if (volumeName.isEmpty()) {
         return false;
     }

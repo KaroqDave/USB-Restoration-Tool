@@ -262,10 +262,14 @@ QString VolumeManager::findVolumeNameForDisk(quint32 diskNumber) const
     return result;
 }
 
-QString VolumeManager::waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QString *error) const
+QString VolumeManager::waitForVolumeOnDisk(quint32 diskNumber,
+                                           int timeoutMs,
+                                           QString *error,
+                                           RestoreReporter *reporter) const
 {
     QElapsedTimer timer;
     timer.start();
+    qint64 lastWaitNote = 0;
     for (;;) {
         const QString volumeName = findVolumeNameForDisk(diskNumber);
         if (!volumeName.isEmpty()) {
@@ -273,6 +277,10 @@ QString VolumeManager::waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QS
         }
         if (timer.elapsed() >= timeoutMs) {
             break;
+        }
+        if (reporter && timer.elapsed() - lastWaitNote >= 5000) {
+            lastWaitNote = timer.elapsed();
+            reporter->detail(QStringLiteral("Still waiting for the new volume (%1 s)").arg(lastWaitNote / 1000));
         }
         QThread::msleep(500);
     }

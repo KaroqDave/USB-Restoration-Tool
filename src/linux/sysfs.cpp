@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QList>
 #include <QRegularExpression>
 
 namespace usbrestore {
@@ -244,25 +245,37 @@ namespace {
 // Second-hand and possibly stale — it describes the disk as udev last saw it —
 // so nothing but what the user is shown depends on it; the helper re-reads the
 // disk itself. Property lines are "E:KEY=value".
-QByteArray udevProperty(const DeviceNumber &number, const QByteArray &key)
+// Reads every requested property in one pass over the file. Values land in
+// the returned list at the same index as their key; a key the database does
+// not record leaves an empty entry.
+QList<QByteArray> udevProperties(const DeviceNumber &number, const QList<QByteArray> &keys)
 {
+    QList<QByteArray> values(keys.size());
     if (!number.isValid()) {
-        return {};
+        return values;
     }
 
     QFile database(QStringLiteral("/run/udev/data/b%1:%2").arg(number.major).arg(number.minor));
     if (!database.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return {};
+        return values;
     }
 
-    const QByteArray prefix = QByteArrayLiteral("E:") + key + QByteArrayLiteral("=");
     while (!database.atEnd()) {
         const QByteArray line = database.readLine().trimmed();
-        if (line.startsWith(prefix)) {
-            return line.mid(prefix.size());
+        for (qsizetype i = 0; i < keys.size(); ++i) {
+            const QByteArray prefix = QByteArrayLiteral("E:") + keys.at(i) + QByteArrayLiteral("=");
+            if (line.startsWith(prefix)) {
+                values[i] = line.mid(prefix.size());
+                break;
+            }
         }
     }
-    return {};
+    return values;
+}
+
+QByteArray udevProperty(const DeviceNumber &number, const QByteArray &key)
+{
+    return udevProperties(number, {key}).first();
 }
 
 // Only ever consulted when the authoritative read is unavailable.
@@ -287,16 +300,16 @@ PartitionStyle partitionStyleFromUdevDatabase(const QString &devicePath)
 QString fileSystemTypeForDevice(const QString &sysfsPath)
 {
     const DeviceNumber number = readDeviceNumber(sysfsPath);
-    const QByteArray type = udevProperty(number, QByteArrayLiteral("ID_FS_TYPE"));
+    const QList<QByteArray> values = udevProperties(
+        number, {QByteArrayLiteral("ID_FS_TYPE"), QByteArrayLiteral("ID_FS_VERSION")});
+    const QByteArray &type = values.at(0);
+    const QByteArray &version = values.at(1);
 
     // The kernel driver name "vfat" covers the whole FAT family; the variant
     // the user would recognise — FAT32, FAT16, FAT12 — is recorded separately.
     // The app formats and talks about "FAT32", so answer in the same terms.
-    if (type == QByteArrayLiteral("vfat")) {
-        const QByteArray version = udevProperty(number, QByteArrayLiteral("ID_FS_VERSION"));
-        if (!version.isEmpty()) {
-            return QString::fromLatin1(version);
-        }
+    if (type == QByteArrayLiteral("vfat") && !version.isEmpty()) {
+        return QString::fromLatin1(version);
     }
     return QString::fromLatin1(type);
 }

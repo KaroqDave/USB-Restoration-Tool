@@ -95,6 +95,7 @@ class MainWindow : public QMainWindow {
     int m_restoreStep = 0;
     QString m_restoreStepText;
     bool m_stallNoticeShown = false;
+    bool m_stallExplained = false;
 
     // What the running restore was asked to produce. The completion message
     // reports this rather than re-reading the combo box, which is re-enabled

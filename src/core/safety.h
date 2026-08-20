@@ -107,4 +107,12 @@ std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize);
 // would make every offset this tool computes wrong.
 bool isSupportedSectorSize(quint32 sectorSize);
 
+// The refusal both backends' writeZeros() apply before touching the disk: a
+// raw write must cover whole sectors at a whole-sector offset, and rounding
+// for the caller would silently leave the tail of the range unzeroed. Returns
+// an empty string when the range is writable as-is; the shared home keeps the
+// two backends from drifting apart on the fallback for an unsupported sector
+// size (both validate against 512).
+QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize);
+
 } // namespace usbrestore
