@@ -86,7 +86,7 @@ worth a line in the README when the AppImage is released.
 | Date | Distro | Model / size | Prior layout | Style | Result | Notes |
 |---|---|---|---|---|---|---|
 | 2026-08-20 | Ubuntu 26.04 | SanDisk 3.2Gen1 / 57.3 GB | one GPT FAT32 partition | GPT | ✓ GPT, one Microsoft-Basic-Data partition at sector 2048, exFAT "USB" | identical geometry to the helper path's output; privilege badge correctly shows ROOT on this route (the whole process is root); unprivileged start refuses with the install-or-sudo dialog |
-| | | | | MBR | | |
+| 2026-08-20 | Ubuntu 26.04 | same stick | one GPT exFAT partition | MBR | ✓ dos label, one type 0x0c partition at sector 2048, FAT32 "USB" | both styles now exercised on this route. Startup printed four harmless `qt.qpa.theme` D-Bus warnings (root has no session bus); silenced for root runs the same day |
 
 ## Related
 
