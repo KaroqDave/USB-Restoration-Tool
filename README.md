@@ -15,16 +15,21 @@ Built with C++ and Qt 6.
 
 > **Restoring erases every partition and file on the selected disk.** Only USB disks are listed, and boot, system, offline, and read-only disks are refused outright — but the drive you pick is erased completely.
 
-## What's New in 1.4.2 (unreleased)
+## What's New in 1.5.0
 
 - **A filesystem selector in the Restore card.** exFAT is still the default. FAT32 and NTFS are offered on both platforms; Linux also offers ext4. The list comes from the platform backend, so the GUI does not hard-code the OS.
 - **Partition type follows the filesystem.** FAT32 uses MBR type `0x0C` so BIOS-era devices recognise it. ext4 uses the GPT Linux filesystem GUID so Windows does not offer to format the stick as RAW.
+- **The Selected disk panel names the filesystems on the disk,** next to the labels and mount points — including the bare `iso9660` an ISO writer leaves on the whole device.
+- **A stalled device explains itself.** Some USB sticks stop responding for minutes and then recover. The progress bar now counts the silence, and past a minute the status says what is happening — and whether unplugging the stick is still safe, which it is only before the first write.
+- **The privilege badge tells the truth.** An installed Linux build shows USER, because the app runs unprivileged and only the restore helper is root. ROOT and ADMINISTRATOR appear only when the process itself is elevated.
+- **Real window decorations on GNOME Wayland.** GNOME refuses server-side decorations and Qt's own substitute has no close button; the app now prefers XWayland there, and only there.
+- **Cancelling at the password prompt is trustworthy.** A cancel during polkit authentication used to be reported as "the disk was not changed" even in a race where the helper went on to restore the disk; the outcome is now judged by what the helper actually did.
 - **Windows cannot Format FAT32 above 32 GB.** That is a Format API limit; the Restore button is blocked with that reason rather than failing after the disk has been wiped.
 - **Linux looks up `mkfs` before the first write.** A missing `mkfs.vfat` no longer leaves a blank partition table. The helper protocol is version 2 and carries `--filesystem` as another claim it may only refuse on.
 - **A new ext4 volume belongs to you, not to root.** ext4 is the only filesystem here that stores ownership on the volume itself, so a stick formatted by the privileged half used to come back read-only to the desktop that mounted it.
 - **Linux refuses FAT32 outside the range `mkfs.vfat` can describe.** Under 33 MiB or over 2 TiB with 512-byte sectors. `mkfs.vfat` refuses neither end by itself — it warns and writes an out-of-spec filesystem, or silently covers only the first part of an oversized disk — so the refusal happens before the drive is erased.
 
-> **Neither Linux path has been tested on real hardware.** That was already true of 1.3.0. Use a drive you can afford to lose. The Windows path has been verified on hardware for the original exFAT restore; FAT32 and NTFS on Windows, and every Linux filesystem, still need a disposable stick.
+> **The Linux paths have now been exercised on real hardware.** Every prior layout an ISO writer leaves behind (hybrid ISO, several partitions, no table at all), GPT and MBR, all four filesystems and all three cancel behaviours, on both the installed polkit build and the AppImage. The Windows path was verified on hardware for the original exFAT restore; FAT32 and NTFS on Windows still lack a hardware run. As ever: use a drive you can afford to lose.
 
 ### Previously, in 1.3.0
 

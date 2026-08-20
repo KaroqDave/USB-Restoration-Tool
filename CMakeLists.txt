@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(USBRestorationTool
-    VERSION 1.4.2
+    VERSION 1.5.0
     DESCRIPTION "Restore ISO-written USB drives to one clean volume"
     LANGUAGES CXX
 )

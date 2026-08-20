@@ -1,10 +1,11 @@
 # Security Policy
 
-USB Restoration Tool erases disks and always runs with elevated permission —
-Administrator on Windows, root on Linux. Both facts shape what counts as a
-security issue here: anything that could cause the tool to write to a disk
-other than the one the user confirmed, and anything that could let code run
-with the privilege the tool holds.
+USB Restoration Tool erases disks with elevated permission — the whole
+process as Administrator on Windows; on Linux a separate root helper on an
+installed build, or the whole process under sudo and in the AppImage. Both
+facts shape what counts as a security issue here: anything that could cause
+the tool to write to a disk other than the one the user confirmed, and
+anything that could let code run with the privilege the tool holds.
 
 ## Supported Versions
 
@@ -12,7 +13,8 @@ Only the current release line receives security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| 1.3.x   | Yes       |
+| 1.5.x   | Yes       |
+| 1.3.x   | No        |
 | 1.1.x   | No        |
 | 1.0.x   | No        |
 | 0.1.x   | No        |

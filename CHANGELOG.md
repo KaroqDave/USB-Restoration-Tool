@@ -4,11 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.5.0 - 2026-08-20
 
-A choice of filesystem, the same way 1.1.0 added a choice of partition style.
+A choice of filesystem, the same way 1.1.0 added a choice of partition style —
+and the first release whose Linux path has been proven on physical hardware:
+every prior-layout class, both partition styles, all four filesystems and all
+three cancel behaviours, on both the installed (helper) route and the AppImage.
+There was no 1.4.x release; those versions were built and tested but never
+tagged, and everything since 1.3.0 ships here.
 
 ### Added
+
+- **The Selected disk panel names the filesystems on the disk.** Linux reads
+  udev's records per partition and for the whole-disk device, so an ISO-written
+  stick shows its bare `iso9660` too, and the FAT family is named `FAT32` or
+  `FAT16` rather than the kernel's `vfat`; Windows takes the name from the same
+  call that already fetched the labels. Display only — no safety rule reads it.
+- **A stalled device explains itself.** After 15 seconds without a word from
+  the backend the progress bar counts the silence; after 60 the status says
+  plainly that the device has stopped responding, that sticks often stall for
+  minutes and recover, and — strictly before the first write, decided by the
+  new `DiskService::firstDestructiveStep()` — that unplugging is still safe.
+  Prompted by a real stick that sat in uninterruptible sleep for four and a
+  half minutes while the GUI showed only "Stopping...".
+- **The privilege badge states the real mode.** An installed Linux build shows
+  USER, because the GUI runs unprivileged and only the helper is root — which
+  is the point of the privilege split, and the opposite of what the old
+  hardcoded ROOT badge claimed. ROOT and ADMINISTRATOR now appear only when
+  the process itself is elevated.
 
 - **Filesystem selector** in the Restore card: exFAT (default), FAT32, NTFS, and
   ext4 on Linux. The list comes from `DiskService`, so the GUI does not know
@@ -25,6 +48,17 @@ A choice of filesystem, the same way 1.1.0 added a choice of partition style.
 
 ### Changed
 
+- On a GNOME Wayland session the app prefers XWayland (`xcb`, with `wayland`
+  as fallback), because GNOME refuses server-side decorations and the fallback
+  Qt draws itself is a bare strip with no close, minimize or maximize buttons.
+  Compositors that provide decorations, and an explicitly chosen
+  `QT_QPA_PLATFORM`, are left alone.
+- The FAT32 allocation unit follows `format.com`'s own size table — a 1 GiB
+  volume gets 4 KiB clusters like Windows would give it, not the smallest
+  legal 512 bytes and the 16 MB of FAT that come with it — clamped into the
+  legal cluster range, with the smallest legal unit as the fallback.
+- The completion message reports the restore that actually ran rather than
+  re-reading the filesystem combo box after it had been re-enabled.
 - Linux resolves the `mkfs` tool before the first write, so a missing
   `mkfs.vfat` does not leave a blank partition table.
 - Windows blocks FAT32 on volumes larger than 32 GiB, which `MSFT_Volume.Format`
@@ -40,6 +74,30 @@ A choice of filesystem, the same way 1.1.0 added a choice of partition style.
   clamps a disk too large for its 32-bit sector count. The refusal happens
   before anything is erased, and the helper applies it again to the disk it
   re-derives.
+
+### Fixed
+
+- **A cancel during pkexec authentication can no longer be reported as
+  "cancelled — the disk was not changed" while the helper completes the
+  restore.** Once pkexec authenticates, the helper is root and the
+  unprivileged GUI's kill fails silently; the old code believed its own
+  signal. The kill is now recorded as a request, a helper that speaks anyway
+  is asked to stop through the cancel token, and the run's ending is judged
+  by `judgeHelperRun()` in core: a requested kill is only believed as a clean
+  cancellation when the process died without ever speaking, and a completed
+  restore is reported as completed. Confirmed on hardware.
+- **A helper whose protocol version the GUI does not recognise is stopped at
+  its first checkpoint**, before anything is written, instead of the mismatch
+  being noticed after the run. A rejected version also outranks whatever the
+  exit code claims.
+- The Windows cancel checkpoint that sat *after* the partition-record
+  deletion — where a cancel reported an untouched disk whose partition table
+  was already gone — moved above it, and the disk's identity is re-verified
+  through the open handle immediately before the first by-number WMI call.
+- `writeZeros()` on both platforms refuses a range that is not
+  sector-aligned instead of depending on every caller aligning first.
+- `scripts/verify-partition-tables.sh` runs under `LC_ALL=C`, so its checks
+  work outside an English locale.
 
 ## 1.3.0 - 2026-08-06
 
