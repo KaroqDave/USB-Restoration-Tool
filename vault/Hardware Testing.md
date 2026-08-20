@@ -24,11 +24,12 @@ Cancel: confirm it still stops while reversible, and that it does **not** stop o
 
 ## Windows
 
-README: the Windows path has been verified on hardware. Details were not written down.
+README: the Windows path has been verified on hardware. Details of the early
+runs were not written down.
 
 | Date | Model / size | Prior layout | Style | Result | Notes |
 |---|---|---|---|---|---|
-| | | | GPT | | |
+| 2026-08-20 | not recorded | one NTFS volume carrying a file Windows would not delete ("write protected") | GPT | ✓ one exFAT volume "USB", the stubborn file gone | second-hand: run by a tester on their own machine and reported back; exactly the ISO-writer-adjacent rescue case the tool exists for |
 | | | | MBR | | |
 | | ISO-written | | | | |
 | | Several partitions | | | | |

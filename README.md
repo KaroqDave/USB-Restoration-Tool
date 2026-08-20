@@ -9,6 +9,8 @@ A desktop app that gives a USB drive back after an ISO writer has been over it.
 
 Writing a Linux ISO to a USB stick leaves it in a state the system barely understands: a hybrid partition table, a read-only ISO9660 volume, a few hundred megabytes of a drive that used to hold 64 GB. This app restores the whole drive to **one partition labelled `USB`** — under either **GPT** or **MBR**, formatted **exFAT**, **FAT32**, **NTFS**, or (on Linux) **ext4**.
 
+The same rebuild rescues a stick that is merely stuck: a volume carrying a file that refuses to delete, leftover partitions from an old installer, or no partition table at all. The drive is rebuilt from the first sector, so what was on it does not get a say.
+
 It drives each platform's storage stack directly: `DeviceIoControl` and the `MSFT_Storage` WMI classes on Windows, sysfs and raw block-device I/O on Linux. There is no `diskpart`, no PowerShell, and no shelling out to `sfdisk`.
 
 Built with C++ and Qt 6.
@@ -144,7 +146,7 @@ sudo ./squashfs-root/AppRun
 ## How To Use
 
 1. Plug in the USB drive and start the app. Detected USB disks are listed with their size, current partition style, and where they are mounted.
-2. Select the disk. The **Selected disk** card shows what the system reports about it, and the status badge says whether it can be restored — or why it cannot.
+2. Select the disk. The **Selected disk** card shows what the system reports about it — bus, current layout, sector size, the filesystems on it, mount points and volume labels — and the status badge says whether it can be restored, or why it cannot.
 3. Pick **GPT** or **MBR** under **Layout**, and **exFAT**, **FAT32**, **NTFS**, or (on Linux) **ext4** under **Filesystem**. GPT and exFAT unless you know the device that has to read the stick needs something else.
 4. Choose **Restore USB**, tick the acknowledgement in the dialog, and confirm.
 

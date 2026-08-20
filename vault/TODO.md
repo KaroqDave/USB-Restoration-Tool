@@ -12,7 +12,8 @@ Working list for USB Restoration Tool. Check a box when it is done, then move th
 These are the gaps that currently matter: the hardware runs. The 2026-08-18 review findings that lived here are in **Done**.
 
 - [ ] **Exercise the Linux AppImage path.** First run done 2026-08-20 (GPT + exFAT on hardware, badge and unprivileged refusal confirmed — see [[Hardware Testing]]). Remaining if wanted: an MBR run; the rest of the matrix exercises shared code already covered on the helper path.
-- [ ] **Record which Windows restores were already verified.** The README says the Windows path has been verified on hardware, but not which models, sizes, or layouts. Capture that in [[Hardware Testing]] so it does not have to be rediscovered.
+- [ ] **Record which Windows restores were already verified.** The README says the Windows path has been verified on hardware, but not which models, sizes, or layouts. Capture that in [[Hardware Testing]] so it does not have to be rediscovered. First concrete row landed 2026-08-20: a tester's NTFS stick with an undeletable "write protected" file, restored to GPT + exFAT (second-hand report). The pre-1.4 history is still unrecorded.
+- [ ] **Confirm the GUI on KDE Plasma.** Expected to work without the GNOME workaround: KWin provides server-side decorations on Wayland (which is exactly why the `xcb` preference triggers only when `XDG_CURRENT_DESKTOP` contains GNOME), X11 is ordinary, and mounting goes through the same udisks machinery. Expected is not seen — one launch on a Plasma session, checking decorations, theme and a disk listing, would close this.
 
 ## Next
 
