@@ -369,6 +369,32 @@ quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, st
         return 0;
     }
 
+    // The unit format.com itself would pick for this volume size. Taking
+    // merely the smallest legal unit instead produces a valid but degenerate
+    // filesystem: a 1 GiB volume with 512-byte clusters carries roughly 2.1
+    // million clusters and about 16 MB of FAT across both copies, where the
+    // Windows default is 4 KiB.
+    constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
+    constexpr std::uint64_t oneGiB = 1024ull * oneMiB;
+    quint32 preferred = 32 * 1024;
+    if (volumeSize <= 64 * oneMiB) {
+        preferred = 512;
+    } else if (volumeSize <= 128 * oneMiB) {
+        preferred = 1024;
+    } else if (volumeSize <= 256 * oneMiB) {
+        preferred = 2048;
+    } else if (volumeSize <= 8 * oneGiB) {
+        preferred = 4096;
+    } else if (volumeSize <= 16 * oneGiB) {
+        preferred = 8 * 1024;
+    } else if (volumeSize <= 32 * oneGiB) {
+        preferred = 16 * 1024;
+    }
+
+    // The largest legal unit no larger than the preferred one; failing that,
+    // the smallest legal unit at all, because a working filesystem with odd
+    // clusters beats a refusal.
+    quint32 best = 0;
     for (const quint32 allocationUnitSize : allocationUnitSizes) {
         // Windows only permits 128 KiB and 256 KiB FAT allocation units when
         // the physical sector is larger than 512 bytes.
@@ -378,12 +404,15 @@ quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, st
         }
 
         const std::uint64_t clusterCount = fat32DataClusterCount(volumeSize, sectorSize, allocationUnitSize);
-        if (clusterCount >= minimumClusters && clusterCount <= maximumClusters) {
-            return allocationUnitSize;
+        if (clusterCount < minimumClusters || clusterCount > maximumClusters) {
+            continue;
+        }
+        if (best == 0 || allocationUnitSize <= preferred) {
+            best = allocationUnitSize;
         }
     }
 
-    return 0;
+    return best;
 }
 
 std::uint64_t minimumMkfsFat32VolumeBytes(quint32 sectorSize)

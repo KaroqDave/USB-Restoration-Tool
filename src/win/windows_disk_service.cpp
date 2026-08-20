@@ -188,6 +188,22 @@ bool WindowsDiskService::restore(
         return false;
     }
 
+    // Last chance to stop. Deleting the partition records below is the first
+    // change to the disk itself — detaching drive letters only edits the mount
+    // manager's database on the system disk — so the checkpoint sits here,
+    // where stopping is still harmless, not after the deletion.
+    if (reporter.cancelRequested()) {
+        return false;
+    }
+
+    // The WMI calls address the disk by number, not through the handle whose
+    // identity was checked, so the identity is confirmed once more immediately
+    // before the first destructive call, while the handle is still open and
+    // pins the number to the device it named.
+    if (!rawDisk.verifyIdentity(disk, error)) {
+        return false;
+    }
+
     reporter.step(QStringLiteral("Deleting existing partition records"));
     if (!volumes.deletePartitionsForDisk(disk.number, error)) {
         return false;
@@ -203,13 +219,9 @@ bool WindowsDiskService::restore(
     }
     rawDisk.refreshLayout(nullptr);
 
-    if (reporter.cancelRequested()) {
-        return false;
-    }
-
-    // Last chance to stop. Everything above this line is reversible; nothing
-    // below it is, so the identity check is repeated one final time rather
-    // than trusting the one from before the WMI calls.
+    // Repeated before the raw writes begin: the partition records above are
+    // already gone, so this cannot make the restore reversible — it guards the
+    // sector writes against the handle having gone stale underneath.
     if (!rawDisk.verifyIdentity(disk, error)) {
         return false;
     }

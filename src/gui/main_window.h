@@ -96,6 +96,11 @@ class MainWindow : public QMainWindow {
     QString m_restoreStepText;
     bool m_stallNoticeShown = false;
 
+    // What the running restore was asked to produce. The completion message
+    // reports this rather than re-reading the combo box, which is re-enabled
+    // (and in principle changeable) before the message is built.
+    FileSystemType m_restoreFileSystem = FileSystemType::ExFat;
+
     QListWidget *m_diskList = nullptr;
     QLabel *m_diskCount = nullptr;
     QLabel *m_detailTitle = nullptr;

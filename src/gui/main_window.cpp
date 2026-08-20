@@ -754,6 +754,7 @@ void MainWindow::startRestore()
     request.fileSystem = fileSystem;
     request.volumeLabel = RestoreVolumeLabel;
     request.guard = m_guard;
+    m_restoreFileSystem = request.fileSystem;
 
     setRunning(true);
     setStatus(StatusKind::Running, QStringLiteral("Restoring %1...").arg(disk.displayId));
@@ -903,7 +904,7 @@ void MainWindow::onRestoreFinished(const QString &location)
         StatusKind::Success,
         QStringLiteral("Restore complete."),
         QStringLiteral("The disk is now one %1 volume labelled %2 at %3.")
-            .arg(fileSystemTypeName(selectedFileSystem()), RestoreVolumeLabel, location));
+            .arg(fileSystemTypeName(m_restoreFileSystem), RestoreVolumeLabel, location));
     QMessageBox::information(
         this,
         QStringLiteral("Restore complete"),

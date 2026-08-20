@@ -210,6 +210,21 @@ bool BlockDevice::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 
     // A sector multiple, because a raw write to a block device that is not one
     // is rejected outright on a 4 Kn disk.
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+
+    // The range itself has to be sector-aligned for the same reason. Refused
+    // rather than rounded: rounding down would silently leave the tail of the
+    // range unzeroed, and every current caller aligns before calling.
+    if (offset % sector != 0 || bytes % sector != 0) {
+        if (error) {
+            *error = QStringLiteral("Refusing to zero %1 bytes at offset %2: not a multiple of the "
+                                    "%3-byte sector size.")
+                         .arg(bytes)
+                         .arg(offset)
+                         .arg(sector);
+        }
+        return false;
+    }
+
     const auto chunk = static_cast<int>((WriteChunkBytes / sector) * sector);
     const QByteArray zeros(chunk > 0 ? chunk : static_cast<int>(sector), '\0');
 

@@ -462,9 +462,15 @@ class CoreTests : public QObject {
 
     void growsTheFat32AllocationUnitWithTheVolume()
     {
+        // The format.com defaults, not the smallest legal unit: a 1 GiB
+        // volume gets 4 KiB clusters like Windows would give it, not the
+        // 512-byte clusters that need a 16 MB FAT.
         constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
-        QCOMPARE(fat32AllocationUnitSize(1ull * 1024ull * 1024ull * 1024ull, 512, maximumVolume), 512u);
-        QCOMPARE(fat32AllocationUnitSize(4ull * 1024ull * 1024ull * 1024ull, 512, maximumVolume), 1024u);
+        constexpr std::uint64_t oneGiB = 1024ull * 1024ull * 1024ull;
+        QCOMPARE(fat32AllocationUnitSize(1ull * oneGiB, 512, maximumVolume), 4096u);
+        QCOMPARE(fat32AllocationUnitSize(4ull * oneGiB, 512, maximumVolume), 4096u);
+        QCOMPARE(fat32AllocationUnitSize(10ull * oneGiB, 512, maximumVolume), 8u * 1024u);
+        QCOMPARE(fat32AllocationUnitSize(20ull * oneGiB, 512, maximumVolume), 16u * 1024u);
         QCOMPARE(fat32AllocationUnitSize(maximumVolume, 512, maximumVolume), 16u * 1024u);
     }
 
