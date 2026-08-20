@@ -133,5 +133,5 @@ The task list and hardware-test log live in `vault/` at the repository root.
 Read `vault/TODO.md` when planning work; update it when a task is added,
 finished, or blocked. Log physical restores in `vault/Hardware Testing.md`.
 Repo files remain the published source of truth — do not duplicate README,
-SECURITY.md, or `docs/` into the vault. Details:
-`.cursor/rules/obsidian-vault.mdc`.
+SECURITY.md, or `docs/` into the vault. Use wiki links `[[Note]]`, and keep
+paths repository-relative (`vault/TODO.md`), never machine-specific.

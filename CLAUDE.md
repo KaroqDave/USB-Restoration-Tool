@@ -14,9 +14,10 @@ explained; a restatement is cheap and the cost of missing one is not.
 - **No AI attribution anywhere in this repository.** No `Co-Authored-By:`
   trailer naming an assistant, no "Generated with" footer, no tool byline — in
   commits, pull requests, generated files, code comments or release notes. The
-  author of a commit is the person who owns the work. `.claude/settings.json`
-  sets `attribution.commit` and `attribution.pr` to empty strings so the
-  default is off, but check the message before committing regardless: a
+  author of a commit is the person who owns the work. Assistant settings are
+  not checked in, so nothing in the repository turns the trailers off for you:
+  set `attribution.commit` and `attribution.pr` to empty strings in your own
+  configuration, and check the message before committing regardless — a
   setting is not a substitute for looking.
 - **Do not weaken the destructive path.** No bypass for the acknowledgement
   dialog or the identity check, no GUI command-line flag that starts a restore,
