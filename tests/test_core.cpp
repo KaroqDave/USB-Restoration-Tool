@@ -1,6 +1,7 @@
 #include "core/disk.h"
 #include "core/partition_table.h"
 #include "core/restore_protocol.h"
+#include "core/restore_steps.h"
 #include "core/safety.h"
 
 #include <QtTest/QtTest>
@@ -1024,6 +1025,12 @@ class CoreTests : public QObject {
         QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QString()), &error),
                  HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("without reporting")));
+
+        // The reason the announcement was refused is reported in place of the generic text.
+        HelperRunObservation skewed = observe(false, RestoreExitCancelled, true, false, false, QString());
+        skewed.versionError = QStringLiteral("helper is from version 1.4.0");
+        QCOMPARE(judgeHelperRun(skewed, &error), HelperRunVerdict::Failed);
+        QCOMPARE(error, skewed.versionError);
     }
 
     // The error line crosses the same boundary and ends up in a dialog and the log.
@@ -1036,9 +1043,13 @@ class CoreTests : public QObject {
 
     void parsesProtocolLines()
     {
-        const ProtocolLine version = parseProtocolLine(encodeVersionLine(RestoreProtocolVersion));
+        const ProtocolLine version =
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.5.1"), linuxRestorePlan()));
         QCOMPARE(version.kind, ProtocolLineKind::Version);
         QCOMPARE(version.version, RestoreProtocolVersion);
+        QCOMPARE(version.appVersion, QStringLiteral("1.5.1"));
+        QCOMPARE(version.totalSteps, 10);
+        QCOMPARE(version.firstDestructiveStep, 5);
 
         const ProtocolLine step = parseProtocolLine(encodeStepLine(3, 10, QStringLiteral("Formatting as exFAT")));
         QCOMPARE(step.kind, ProtocolLineKind::Step);
@@ -1054,8 +1065,118 @@ class CoreTests : public QObject {
         QCOMPARE(parseProtocolLine(QStringLiteral("step 3 Formatting")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QStringLiteral("step three/ten Formatting")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QStringLiteral("version soon")).kind, ProtocolLineKind::Unknown);
+        // A version 2 helper announced only its protocol number.
+        const ProtocolLine bare = parseProtocolLine(QStringLiteral("version 2"));
+        QCOMPARE(bare.kind, ProtocolLineKind::Version);
+        QCOMPARE(bare.version, 2);
+        QCOMPARE(bare.totalSteps, 0);
         QCOMPARE(parseProtocolLine(QStringLiteral("mkfs.exfat: not found")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QString()).kind, ProtocolLineKind::Unknown);
+    }
+
+    // The GUI tells the user unplugging is safe before firstDestructiveStep, so these
+    // numbers are pinned to the steps each backend actually performs.
+    void pinsTheLinuxRestorePlan()
+    {
+        const QVector<RestoreStep> &plan = linuxRestorePlan();
+        QCOMPARE(plan.size(), 10);
+        QCOMPARE(firstDestructiveStepOf(plan), 5);
+        QCOMPARE(plan.at(4), RestoreStep::ClearSignatures);
+        QCOMPARE(plan.first(), RestoreStep::VerifyDisk);
+        QCOMPARE(plan.last(), RestoreStep::Complete);
+    }
+
+    void pinsTheWindowsRestorePlan()
+    {
+        const QVector<RestoreStep> &plan = windowsRestorePlan();
+        QCOMPARE(plan.size(), 14);
+        QCOMPARE(firstDestructiveStepOf(plan), 5);
+        QCOMPARE(plan.at(4), RestoreStep::DeletePartitions);
+        QCOMPARE(plan.first(), RestoreStep::VerifyDisk);
+        QCOMPARE(plan.last(), RestoreStep::Complete);
+        // The last step before the boundary; it only edits the mount manager's database.
+        QCOMPARE(plan.at(3), RestoreStep::DetachDriveLetters);
+        QVERIFY(!changesDiskContents(RestoreStep::DetachDriveLetters));
+    }
+
+    void classifiesEveryStepThatWritesTheDisk()
+    {
+        for (const RestoreStep step : {RestoreStep::DeletePartitions, RestoreStep::ClearSignatures,
+                                       RestoreStep::ResetToRaw, RestoreStep::WritePartitionTable,
+                                       RestoreStep::CreatePartition, RestoreStep::Format}) {
+            QVERIFY(changesDiskContents(step));
+        }
+        for (const RestoreStep step : {RestoreStep::VerifyDisk, RestoreStep::IdentifyDevice, RestoreStep::Unmount,
+                                       RestoreStep::OpenExclusive, RestoreStep::OpenDrive,
+                                       RestoreStep::RefreshMetadata}) {
+            QVERIFY(!changesDiskContents(step));
+        }
+        QCOMPARE(firstDestructiveStepOf({RestoreStep::VerifyDisk, RestoreStep::Complete}), 3);
+    }
+
+    void countsStepsOnlyInPlanOrder()
+    {
+        const QVector<RestoreStep> &plan = linuxRestorePlan();
+        RestoreStepCounter inOrder(plan);
+        for (int index = 0; index < plan.size(); ++index) {
+            QCOMPARE(inOrder.advance(plan.at(index)), index + 1);
+        }
+        // One call more than the plan has.
+        QCOMPARE(inOrder.advance(RestoreStep::Complete), 0);
+
+        RestoreStepCounter skipped(plan);
+        QCOMPARE(skipped.advance(RestoreStep::VerifyDisk), 1);
+        QCOMPARE(skipped.advance(RestoreStep::Unmount), 0);
+        // A refused step does not advance, so the expected one is still next.
+        QCOMPARE(skipped.advance(RestoreStep::IdentifyDevice), 2);
+    }
+
+    void acceptsOnlyAHelperWithTheSamePlan()
+    {
+        const QVector<RestoreStep> &plan = linuxRestorePlan();
+        const QString ours = QStringLiteral("1.5.1");
+        QString error;
+
+        QVERIFY(acceptHelperAnnouncement(
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, ours, plan)), ours, plan, &error));
+
+        // Another release with an unchanged plan still works together.
+        QVERIFY(acceptHelperAnnouncement(
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.5.2"), plan)), ours, plan,
+            &error));
+
+        // An installed helper from before the announcement carried the plan.
+        QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(QStringLiteral("version 2")), ours, plan, &error));
+        QVERIFY(error.contains(QStringLiteral("version 1.5.1")));
+        QVERIFY(error.contains(QStringLiteral("an older version")));
+
+        // Same protocol, one step more: the GUI's unplug boundary would be off by one.
+        QVector<RestoreStep> longer = plan;
+        longer.insert(1, RestoreStep::RefreshMetadata);
+        QVERIFY(!acceptHelperAnnouncement(
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.6.0"), longer)), ours, plan,
+            &error));
+        QVERIFY(error.contains(QStringLiteral("version 1.6.0")));
+        QVERIFY(error.contains(QStringLiteral("Reinstall")));
+
+        // Same step count, boundary moved.
+        QVector<RestoreStep> moved = plan;
+        moved.swapItemsAt(3, 4);
+        QVERIFY(!acceptHelperAnnouncement(
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, ours, moved)), ours, plan, &error));
+        QVERIFY(error.contains(QStringLiteral("a different build of version 1.5.1")));
+
+        // Malformed details are not guessed at.
+        const QString badCount = QStringLiteral("version %1 app 1.5.1 steps ten destructive 5");
+        QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(badCount.arg(RestoreProtocolVersion)), ours, plan, &error));
+        QVERIFY(!acceptHelperAnnouncement(
+            parseProtocolLine(QStringLiteral("version %1 steps 10").arg(RestoreProtocolVersion)), ours, plan, &error));
+
+        // No announcement at all.
+        QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(QStringLiteral("step 1/10 Verifying")), ours, plan,
+                                          &error));
+        QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
+        QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(QString()), ours, plan, &error));
     }
 };
 

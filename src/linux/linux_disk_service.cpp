@@ -75,12 +75,12 @@ bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &
 
 int LinuxDiskService::totalRestoreSteps() const
 {
-    return LinuxRestoreStepCount;
+    return static_cast<int>(linuxRestorePlan().size());
 }
 
 int LinuxDiskService::firstDestructiveStep() const
 {
-    return LinuxFirstDestructiveStep;
+    return firstDestructiveStepOf(linuxRestorePlan());
 }
 
 QString LinuxDiskService::restoredLocationNoun() const

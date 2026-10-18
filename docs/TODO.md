@@ -2,11 +2,15 @@
 
 ## Next
 
-- [ ] Test that each backend's reported step count and first destructive step
-  match the restore sequence. Also handle GUI/helper version skew explicitly;
-  a local step-count test alone cannot detect an older installed helper.
+Nothing open.
 
 ## Recently completed
+
+- 2026-10-18: Step plans for both backends moved to `src/core/restore_steps.*`
+  with tests pinning the step count and first destructive step. The helper
+  announces its plan and app version (protocol 3), and the GUI refuses a
+  mismatched helper. Windows Release build passed; the tests and the Linux
+  build run in CI.
 
 - 2026-10-18: Added a `.deb` built by CPack through `scripts/build-deb.sh`, with
   the helper at `/usr/libexec/usb-restoration-helper` and its polkit action. CI

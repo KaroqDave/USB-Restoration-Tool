@@ -8,9 +8,10 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
 
 - `src/core/` — `disk.*` (the `DiskInfo` model and formatting), `safety.*`
   (every rule that decides whether a disk may be erased, plus the layout
-  arithmetic), `partition_table.*` (GPT and MBR bytes, including GPT's CRC-32)
-  and `restore_protocol.*` (the GUI-to-helper line protocol, whose argument half
-  is a trust boundary). **No OS headers.** This is the half that is tested, and
+  arithmetic), `partition_table.*` (GPT and MBR bytes, including GPT's CRC-32),
+  `restore_steps.*` (each backend's step plan, from which the step count and
+  first destructive step are derived) and `restore_protocol.*` (the
+  GUI-to-helper line protocol, whose argument half is a trust boundary). **No OS headers.** This is the half that is tested, and
   new safety rules belong here rather than inline in a backend.
 - `src/platform/` — `disk_service.h`, the interface both backends implement;
   `restore_worker.*`, which adapts a backend's progress calls into Qt signals;

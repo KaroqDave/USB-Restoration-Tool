@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
+#include "core/restore_steps.h"
 
 #include <QString>
 #include <QStringList>
@@ -11,7 +12,7 @@ namespace usbrestore {
 // the helper checks against its own enumeration, never grants (docs/polkit-helper.md).
 
 // Bump whenever the meaning of any argument or output line changes.
-inline constexpr int RestoreProtocolVersion = 2;
+inline constexpr int RestoreProtocolVersion = 3;
 
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
 
@@ -35,6 +36,8 @@ struct HelperRunObservation {
     int exitCode = 0;
     bool sawVersion = false;
     bool versionAccepted = false;
+    // Why the version was refused, from acceptHelperAnnouncement().
+    QString versionError;
     bool killRequested = false;
     QString location;
     QString helperStderr;
@@ -84,6 +87,9 @@ enum class ProtocolLineKind {
 struct ProtocolLine {
     ProtocolLineKind kind = ProtocolLineKind::Unknown;
     int version = 0;
+    // Version lines only; empty or 0 when the helper did not say.
+    QString appVersion;
+    int firstDestructiveStep = 0;
     int step = 0;
     int totalSteps = 0;
     // The step message, the detail text, or the restored location.
@@ -94,12 +100,17 @@ struct ProtocolLine {
 // and the reader would parse the remainder as a message never sent.
 QString sanitizeProtocolText(const QString &text);
 
-QString encodeVersionLine(int version);
+QString encodeVersionLine(int version, const QString &appVersion, const QVector<RestoreStep> &plan);
 QString encodeStepLine(int step, int totalSteps, const QString &message);
 QString encodeDetailLine(const QString &message);
 QString encodeResultLine(const QString &location);
 
 ProtocolLine parseProtocolLine(const QString &line);
+
+// The GUI numbers the helper's steps and places "safe to unplug" by its own plan,
+// so a helper announcing another protocol or plan is refused.
+bool acceptHelperAnnouncement(const ProtocolLine &announcement, const QString &ourAppVersion,
+                              const QVector<RestoreStep> &plan, QString *error = nullptr);
 
 // Written to the helper's stdin; honoured only while the restore is still reversible.
 inline constexpr char CancelRequestToken[] = "cancel";

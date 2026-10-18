@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
+#include "core/restore_steps.h"
 #include "core/safety.h"
 
 #include <QString>
@@ -39,6 +40,17 @@ class RestoreReporter {
     virtual bool cancelRequested() const = 0;
 };
 
+// Backends report steps through this so a call that drifts from the plan shows up.
+inline void reportPlannedStep(RestoreStepCounter &counter, RestoreReporter &reporter, RestoreStep step,
+                              const QString &message)
+{
+    if (counter.advance(step) == 0) {
+        Q_ASSERT_X(false, "reportPlannedStep", "restore step out of plan order");
+        reporter.detail(QStringLiteral("Internal: \"%1\" is out of order in the restore plan.").arg(message));
+    }
+    reporter.step(message);
+}
+
 // For display only: the helper re-derives every fact, so no safety decision may use it.
 enum class PrivilegeMode {
     // Windows elevated, or Linux under sudo / the AppImage run as root.
@@ -74,8 +86,8 @@ class DiskService {
 
     virtual int totalRestoreSteps() const = 0;
 
-    // 1-based. The GUI tells the user whether unplugging is still safe from this, so it
-    // must never be later than the true first write; move it when steps are added.
+    // 1-based, from the backend's plan in core/restore_steps.cpp. The GUI tells the user
+    // whether unplugging is still safe from this.
     virtual int firstDestructiveStep() const = 0;
 
     virtual bool

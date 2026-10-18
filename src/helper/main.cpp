@@ -42,6 +42,12 @@ void writeLine(const QString &line)
     out.flush();
 }
 
+void announceVersion()
+{
+    writeLine(usbrestore::encodeVersionLine(usbrestore::RestoreProtocolVersion,
+                                            QStringLiteral(USBRESTORE_APP_VERSION), usbrestore::linuxRestorePlan()));
+}
+
 void writeError(const QString &message)
 {
     QTextStream err(stderr);
@@ -53,8 +59,9 @@ class HelperReporter : public usbrestore::RestoreReporter {
   public:
     void step(const QString &message) override
     {
-        m_step = qMin(m_step + 1, usbrestore::LinuxRestoreStepCount);
-        writeLine(usbrestore::encodeStepLine(m_step, usbrestore::LinuxRestoreStepCount, message));
+        const int total = static_cast<int>(usbrestore::linuxRestorePlan().size());
+        m_step = qMin(m_step + 1, total);
+        writeLine(usbrestore::encodeStepLine(m_step, total, message));
     }
 
     void detail(const QString &message) override
@@ -122,12 +129,12 @@ int main(int argc, char *argv[])
     }
 
     if (arguments.size() == 1 && arguments.first() == QLatin1String(usbrestore::ProtocolVersionFlag)) {
-        writeLine(usbrestore::encodeVersionLine(usbrestore::RestoreProtocolVersion));
+        announceVersion();
         return usbrestore::RestoreExitSuccess;
     }
 
     // Before any work, so a caller that rejects the version can still cancel.
-    writeLine(usbrestore::encodeVersionLine(usbrestore::RestoreProtocolVersion));
+    announceVersion();
 
     if (::geteuid() != 0) {
         writeError(QStringLiteral("usb-restoration-helper must run as root. It is started by USB Restoration Tool "
