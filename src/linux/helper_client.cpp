@@ -13,25 +13,17 @@ namespace usbrestore {
 
 namespace {
 
-// How long to wait for pkexec itself to appear. The authentication dialog that
-// follows is not on a clock: the user may take as long as they like, and a
-// timeout here would cancel a restore they were in the middle of authorising.
+// Covers only pkexec starting; the authentication dialog after it is not timed.
 constexpr int ProcessStartTimeoutMs = 30 * 1000;
 
-// Long enough for a fork and a QString; this invocation does no work.
 constexpr int VersionProbeTimeoutMs = 10 * 1000;
 
-// How often the output loop wakes to look at cancellation. Short enough that
-// Cancel feels immediate, long enough not to spin.
 constexpr int PollIntervalMs = 200;
 
-// A helper that emits this much without a newline is malfunctioning, and the
-// reader must not grow to match it.
+// A helper that emits this much without a newline is malfunctioning.
 constexpr int MaxBufferedBytes = 64 * 1024;
 
-// pkexec is found at a fixed path for the same reason mkfs is: $PATH is exactly
-// what an attacker who can influence this process's environment would arrange.
-// Being wrong here would mean prompting the user to authorise the wrong binary.
+// Fixed paths, not $PATH, which a caller controlling the environment could redirect.
 QString findPkexec()
 {
     static const QStringList candidates = {
@@ -48,9 +40,7 @@ QString findPkexec()
     return {};
 }
 
-// Asked before pkexec, not after. The probe needs no privilege — the helper
-// prints its version and exits before it checks anything — so a mismatched pair
-// is caught without making the user type a password first.
+// Unprivileged, so a mismatched helper is caught before the password prompt.
 bool helperSpeaksOurProtocol(const QString &helper, QString *error)
 {
     QProcess process;
@@ -76,8 +66,7 @@ bool helperSpeaksOurProtocol(const QString &helper, QString *error)
     return true;
 }
 
-// Splits whatever has arrived so far into whole lines, keeping any partial last
-// line in the buffer for the next read.
+// Leaves a partial last line in the buffer for the next read.
 QStringList takeCompleteLines(QByteArray &buffer)
 {
     QStringList lines;
@@ -141,9 +130,7 @@ bool runHelperRestore(const RestoreRequest &request,
     process.setProgram(pkexec);
     process.setArguments(QStringList{helper} +
                          buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
-    // Separate channels: stdout carries the protocol and stderr carries the one
-    // error line, and merging them would let a message from mkfs be read as a
-    // protocol line.
+    // Merged channels would let mkfs output be read as a protocol line.
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start();
     if (!process.waitForStarted(ProcessStartTimeoutMs)) {
@@ -180,14 +167,8 @@ bool runHelperRestore(const RestoreRequest &request,
             case ProtocolLineKind::Version:
                 sawVersion = true;
                 versionAccepted = parsed.version == RestoreProtocolVersion;
-                // The helper announces its version before touching the disk
-                // precisely so that a caller that does not recognise it can
-                // stop the run — so stop it here, not in the verdict after it
-                // has finished. The process is root, so a signal from here
-                // would fail; the cancel token is the one lever, and any
-                // helper honours it at its first checkpoint, before anything
-                // is written. helperSpeaksOurProtocol() makes this reachable
-                // only when the binary changed between the probe and the run.
+                // Stop now, before the disk is touched; the helper is root, so the
+                // cancel token is the only lever. Reachable only if the binary changed.
                 if (!versionAccepted) {
                     askHelperToStop();
                 }
@@ -202,8 +183,6 @@ bool runHelperRestore(const RestoreRequest &request,
                 location = parsed.text;
                 break;
             case ProtocolLineKind::Unknown:
-                // Kept rather than dropped: it is the helper's own output, and
-                // the log is where an unexplained line is worth having.
                 reporter.detail(QStringLiteral("helper: %1").arg(line));
                 break;
             }
@@ -217,19 +196,10 @@ bool runHelperRestore(const RestoreRequest &request,
 
         if (reporter.cancelRequested() && !cancelTokenWritten) {
             if (sawVersion) {
-                // Running. Ask, and let it decide — it stops only where
-                // stopping is still harmless, exactly as an in-process restore
-                // does.
                 askHelperToStop();
             } else if (!killRequested) {
-                // No version line yet, so as far as anyone can tell this is
-                // still pkexec at the authentication dialog: nothing to ask
-                // politely and nothing to damage. But the kill is a request,
-                // not a fact — once pkexec authenticates and execs the helper,
-                // the process is root, this process may no longer signal it,
-                // and the SIGKILL fails without a word. If a version line
-                // arrives anyway, that is what happened, and the branch above
-                // writes the cancel token on that turn instead.
+                // Probably still the auth dialog. If pkexec already exec'd the root helper
+                // the kill fails silently; a later version line then sends the token instead.
                 killRequested = true;
                 process.kill();
             }
@@ -243,10 +213,6 @@ bool runHelperRestore(const RestoreRequest &request,
         consume({QString::fromLocal8Bit(buffer).trimmed()});
     }
 
-    // The verdict lives in core (judgeHelperRun) rather than here, because the
-    // order of its checks is a safety rule: a requested kill is only believed
-    // when the process died without ever speaking, and a rejected version
-    // outranks whatever the exit code claims.
     HelperRunObservation run;
     run.crashed = process.exitStatus() != QProcess::NormalExit;
     run.exitCode = process.exitCode();

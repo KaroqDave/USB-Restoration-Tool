@@ -17,8 +17,7 @@
 #include <cstring>
 #include <utility>
 
-// Added to the kernel headers in 5.15. Defined here for older headers so the
-// build does not depend on them; on an older kernel the ioctl simply fails.
+// Kernel headers gained this in 5.15; on an older kernel the ioctl simply fails.
 #ifndef BLKGETDISKSEQ
 #define BLKGETDISKSEQ _IOR(0x12, 128, __u64)
 #endif
@@ -64,9 +63,6 @@ bool BlockDevice::open(Access access, QString *error)
         const int errorNumber = errno;
         if (error) {
             if (access == Access::Exclusive && errorNumber == EBUSY) {
-                // The kernel refuses an exclusive open while something still
-                // holds the disk. Saying which of the two it is saves the user
-                // guessing.
                 *error = QStringLiteral("%1 is still in use. Close anything reading from the drive, make sure every "
                                         "partition is unmounted, and try again.")
                              .arg(m_devicePath);
@@ -124,19 +120,15 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
         return refuse(QStringLiteral("%1 is not a block device.").arg(m_devicePath));
     }
 
-    // Only whole disks appear directly under /sys/block; a partition lives one
-    // level down, inside its disk's directory. So a missing entry here means
-    // the path names something that is not a whole disk, and writing a
-    // partition table into a partition would be a very bad day.
+    // Only whole disks appear directly under /sys/block, so a missing entry
+    // means the path is a partition, which must never get a partition table.
     const QString diskName = QFileInfo(m_devicePath).fileName();
     const DeviceNumber expectedNumber = readDeviceNumber(QStringLiteral("/sys/block/%1").arg(diskName));
     if (!expectedNumber.isValid()) {
         return refuse(QStringLiteral("%1 is not a whole disk.").arg(m_devicePath));
     }
 
-    // The device node's major:minor is compared against the pair sysfs reports
-    // for that disk. A node re-created between the scan and here, pointing
-    // somewhere else, would not match.
+    // Catches a node re-created since the scan to point somewhere else.
     const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
     const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
     if (actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
@@ -164,8 +156,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
         return refuse(QStringLiteral("%1 is write-protected.").arg(m_devicePath));
     }
 
-    // Re-read the bus rather than trusting the enumeration: this is the check a
-    // device swapped between the scan and now cannot get past.
+    // Re-read rather than trusting the scan, which a swapped device would have passed.
     if (!isUsbBlockDevice(diskName)) {
         return refuse(QStringLiteral("%1 is not on the USB bus.").arg(m_devicePath));
     }
@@ -211,9 +202,8 @@ bool BlockDevice::verifyPartitionOf(const QString &diskName,
         return refuse(QStringLiteral("%1 is not a block device.").arg(m_devicePath));
     }
 
-    // A partition is published inside its disk's sysfs directory and nowhere
-    // else under /sys/block, so finding the node's major:minor there is what
-    // ties it to that disk rather than to whichever disk the name now suggests.
+    // A partition appears only inside its disk's sysfs directory, so a match there
+    // ties it to that disk rather than to whichever disk the name suggests.
     const QString partitionName = QFileInfo(m_devicePath).fileName();
     const DeviceNumber expectedNumber =
         readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partitionName));
@@ -275,8 +265,6 @@ bool BlockDevice::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 
         return true;
     }
 
-    // The range has to cover whole sectors at a whole-sector offset; the
-    // shared refusal lives in core, where it is tested.
     const QString unaligned = unalignedZeroRangeError(offset, bytes, sectorSize);
     if (!unaligned.isEmpty()) {
         if (error) {
@@ -285,8 +273,7 @@ bool BlockDevice::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 
         return false;
     }
 
-    // A sector multiple, because a raw write to a block device that is not one
-    // is rejected outright on a 4 Kn disk.
+    // A 4Kn disk rejects any raw write that is not a sector multiple.
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
     const auto chunk = static_cast<int>((WriteChunkBytes / sector) * sector);
     const QByteArray zeros(chunk > 0 ? chunk : static_cast<int>(sector), '\0');
@@ -315,8 +302,7 @@ bool BlockDevice::flush(QString *error)
         }
         return false;
     }
-    // Drops the kernel's cached copy of the disk, so the partition scan that
-    // follows reads the table that was just written rather than the old one.
+    // Drop the cached copy so the partition scan reads the new table, not the old one.
     ::ioctl(m_fd, BLKFLSBUF, 0);
     return true;
 }

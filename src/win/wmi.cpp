@@ -8,9 +8,7 @@ namespace usbrestore {
 
 namespace {
 
-// FormatMessage has no text for the WBEM facility, so _com_error on a storage
-// failure would otherwise read "Unknown error". These are the codes this tool
-// can realistically provoke.
+// FormatMessage has no text for the WBEM facility, so _com_error would say "Unknown error".
 QString wbemStatusText(HRESULT result)
 {
     switch (static_cast<quint32>(result)) {
@@ -50,11 +48,8 @@ QString hresultMessage(HRESULT result)
         .arg(static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
 }
 
-// The storage classes are not consistent about VARIANT types: BusType,
-// PartitionStyle and HealthStatus arrive as uint16, Size as a BSTR holding a
-// decimal uint64, and the flags as VT_BOOL. Converting only VT_BSTR/VT_BOOL/
-// VT_I4/VT_UI4 — as the first version of this file did — silently turned every
-// uint16 property into its fallback, which is why BusType always read as 0.
+// The storage classes mix VARIANT types: BusType and similar arrive as uint16,
+// Size as a decimal BSTR, flags as VT_BOOL.
 QVariant variantToQt(const VARIANT &variant)
 {
     switch (variant.vt) {
@@ -137,17 +132,12 @@ bool initializeComSecurity(QString *error)
                                                 -1,
                                                 nullptr,
                                                 nullptr,
-                                                // Packet privacy rather than the
-                                                // machine default: the WMI traffic
-                                                // this tool exchanges names disks
-                                                // it is about to erase.
                                                 RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
                                                 RPC_C_IMP_LEVEL_IMPERSONATE,
                                                 nullptr,
                                                 EOAC_NONE,
                                                 nullptr);
-    // RPC_E_TOO_LATE means something already set the process security, which is
-    // a valid state to run in and not worth failing startup over.
+    // RPC_E_TOO_LATE: process security was already set, which is fine to run with.
     if (FAILED(result) && result != RPC_E_TOO_LATE) {
         if (error) {
             *error = QStringLiteral("CoInitializeSecurity failed: %1").arg(hresultMessage(result));
@@ -272,11 +262,8 @@ QString WmiObject::objectPath() const
 
 WmiConnection::WmiConnection(const wchar_t *namespacePath)
 {
-    // Multi-threaded rather than apartment-threaded. WMI calls are marshalled
-    // to the WMI service, and a cross-apartment call from an STA thread only
-    // returns while that thread pumps messages — which the restore worker
-    // thread does not do. On the GUI thread Qt has already entered an STA, so
-    // this returns RPC_E_CHANGED_MODE and the existing apartment is used.
+    // MTA: a marshalled call from an STA only returns while it pumps messages, which the worker
+    // does not. On the GUI thread Qt's STA stays and this returns RPC_E_CHANGED_MODE.
     HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(result) && result != RPC_E_CHANGED_MODE) {
         setError(result, QStringLiteral("CoInitializeEx failed"));
@@ -496,9 +483,7 @@ bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *e
     for (;;) {
         const WmiObject job = getObject(jobPath);
         if (!job.isValid()) {
-            // The job object disappears once Windows has cleaned it up, which
-            // it only does after the job has run. Treat that as completion
-            // rather than failing a restore that already succeeded.
+            // Windows only removes the job object after the job has run.
             return true;
         }
 
@@ -551,8 +536,6 @@ bool WmiConnection::callMethodAndWait(const QString &className,
         return false;
     }
 
-    // A 4096 means Windows only queued the work. Returning here without
-    // waiting is what made the next step race the one before it.
     return waitForJob(result.jobPath, timeoutMs, error);
 }
 

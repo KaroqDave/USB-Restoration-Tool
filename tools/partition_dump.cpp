@@ -1,11 +1,5 @@
-// Writes the partition table this tool would put on a disk into a sparse image
-// file, so it can be handed to the partitioning tools that will have to read it
-// back.
-//
-// The unit tests check the bytes against what the specification says. This
-// checks them against what sgdisk and fdisk actually accept, which is a
-// different question and the one that decides whether a restored stick mounts.
-// scripts/verify-partition-tables.sh drives it; CI runs that on every push.
+// Writes a restore's partition table into a sparse image so CI can check it against what
+// sgdisk and fdisk actually accept (driven by scripts/verify-partition-tables.sh).
 
 #include "core/disk.h"
 #include "core/partition_table.h"
@@ -61,8 +55,7 @@ int main(int argc, char *argv[])
     }
 
     request.layout = calculateGptLayout(request.diskSize, request.sectorSize);
-    // Fixed rather than random so the same arguments always produce the same
-    // image, which is what makes a failure reproducible.
+    // Fixed rather than random so a failure is reproducible.
     request.diskGuid = QByteArray::fromHex("0123456789abcdef0123456789abcdef");
     request.partitionGuid = QByteArray::fromHex("fedcba9876543210fedcba9876543210");
     request.partitionName = QStringLiteral("USB");
@@ -78,8 +71,7 @@ int main(int argc, char *argv[])
         std::fprintf(stderr, "could not open %s for writing\n", argv[4]);
         return 1;
     }
-    // Sparse: only the table sectors are actually written, so a 32 GiB image
-    // costs a few hundred kilobytes on disk.
+    // Sparse: a 32 GiB image costs a few hundred kilobytes on disk.
     if (!image.resize(static_cast<qint64>(request.diskSize))) {
         std::fprintf(stderr, "could not size %s to %llu bytes\n", argv[4],
                      static_cast<unsigned long long>(request.diskSize));

@@ -16,8 +16,6 @@ namespace {
 
 constexpr auto StorageNamespace = L"ROOT\\Microsoft\\Windows\\Storage";
 
-// Storage jobs are queued work; these bound how long the tool waits for one
-// before reporting that Windows never finished it.
 constexpr int RefreshJobTimeoutMs = 60 * 1000;
 constexpr int DeleteJobTimeoutMs = 120 * 1000;
 constexpr int FormatJobTimeoutMs = 15 * 60 * 1000;
@@ -142,10 +140,7 @@ bool VolumeManager::removeMountPointsForDisk(
             continue;
         }
 
-        // Ownership is decided on a query-only handle. Write access is only
-        // requested for a letter that has already proved to live on the disk
-        // being restored, so a bug in the extent check cannot turn into an
-        // open write handle on an unrelated drive.
+        // Query-only first: write access is never requested on a drive not proven to be the target.
         const HANDLE queryHandle = openVolumeForQuery(QChar(letter));
         if (queryHandle == INVALID_HANDLE_VALUE) {
             continue;
@@ -173,9 +168,7 @@ bool VolumeManager::removeMountPointsForDisk(
             return false;
         }
 
-        // The extent check is repeated on the writable handle. Between the two
-        // opens the letter could in principle have been reassigned, and this
-        // handle is the one about to be locked and dismounted.
+        // The letter could have been reassigned between the two opens.
         if (!volumeHasDiskExtent(handle, diskNumber)) {
             CloseHandle(handle);
             continue;
@@ -386,8 +379,6 @@ bool VolumeManager::formatVolume(
         return false;
     }
 
-    // Last check before the format: a volume that has wandered onto another
-    // disk is not the one that was just created here.
     if (!volumePathBelongsToDisk(volumeName, diskNumber, error)) {
         return false;
     }
@@ -432,9 +423,7 @@ bool VolumeManager::formatVolume(
         return false;
     }
 
-    // The label goes in as a format parameter. Setting it afterwards with
-    // SetVolumeLabelW meant a window where the drive was mounted under
-    // whatever name the previous filesystem had left behind.
+    // Labelling afterwards would leave the drive briefly mounted under the old filesystem's name.
     QVector<QPair<QString, QVariant>> inputs = {
         {QStringLiteral("FileSystem"), formatName},
         {QStringLiteral("FileSystemLabel"), label},
@@ -449,8 +438,7 @@ bool VolumeManager::formatVolume(
         return false;
     }
 
-    // Confirm through the filesystem, not through the return value: the format
-    // is only done when Windows serves the requested filesystem at the drive root.
+    // Trust the filesystem served at the drive root, not the method's return value.
     timer.restart();
     while (timer.elapsed() < 60 * 1000) {
         wchar_t volumeLabel[MAX_PATH + 1] = {};
@@ -468,8 +456,7 @@ bool VolumeManager::formatVolume(
                 if (QString::fromWCharArray(volumeLabel).compare(label, Qt::CaseInsensitive) == 0) {
                     return true;
                 }
-                // Formatted, but the label did not take. Retry it directly
-                // rather than failing a restore that has otherwise finished.
+                // Formatted but the label did not take; retry it rather than fail the restore.
                 if (SetVolumeLabelW(
                         reinterpret_cast<LPCWSTR>(driveRoot.utf16()), reinterpret_cast<LPCWSTR>(label.utf16()))) {
                     return true;

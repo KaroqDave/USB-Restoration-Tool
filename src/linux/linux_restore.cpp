@@ -32,10 +32,7 @@ namespace {
 constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
 constexpr int NewPartitionTimeoutMs = 30 * 1000;
 
-// mkfs is looked up in a fixed set of system directories rather than through
-// $PATH. This code runs as root, reached either through sudo or through pkexec,
-// and $PATH is exactly the kind of thing an unprivileged caller can arrange to
-// control.
+// Fixed directories, not $PATH: this runs as root and the caller may control $PATH.
 QString findSystemTool(const QString &name)
 {
     static const QStringList directories = {
@@ -62,16 +59,13 @@ QByteArray randomGuid()
     quint32 words[4] = {};
     QRandomGenerator::system()->fillRange(words);
     QByteArray guid(reinterpret_cast<const char *>(words), 16);
-    // RFC 4122 version 4, variant 1. GPT does not check, but a well-formed
-    // UUID is what every other tool on the disk will expect to read back.
+    // RFC 4122 version 4, variant 1: GPT does not check, but other tools expect it.
     guid[7] = static_cast<char>((guid.at(7) & 0x0F) | 0x40);
     guid[8] = static_cast<char>((guid.at(8) & 0x3F) | 0x80);
     return guid;
 }
 
-// "sdb" + 1 -> "sdb1", but "mmcblk0" + 1 -> "mmcblk0p1" and "nvme0n1" + 1 ->
-// "nvme0n1p1": a trailing digit means the partition number needs a "p" to keep
-// it from running into the device name.
+// "sdb" -> "sdb1", but a name ending in a digit takes a "p": "nvme0n1" -> "nvme0n1p1".
 QString partitionNameFor(const QString &diskName, int index)
 {
     const bool needsSeparator = !diskName.isEmpty() && diskName.back().isDigit();
@@ -102,8 +96,7 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
         }
     }
 
-    // Deepest mount point first, so a filesystem mounted inside another one on
-    // the same disk is released before the one it sits in.
+    // Deepest first, so a nested mount is released before its parent.
     QVector<MountEntry> ordered = mounts;
     std::sort(ordered.begin(), ordered.end(), [](const MountEntry &left, const MountEntry &right) {
         return left.mountPoint.size() > right.mountPoint.size();
@@ -113,9 +106,7 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
         if (!owned.contains(mount.device)) {
             continue;
         }
-        // Nothing on this disk should be a protected path, but the check that
-        // guarantees it ran against a snapshot. This is the same question asked
-        // of the mount table as it is right now, immediately before unmounting.
+        // The guard ran against a snapshot; ask again of the live mount table.
         if (isProtectedMountPoint(mount.mountPoint, protectedSystemMounts())) {
             if (error) {
                 *error = QStringLiteral("%1 is mounted at %2, which the running system depends on.")
@@ -144,12 +135,8 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
     return true;
 }
 
-// The account a finished ext4 volume should belong to. ext4 is the only
-// filesystem offered here that stores POSIX ownership on the volume itself; for
-// exFAT, FAT32 and NTFS the mount options decide, so the question does not
-// arise. This code is root either way it was reached, so without this the new
-// root directory is root:root 0755 and every write to the auto-mounted stick
-// fails with EACCES.
+// Owner for a new ext4 root directory, which would otherwise be root:root 0755 and
+// unwritable once auto-mounted. Other filesystems take ownership from mount options.
 struct DesktopOwner {
     quint32 uid = 0;
     quint32 gid = 0;
@@ -169,12 +156,8 @@ std::optional<quint32> environmentId(const char *name)
     return static_cast<quint32>(value);
 }
 
-// pkexec sets PKEXEC_UID and sudo sets SUDO_UID, and both do so in the
-// privileged child's environment rather than passing along the caller's. That
-// makes them facts about who asked rather than claims the caller wrote, which
-// is the only reason this is allowed to read them at all. Worst case, a caller
-// that somehow controls PKEXEC_UID names a different account to own a disk it
-// was already erasing.
+// pkexec and sudo set these themselves rather than passing the caller's environment,
+// so they are facts, not claims. At worst a spoofed one picks the owner of a disk being erased.
 std::optional<DesktopOwner> desktopOwner()
 {
     std::optional<quint32> uid = environmentId("PKEXEC_UID");
@@ -182,14 +165,10 @@ std::optional<DesktopOwner> desktopOwner()
         uid = environmentId("SUDO_UID");
     }
     if (!uid || *uid == 0) {
-        // A root login, reached through neither. There is no unprivileged
-        // account to name, and root:root is what mkfs would write anyway.
         return std::nullopt;
     }
 
-    // The group is not in the environment under pkexec, so take the login group
-    // the account actually has. SUDO_GID is a fallback for the case where that
-    // lookup fails, which means an account with no passwd entry at all.
+    // pkexec gives no gid; SUDO_GID covers an account with no passwd entry.
     if (const passwd *entry = ::getpwuid(static_cast<uid_t>(*uid))) {
         return DesktopOwner{*uid, static_cast<quint32>(entry->pw_gid)};
     }
@@ -209,11 +188,8 @@ bool formatPartition(FileSystemType fileSystem,
     QList<QStringList> attempts;
     switch (fileSystem) {
     case FileSystemType::ExFat:
-        // exfatprogs takes -L for the label; the older exfat-utils took -n.
-        // Which one is installed is not worth asking the user about, so the
-        // second form is tried when the first is rejected *as an unknown
-        // option* — and only then. Retrying a format that failed for a real
-        // reason would just run mkfs twice and report the wrong cause.
+        // exfatprogs takes -L, exfat-utils -n. Retried only on an unknown-option
+        // error, so a real failure is not masked by a second run.
         attempts = {
             {QStringLiteral("-L"), label, partitionPath},
             {QStringLiteral("-n"), label, partitionPath},
@@ -223,12 +199,7 @@ bool formatPartition(FileSystemType fileSystem,
         attempts = {{QStringLiteral("-F"), QStringLiteral("32"), QStringLiteral("-n"), label, partitionPath}};
         break;
     case FileSystemType::Ntfs:
-        // -Q is a quick format; a full zero-fill of a 64 GB stick can take
-        // hours and is not what anyone restoring a USB drive asked for.
-        //
-        // One form only. -f/--fast is the same mkntfs flag as -Q/--quick, not a
-        // second dialect, so retrying with it could never rescue a run the
-        // first form failed — unlike the exfatprogs/exfat-utils pair above.
+        // -Q skips a zero-fill that takes hours. One form only: -f is the same flag, not a dialect.
         attempts = {{QStringLiteral("-Q"), QStringLiteral("-L"), label, partitionPath}};
         break;
     case FileSystemType::Ext4: {
@@ -366,14 +337,8 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
     return missing(QStringLiteral("That filesystem is not supported."));
 }
 
-// The exclusive descriptor that was verified has to be closed before udev will
-// publish the new partition, and the wait that follows can run for tens of
-// seconds — long enough for the stick to drop off the bus and another to take
-// its name and major:minor. mkfs is handed a path, so everything it is about to
-// write through is confirmed again here: the disk re-enumerated and compared
-// with the one selected, its node re-opened and re-verified, and the partition
-// node tied to that disk through sysfs and, where the kernel has one, the disk
-// sequence number that no replacement can share.
+// The verified descriptor was closed for udev, and a replacement stick can take the
+// same name and major:minor during the wait, so mkfs's path is proven again.
 bool confirmNewPartition(const DiskInfo &disk,
                          const QString &partitionPath,
                          const std::optional<std::uint64_t> &diskSequence,
@@ -424,10 +389,6 @@ bool confirmNewPartition(const DiskInfo &disk,
 
 } // namespace
 
-// Whether mkfs can be trusted to produce this filesystem on this disk, asked
-// before anything is erased. Only FAT32 has anything to say: dosfstools refuses
-// neither edge of its own range, so a volume outside it comes back as a
-// successful exit and a wrong filesystem. See minimumMkfsFat32VolumeBytes().
 bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason)
 {
     const auto refuse = [reason](const QString &text) {
@@ -443,8 +404,7 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
     case FileSystemType::Ext4:
         return true;
     case FileSystemType::Fat32: {
-        // The partition, not the disk: it is a megabyte shorter, and it is what
-        // mkfs.vfat is pointed at.
+        // The partition, not the disk, is what mkfs.vfat formats.
         const std::uint64_t length = calculateGptLayout(disk.size, disk.sectorSize).length;
         const std::uint64_t maximum = maximumMkfsFat32VolumeBytes(disk.sectorSize);
         const std::uint64_t minimum = minimumMkfsFat32VolumeBytes(disk.sectorSize);
@@ -453,16 +413,12 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
                 QStringLiteral("A disk with %1-byte sectors cannot be formatted as FAT32.").arg(disk.sectorSize));
         }
         if (length > maximum) {
-            // mkfs.vfat would not refuse this. It clamps, warns, and leaves the
-            // tail of the disk unreachable.
             return refuse(QStringLiteral("FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
                                          "the rest of the drive would be left unused. Choose exFAT or NTFS.")
                               .arg(QLocale().formattedDataSize(static_cast<qint64>(maximum)))
                               .arg(disk.sectorSize));
         }
         if (length < minimum) {
-            // Nor this one: it warns that the cluster count is below FAT32's
-            // minimum and writes the filesystem anyway.
             return refuse(QStringLiteral("This drive is too small for a valid FAT32 filesystem; it needs at least "
                                          "%1. Choose exFAT.")
                               .arg(QLocale().formattedDataSize(static_cast<qint64>(minimum))));
@@ -487,8 +443,7 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // Looked up before anything is overwritten, so a missing mkfs does not
-    // leave a blank partition table behind.
+    // Before anything is overwritten, so a missing mkfs leaves the disk intact.
     const QString formatTool = resolveFormatTool(request.fileSystem, error);
     if (formatTool.isEmpty()) {
         return false;
@@ -508,10 +463,7 @@ bool performLinuxRestore(const RestoreRequest &request,
     }
     disk = currentDisk;
 
-    // Asked against the disk this process just re-derived, not the one it was
-    // handed. The GUI asks the same question before the acknowledgement dialog,
-    // but a check that only ran there would be one a caller could skip by
-    // starting the helper itself.
+    // Repeats the GUI's check on the re-derived disk; a caller could skip the GUI.
     if (!canCreateFileSystemOn(request.fileSystem, disk, &reason)) {
         if (error) {
             *error = reason;
@@ -519,8 +471,7 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // Identified before anything is unmounted, so a wrong device is caught
-    // while the only thing that has happened is a read-only open.
+    // Before unmounting, so a wrong device is caught after only a read-only open.
     reporter.step(QStringLiteral("Identifying the block device"));
     {
         BlockDevice inspect(disk.deviceId);
@@ -538,15 +489,8 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // O_EXCL is the real gate: the kernel refuses it while any partition of the
-    // disk is still mounted or claimed, so reaching this point proves nothing
-    // is live underneath the write that follows.
-    //
-    // The retry is for the desktop automounter. Unmounting a stick is exactly
-    // the event that prompts GNOME or KDE to mount it straight back, and it can
-    // win the race between the umount above and the open below. Fedora Media
-    // Writer does not have this problem because UDisks2 both unmounts and holds
-    // the device; doing it directly means handling the race directly.
+    // Retried because the desktop automounter can remount the stick between the
+    // umount and the open, which O_EXCL then refuses.
     reporter.step(QStringLiteral("Opening the device exclusively"));
     BlockDevice device(disk.deviceId);
     QString openError;
@@ -592,8 +536,7 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // Past this line nothing is reversible, so cancellation is no longer
-    // checked: a half-written table is worse than a finished one.
+    // No cancellation past here: a half-written table is worse than a finished one.
     reporter.step(QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     const std::uint64_t sector = disk.sectorSize;
     const std::uint64_t clearBytes = (qMin(SignatureClearBytes, disk.size / 4) / sector) * sector;
@@ -627,17 +570,13 @@ bool performLinuxRestore(const RestoreRequest &request,
     if (!device.rereadPartitionTable(error)) {
         return false;
     }
-    // Taken after the re-read, so whatever the re-read itself does to the
-    // number is already in it. What closing the descriptor gives up is checked
-    // against this before mkfs.
+    // Taken after the re-read, which may change it; checked again before mkfs.
     std::optional<std::uint64_t> diskSequence;
     if (std::uint64_t sequence = 0; device.diskSequence(&sequence)) {
         diskSequence = sequence;
     }
 
-    // The descriptor is closed before the kernel is asked for the new
-    // partition: udev creates the node, and it will not while the disk is
-    // still held open exclusively.
+    // udev will not create the partition node while the disk is held exclusively.
     device.close();
 
     reporter.step(QStringLiteral("Waiting for the new partition to appear"));
@@ -648,8 +587,7 @@ bool performLinuxRestore(const RestoreRequest &request,
     qint64 lastWaitNote = 0;
     while (!QFileInfo::exists(partitionPath) && timer.elapsed() < NewPartitionTimeoutMs) {
         QThread::msleep(250);
-        // Say so every few seconds: this loop can legitimately run for tens of
-        // seconds on slow media, and silence here reads as a stalled device.
+        // Slow media can take tens of seconds, and silence reads as a stall.
         if (timer.elapsed() - lastWaitNote >= 5000) {
             lastWaitNote = timer.elapsed();
             reporter.detail(
@@ -665,9 +603,7 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // A brand new partition on a removable disk is precisely what a desktop
-    // automounter jumps on, and mkfs refuses a mounted device. Give udev
-    // a moment to do whatever it is going to do, then undo it.
+    // The automounter grabs new partitions and mkfs refuses a mounted one, so undo it.
     QThread::msleep(500);
     if (!unmountDisk(disk, reporter, error)) {
         return false;
@@ -684,9 +620,7 @@ bool performLinuxRestore(const RestoreRequest &request,
 
     reporter.step(QStringLiteral("Restore complete"));
     if (result) {
-        // Mounting is left to the desktop: on Linux that is the file manager's
-        // job, and mounting as root would leave a volume the user cannot write
-        // to without sudo.
+        // Not mounted here: a root mount would leave a volume the user cannot write to.
         result->location = partitionPath;
     }
     return true;

@@ -7,14 +7,10 @@ namespace usbrestore {
 
 void hardenProcessStartup()
 {
-    // Called by both binaries: the GUI, reached through sudo from an ordinary
-    // session, and the helper, reached through pkexec from one. Either way a
-    // core dump would land in a place that session can read, carrying whatever
-    // was in memory at the time.
+    // Under sudo or pkexec a core dump would land where the user's session can read it.
     prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
 
-    // Files the app creates — the log, above all — belong to root and should
-    // not be readable or writable by anyone else by default.
+    // Root-owned files such as the log must not be readable by anyone else.
     umask(S_IRWXG | S_IRWXO);
 }
 

@@ -11,9 +11,7 @@
 
 namespace usbrestore {
 
-// A handle on \\.\PhysicalDriveN and the raw operations the restore performs
-// through it. Every destructive call is preceded by verifyIdentity(), because
-// a disk number is not a stable name for a device.
+// Call verifyIdentity() before anything destructive: a disk number is not a stable device name.
 class RawDisk {
   public:
     explicit RawDisk(quint32 diskNumber);
@@ -24,27 +22,20 @@ class RawDisk {
 
     bool open(QString *error = nullptr);
 
-    // Confirms, through the open handle, that this really is the disk the user
-    // selected: same device number, still on the USB bus, same byte length,
-    // same sector size, same serial number where one is reported, and
-    // writable. Windows can reuse a disk number the moment a device is
-    // replugged, so nothing before this point rules out having opened a
-    // different drive than the one that passed the safety checks.
+    // Windows can reuse a disk number on replug, so this re-checks the open handle
+    // (number, USB bus, size, sector size, serial, writable) against the selection.
     bool verifyIdentity(const DiskInfo &expected, QString *error = nullptr);
 
     bool lock(QString *error = nullptr);
     bool allowExtendedIo(QString *error = nullptr);
     bool refreshLayout(QString *error = nullptr);
 
-    // Overwrites the first and last few megabytes so no stale MBR, GPT, or
-    // hybrid-ISO signature survives to be re-detected.
+    // Zeroes both ends so no stale MBR, GPT or hybrid-ISO signature is re-detected.
     bool clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSize, QString *error = nullptr);
 
     bool setRaw(QString *error = nullptr);
 
-    // Lays down one data partition spanning the disk under the requested
-    // partition style. Windows writes the table itself from this description,
-    // so unlike the Linux backend there are no partition-table bytes here.
+    // Windows writes the table itself, so unlike on Linux no table bytes are built here.
     bool createSinglePartition(PartitionStyle style,
                                FileSystemType fileSystem,
                                std::uint64_t diskSize,

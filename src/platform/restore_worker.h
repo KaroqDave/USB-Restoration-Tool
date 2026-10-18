@@ -9,19 +9,15 @@
 
 namespace usbrestore {
 
-// Runs one restore on a worker thread. The object is created on the GUI thread
-// and moved to the thread that calls run(); every result leaves through a
-// signal. All it does is adapt the backend's RestoreReporter calls into those
-// signals, so the platform code never touches Qt's threading.
+// Created on the GUI thread and moved to the thread that calls run(); results leave
+// only through signals.
 class RestoreWorker : public QObject, private RestoreReporter {
     Q_OBJECT
   public:
     RestoreWorker(DiskService &service, RestoreRequest request);
 
-    // Asks the restore to stop. Only honoured while the work is still
-    // reversible: once the first sector has been overwritten there is nothing
-    // left to preserve by stopping, and a half-written partition table is
-    // worse than a finished one.
+    // Ignored once writing has begun: a half-written partition table is worse
+    // than a finished one.
     void requestCancel();
 
   public slots:

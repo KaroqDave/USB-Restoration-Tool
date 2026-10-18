@@ -23,14 +23,10 @@ bool isProcessElevated()
 
 void hardenProcessStartup()
 {
-    // System32, the directory the executable was loaded from, and directories
-    // added explicitly. Notably not the current directory and not %PATH%,
-    // which are the two an unprivileged user can most easily influence for a
-    // process that will be running as Administrator.
+    // Excludes the current directory and %PATH%, the easiest for an unprivileged user to plant in.
     if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
                                   LOAD_LIBRARY_SEARCH_USER_DIRS)) {
-        // Older systems without SetDefaultDllDirectories still honour this,
-        // which at least takes the current directory out of the search.
+        // Fallback for older systems: at least drops the current directory.
         SetDllDirectoryW(L"");
     }
 }
