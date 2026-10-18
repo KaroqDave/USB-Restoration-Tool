@@ -9,8 +9,7 @@ using namespace usbrestore;
 
 namespace {
 
-// A disk that passes every safety check, so each test can break exactly one
-// thing and see that the one thing is what gets refused.
+// Passes every safety check, so each test can break exactly one thing.
 DiskInfo healthyUsbDisk()
 {
     DiskInfo disk;
@@ -131,8 +130,8 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("SATA")));
     }
 
-    // The 1.0.0 safety check let a bus type of 0 through as "unknown is fine".
-    // A disk whose bus cannot be read is exactly the disk not to erase.
+    // 1.0.0 let bus type 0 through as "unknown is fine"; an unreadable bus is
+    // exactly the disk not to erase.
     void refusesUnknownBus()
     {
         DiskInfo disk = healthyUsbDisk();
@@ -156,8 +155,7 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("depends on")));
     }
 
-    // An empty entry in the guard must match nothing. Getting this backwards
-    // would refuse every disk on a machine that reported one blank device.
+    // Otherwise one blank device in the guard would refuse every disk.
     void emptyGuardEntriesMatchNothing()
     {
         RestoreGuard guard;
@@ -193,8 +191,7 @@ class CoreTests : public QObject {
         QVERIFY(!isSafeRestoreTarget(disk, linuxGuard()));
     }
 
-    // A disk mounted at "/" holds "/boot" whether or not "/boot" is a separate
-    // mount, so containment has to count, not just equality.
+    // "/" holds "/boot" even when it is not a separate mount, so containment counts.
     void refusesMountPointContainingAProtectedPath()
     {
         DiskInfo disk = healthyUsbDisk();
@@ -274,10 +271,8 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("serial")));
     }
 
-    // udev's usb- form is vendor_product_serial, but the product itself may
-    // contain underscores. Taking the last field invented a serial from the
-    // product name, and isSameRestoreTarget() then treated two identical
-    // serial-less sticks as the same disk.
+    // Taking the last field once invented a serial from an underscored product name,
+    // so two identical serial-less sticks passed isSameRestoreTarget() as one disk.
     void parsesSerialFromUsbByIdLink()
     {
         struct Case {
@@ -344,8 +339,7 @@ class CoreTests : public QObject {
         QVERIFY(largeRestoreTargetWarning(large).contains(QStringLiteral("Large USB disk")));
     }
 
-    // Both ends land on a 1 MiB boundary, which is what every other partitioning
-    // tool produces and what `sgdisk -v` expects to see.
+    // 1 MiB boundaries are what other partitioners produce and `sgdisk -v` expects.
     void calculatesAlignedGptLayout()
     {
         constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
@@ -367,24 +361,18 @@ class CoreTests : public QObject {
         QVERIFY(layout.startOffset + layout.length + backupGpt <= 32ull * 1024ull * 1024ull * 1024ull);
     }
 
-    // The entry array is sized in sectors, so the tail a GPT needs is 33
-    // sectors at 512 bytes and 5 at 4096 - not one constant for both.
+    // The GPT tail is 33 sectors at 512 bytes and 5 at 4096, not one constant.
     void sizesTheGptEntryArrayInSectors()
     {
         QCOMPARE(gptEntryArraySectors(512), 32u);
         QCOMPARE(gptEntryArraySectors(4096), 4u);
-        // An unsupported size falls back to the same 512 the rest of the
-        // layout arithmetic assumes, rather than to arithmetic of its own.
+        // Unsupported sizes fall back to the 512 the rest of the layout assumes.
         QCOMPARE(gptEntryArraySectors(0), 32u);
         QCOMPARE(gptEntryArraySectors(999), 32u);
     }
 
-    // calculateGptLayout() reserves a tail for the backup GPT and
-    // isWritablePartitionRequest() refuses a partition that reaches into it.
-    // Two derivations of one number, so a layout the calculator produced must
-    // never be one the gate turns down. A disagreement, if there were one,
-    // would only show where the rounding leaves almost nothing to spare, so
-    // walk the last megabyte a sector at a time.
+    // The calculator and the write gate derive the backup-GPT tail separately; a
+    // mismatch shows only where rounding leaves no slack, so walk the last MiB.
     void acceptsEveryLayoutTheCalculatorProduces()
     {
         constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
@@ -404,17 +392,13 @@ class CoreTests : public QObject {
                                          .arg(reason)));
                 }
 
-                // And the backup image ends on the last whole sector of the
-                // disk rather than past it, which is the other half of the
-                // same reservation.
+                // The backup image ends on the last whole sector, not past it.
                 QCOMPARE(gptBackupOffset(request) + static_cast<std::uint64_t>(buildGptBackup(request).size()),
                          (diskSize / sectorSize) * static_cast<std::uint64_t>(sectorSize));
             }
         }
     }
 
-    // A disk whose size is not a whole number of megabytes still gets a legal
-    // layout rather than one that runs past the backup header.
     void handlesDiskSizesThatAreNotRoundMegabytes()
     {
         const std::uint64_t odd = 16ull * 1024ull * 1024ull * 1024ull + 512ull * 777ull;
@@ -444,15 +428,12 @@ class CoreTests : public QObject {
         QVERIFY(unalignedZeroRangeError(0, 1024 * 1024, 512).isEmpty());
         QVERIFY(unalignedZeroRangeError(4096, 8192, 4096).isEmpty());
 
-        // A partial-sector length or offset is refused, not rounded — rounding
-        // down would silently leave the tail of the range unzeroed.
+        // Refused, not rounded: rounding down would silently leave the tail unzeroed.
         QVERIFY(!unalignedZeroRangeError(0, 1000, 512).isEmpty());
         QVERIFY(!unalignedZeroRangeError(100, 4096, 4096).isEmpty());
         QVERIFY(!unalignedZeroRangeError(512, 512, 4096).isEmpty());
 
-        // An unsupported sector size falls back to validating against 512 on
-        // both platforms — the shared home exists so the fallbacks cannot
-        // drift apart again.
+        // Unsupported sizes validate against 512, the same fallback on both platforms.
         QVERIFY(unalignedZeroRangeError(512, 1024, 600).isEmpty());
         QVERIFY(!unalignedZeroRangeError(0, 600, 600).isEmpty());
     }
@@ -471,8 +452,7 @@ class CoreTests : public QObject {
     void choosesFat32GeometryAtThe4096ByteSectorMinimum()
     {
         constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
-        // Larger sectors make each minimum-size cluster larger. Each FAT only
-        // needs 64 sectors, but the data region now needs just over 256 MiB.
+        // Each FAT needs only 64 sectors, but the data region needs just over 256 MiB.
         constexpr std::uint64_t minimumVolume = (32ull + 2ull * 64ull + 65527ull) * 4096ull;
 
         QCOMPARE(fat32AllocationUnitSize(minimumVolume - 4096, 4096, maximumVolume), 0u);
@@ -481,9 +461,8 @@ class CoreTests : public QObject {
 
     void growsTheFat32AllocationUnitWithTheVolume()
     {
-        // The format.com defaults, not the smallest legal unit: a 1 GiB
-        // volume gets 4 KiB clusters like Windows would give it, not the
-        // 512-byte clusters that need a 16 MB FAT.
+        // format.com defaults, not the smallest legal unit: 1 GiB gets 4 KiB
+        // clusters, not 512-byte ones that need a 16 MB FAT.
         constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
         constexpr std::uint64_t oneGiB = 1024ull * 1024ull * 1024ull;
         QCOMPARE(fat32AllocationUnitSize(1ull * oneGiB, 512, maximumVolume), 4096u);
@@ -501,10 +480,8 @@ class CoreTests : public QObject {
         QCOMPARE(fat32AllocationUnitSize(1024ull * 1024ull * 1024ull + 1, 512, maximumVolume), 0u);
     }
 
-    // The numbers below were read out of dosfstools 4.2 (mkfs.fat.c) and then
-    // checked against the binary itself: at each limit mkfs.vfat writes a clean
-    // filesystem, and one mebibyte outside it warns instead of refusing. That
-    // silent warning is the whole reason these limits are enforced here.
+    // From dosfstools 4.2 mkfs.fat.c, checked against the binary: 1 MiB outside
+    // these limits mkfs.vfat only warns, which is why they are enforced here.
     void pinsTheMkfsFat32Minimum()
     {
         // Enough sectors for the 32 reserved, two FATs and MIN_CLUST_32 =
@@ -520,8 +497,7 @@ class CoreTests : public QObject {
         QCOMPARE(maximumMkfsFat32VolumeBytes(512), 4294967295ull * 512ull);
         QCOMPARE(maximumMkfsFat32VolumeBytes(4096), 4294967295ull * 4096ull);
 
-        // Not the Windows limit. Copying that 32 GiB constant here would refuse
-        // volumes mkfs.vfat handles perfectly well.
+        // Not the Windows 32 GiB limit, which would refuse volumes mkfs.vfat handles.
         QVERIFY(maximumMkfsFat32VolumeBytes(512) > 32ull * 1024ull * 1024ull * 1024ull);
     }
 
@@ -544,9 +520,7 @@ class CoreTests : public QObject {
             QVERIFY(length < maximumMkfsFat32VolumeBytes(sectorSize));
         }
 
-        // A 4 TB USB hard disk with 512-byte sectors is over the limit, which
-        // is what the Windows-shaped 32 GiB constant would have got wrong in
-        // the other direction.
+        // A 4 TB USB hard disk with 512-byte sectors is over the limit.
         const std::uint64_t large = calculateGptLayout(4000ull * 1000ull * 1000ull * 1000ull, 512).length;
         QVERIFY(large > maximumMkfsFat32VolumeBytes(512));
 
@@ -565,9 +539,8 @@ class CoreTests : public QObject {
     }
 
     // --- Partition table bytes -------------------------------------------
-    // The Linux backend writes these itself, so a wrong byte here is a disk
-    // that no longer mounts. Windows builds the same table through an IOCTL
-    // and never runs this code, which is exactly why it is worth pinning down.
+    // Only the Linux backend writes these (Windows uses an IOCTL), so a wrong
+    // byte here is a disk that no longer mounts.
 
     void computesTheCrc32GptSpecifies()
     {
@@ -617,13 +590,11 @@ class CoreTests : public QObject {
         QCOMPARE(readLe32(header, 80), 128u); // Entry count
         QCOMPARE(readLe32(header, 84), 128u); // Entry size
 
-        // The header checksum covers the first 92 bytes with the checksum field
-        // itself read as zero. Recomputing it that way must reproduce it.
+        // The header checksum covers the first 92 bytes with its own field zeroed.
         QByteArray zeroed = header.left(92);
         zeroed.replace(16, 4, QByteArray(4, '\0'));
         QCOMPARE(readLe32(header, 16), gptCrc32(zeroed));
 
-        // And the entry-array checksum must match the array that follows.
         QCOMPARE(readLe32(header, 88), gptCrc32(primary.mid(1024, 128 * 128)));
     }
 
@@ -691,11 +662,9 @@ class CoreTests : public QObject {
         QCOMPARE(readLe64(header, 32), 1ull);         // Alternate is the primary
         QCOMPARE(readLe64(header, 72), lastLba - 32); // Its own entry array
 
-        // The backup must land exactly on that entry-array LBA.
         QCOMPARE(gptBackupOffset(request), (lastLba - 32) * 512);
         QCOMPARE(gptBackupOffset(request) + static_cast<std::uint64_t>(backup.size()), request.diskSize);
 
-        // Both copies describe the same partition.
         QCOMPARE(backup.left(128), buildGptPrimary(request).mid(1024, 128));
     }
 
@@ -706,8 +675,7 @@ class CoreTests : public QObject {
 
         const QByteArray mbr = buildMbr(request);
         QCOMPARE(mbr.size(), 512);
-        // A non-zero disk signature: Windows tells disks apart by it and gets
-        // confused when two share one.
+        // Non-zero signature: Windows tells disks apart by it.
         QCOMPARE(mbr.mid(440, 4), request.diskGuid.left(4));
         QVERIFY(mbr.mid(440, 4) != QByteArray(4, '\0'));
         QCOMPARE(static_cast<quint8>(mbr.at(446)), quint8(0x00)); // Not bootable
@@ -767,17 +735,15 @@ class CoreTests : public QObject {
         QVERIFY(!isWritablePartitionRequest(insideHeaders, &reason));
         QVERIFY(reason.contains(QStringLiteral("GPT")));
 
-        // Covers the last sector of the disk, so it is still "inside" the
-        // disk, but it overwrites the backup GPT. The past-the-end check
-        // used to let this through.
+        // Stays inside the disk but overwrites the backup GPT; the past-the-end
+        // check used to let this through.
         auto overlapsBackup = tableRequestFor(16ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Gpt);
         overlapsBackup.layout.length = overlapsBackup.diskSize - overlapsBackup.layout.startOffset;
         QVERIFY(!isWritablePartitionRequest(overlapsBackup, &reason));
         QVERIFY(reason.contains(QStringLiteral("GPT")));
     }
 
-    // MBR addresses sectors in 32 bits, which runs out at 2 TiB. A 4 TB
-    // external drive with MBR selected must be refused, not quietly truncated.
+    // MBR's 32-bit sector addresses run out at 2 TiB: refuse, don't truncate.
     void refusesMbrBeyondItsAddressingLimit()
     {
         auto request = tableRequestFor(4ull * 1024ull * 1024ull * 1024ull * 1024ull, 512, PartitionStyle::Mbr);
@@ -790,10 +756,8 @@ class CoreTests : public QObject {
         QVERIFY(isWritablePartitionRequest(request));
     }
 
-    // Everything below covers the boundary between the unprivileged GUI and the
-    // privileged helper. These arguments arrive from a process that has no
-    // privilege at all, so each test is a way the helper must refuse to be
-    // talked into something rather than a way it must cooperate.
+    // --- GUI to helper boundary: arguments come from an unprivileged process,
+    // so each test is a way the helper must refuse to be talked into something.
 
     void roundTripsRestoreArguments()
     {
@@ -815,8 +779,7 @@ class CoreTests : public QObject {
         QCOMPARE(parsed.expected.path, disk.path);
         QCOMPARE(parsed.expected.name, disk.name);
 
-        // What the round trip is for: the disk the helper enumerates for itself
-        // still reads as the disk the GUI was talking about.
+        // The disk the helper enumerates itself still matches the one the GUI meant.
         QVERIFY(isSameRestoreTarget(parsed.expected, disk));
     }
 
@@ -830,10 +793,8 @@ class CoreTests : public QObject {
         QCOMPARE(parsed.style, PartitionStyle::Gpt);
     }
 
-    // The helper must never be able to conclude "this is a USB disk" from what
-    // it was told. A DiskInfo assembled purely from arguments has no bus, and a
-    // disk with no bus is refused — so a mistake that fed one to the safety
-    // check would fail closed rather than open.
+    // A DiskInfo built from arguments has no bus and so is refused: feeding one
+    // to the safety check by mistake fails closed.
     void argumentsNeverAssertTheBus()
     {
         RestoreArguments parsed;
@@ -847,10 +808,7 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("bus")));
     }
 
-    // An identifier the GUI does not have is left out entirely, because
-    // isSameRestoreTarget() reads a value only one side reports as no
-    // information. Sending an empty string instead would be the same thing said
-    // less clearly.
+    // Safe because isSameRestoreTarget() reads a value only one side reports as no information.
     void omitsIdentifiersTheGuiDoesNotHave()
     {
         DiskInfo disk = healthyUsbDisk();
@@ -873,8 +831,7 @@ class CoreTests : public QObject {
         QVERIFY(isPlausibleDeviceNodePath(QStringLiteral("/dev/nvme0n1")));
         QVERIFY(isPlausibleDeviceNodePath(QStringLiteral("/dev/mmcblk0")));
 
-        // A separator of any kind is what would let a caller name something
-        // outside /dev, so the name may not contain one at all.
+        // Any separator would let a caller name something outside /dev.
         QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/../etc/shadow")));
         QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/dev/disk/by-id/usb-SanDisk")));
         QVERIFY(!isPlausibleDeviceNodePath(QStringLiteral("/etc/shadow")));
@@ -883,9 +840,7 @@ class CoreTests : public QObject {
         QVERIFY(!isPlausibleDeviceNodePath(QString()));
     }
 
-    // mkfs parses its own argv. A label beginning with "-" would reach it as
-    // what looks like an option, which is the one way a string that is only
-    // ever "USB" could turn into something else.
+    // mkfs parses its own argv, so a label starting with "-" would read as an option.
     void refusesLabelsThatCouldBeReadAsOptions()
     {
         QVERIFY(isValidVolumeLabel(QStringLiteral("USB")));
@@ -946,9 +901,8 @@ class CoreTests : public QObject {
         QVERIFY(refuses(wordSize, QStringLiteral("--expect-size")));
     }
 
-    // The output side of the same boundary. mkfs writes several lines at once
-    // and the tool puts them in the log verbatim; a newline reaching the wire
-    // would arrive at the GUI as a line the helper never sent.
+    // mkfs output is logged verbatim, so a newline reaching the wire would arrive
+    // at the GUI as a line the helper never sent.
     void keepsForgedLinesOutOfMessages()
     {
         const ProtocolLine forged = parseProtocolLine(
@@ -960,9 +914,7 @@ class CoreTests : public QObject {
         QCOMPARE(sanitizeProtocolText(QStringLiteral("  padded  ")), QStringLiteral("padded"));
     }
 
-    // A cancelled restore is not a failed one, and reporting it as an error is
-    // the bug this distinction exists to prevent. Both must come back empty so
-    // the worker emits cancelled() rather than failed().
+    // Both must be empty so the worker emits cancelled() rather than failed().
     void reportsNoErrorForSuccessOrCancellation()
     {
         QVERIFY(describeRestoreExit(RestoreExitSuccess, QString()).isEmpty());
@@ -976,8 +928,7 @@ class CoreTests : public QObject {
             describeRestoreExit(RestoreExitFailed, QStringLiteral("/dev/sdb is read-only.")),
             QStringLiteral("/dev/sdb is read-only."));
 
-        // The helper always explains itself, so an empty stderr means it died
-        // before it could rather than that nothing went wrong.
+        // The helper always explains itself, so an empty stderr means it died first.
         QVERIFY(!describeRestoreExit(RestoreExitFailed, QString()).isEmpty());
 
         QVERIFY(describeRestoreExit(RestoreExitUsage, QString()).contains(QStringLiteral("Reinstall")));
@@ -992,9 +943,8 @@ class CoreTests : public QObject {
         QVERIFY(unexpected.contains(QStringLiteral("9")));
     }
 
-    // The verdict on a finished helper run. The order of its checks is the
-    // safety rule under test: several of these cases document a combination
-    // that used to be reported wrongly, and their comments say how.
+    // The order of the checks is the rule under test; cases marked "used to"
+    // were once reported wrongly.
     void judgesHelperRunOutcomes()
     {
         const auto observe = [](bool crashed, int exitCode, bool sawVersion, bool versionAccepted,
@@ -1011,8 +961,7 @@ class CoreTests : public QObject {
 
         QString error;
 
-        // The ordinary endings: a finished restore, and a cancel the helper
-        // honoured at a checkpoint.
+        // Ordinary endings: success, and a cancel honoured at a checkpoint.
         QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QStringLiteral("/dev/sdb1")),
                                 &error),
                  HelperRunVerdict::Succeeded);
@@ -1021,10 +970,8 @@ class CoreTests : public QObject {
                  HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
 
-        // A kill requested before the version line is believed only when the
-        // process also died without speaking (SIGKILL landed on pkexec), or
-        // pkexec itself reported the authentication dismissed. Both mean the
-        // helper never ran.
+        // A kill before the version line is believed only if the process died silently
+        // (SIGKILL hit pkexec) or pkexec reported auth dismissed: the helper never ran.
         QCOMPARE(judgeHelperRun(observe(true, 0, false, false, true, QString()), &error),
                  HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
@@ -1032,22 +979,17 @@ class CoreTests : public QObject {
                  HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
 
-        // The race this verdict exists for: the kill was requested, but pkexec
-        // had already exec'd the root helper, so the SIGKILL failed silently
-        // and the restore ran to completion. This used to be reported as
-        // "cancelled — the disk was not changed" after the disk was erased and
-        // restored; a completed run is a completed run, kill request or not.
+        // pkexec had already exec'd the helper, so the kill missed and the restore
+        // completed. This used to be reported as "cancelled — the disk was not changed".
         QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, true, QStringLiteral("/dev/sdb1")),
                                 &error),
                  HelperRunVerdict::Succeeded);
-        // And when the late cancel token still landed at a checkpoint, it is a
-        // truthful cancellation: the helper stopped before writing anything.
+        // A late cancel token that landed at a checkpoint is a truthful cancellation.
         QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, true, true, QString()), &error),
                  HelperRunVerdict::Cancelled);
 
-        // A rejected version outranks the exit code: the lines of a helper
-        // this build cannot parse prove nothing, its "cancelled" and its
-        // "success" included. Both used to be taken at face value.
+        // A rejected version outranks the exit code: its "cancelled" and "success"
+        // used to be taken at face value.
         QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, false, false, QString()), &error),
                  HelperRunVerdict::Failed);
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
@@ -1055,9 +997,8 @@ class CoreTests : public QObject {
                                 &error),
                  HelperRunVerdict::Failed);
 
-        // No version line at all: pkexec's own codes pass through with their
-        // real meanings, and a claimed success or cancellation from a process
-        // that never spoke is a protocol failure, not a result.
+        // No version line: pkexec's codes keep their meaning, and a claimed success
+        // or cancellation is a protocol failure.
         QCOMPARE(judgeHelperRun(observe(false, 126, false, false, false, QString()), &error),
                  HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("Authentication")));
@@ -1071,13 +1012,11 @@ class CoreTests : public QObject {
                  HelperRunVerdict::Failed);
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
 
-        // A crash nobody asked for is an unexpected stop, whatever was said
-        // before it — the drive may hold a half-written table.
+        // An unrequested crash is a failure: the drive may hold a half-written table.
         QCOMPARE(judgeHelperRun(observe(true, 0, true, true, false, QString()), &error),
                  HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("unexpectedly")));
-        // Even when a kill was requested: a version line means the helper ran,
-        // so a dead process here is not the clean pre-authentication cancel.
+        // A version line means the helper ran, so this is not the pre-auth cancel.
         QCOMPARE(judgeHelperRun(observe(true, 0, true, true, true, QString()), &error),
                  HelperRunVerdict::Failed);
 
@@ -1087,8 +1026,7 @@ class CoreTests : public QObject {
         QVERIFY(error.contains(QStringLiteral("without reporting")));
     }
 
-    // The error line crosses the same boundary the progress lines do, and ends
-    // up in a dialog and the log.
+    // The error line crosses the same boundary and ends up in a dialog and the log.
     void flattensTheHelpersErrorLine()
     {
         QCOMPARE(
@@ -1112,8 +1050,7 @@ class CoreTests : public QObject {
         QCOMPARE(result.kind, ProtocolLineKind::Result);
         QCOMPARE(result.text, QStringLiteral("/dev/sdb1"));
 
-        // Anything the reader does not recognise is dropped rather than guessed
-        // at: a line it half-understands is a line it should not act on.
+        // A half-understood line is dropped rather than guessed at.
         QCOMPARE(parseProtocolLine(QStringLiteral("step 3 Formatting")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QStringLiteral("step three/ten Formatting")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QStringLiteral("version soon")).kind, ProtocolLineKind::Unknown);

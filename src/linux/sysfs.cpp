@@ -13,9 +13,7 @@ namespace {
 
 const QString SysBlock = QStringLiteral("/sys/block");
 
-// Virtual and non-restorable block devices. A loop device or an LVM volume can
-// look like a disk but is never a USB stick, and an optical drive is not
-// something this tool has any business writing to.
+// Virtual, optical and floppy devices can look like disks but are never USB sticks.
 bool isExcludedDeviceName(const QString &name)
 {
     static const QStringList prefixes = {
@@ -100,8 +98,7 @@ QStringList listPartitionNames(const QString &diskName)
     const QDir dir(QStringLiteral("%1/%2").arg(SysBlock, diskName));
     const auto entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString &entry : entries) {
-        // A partition directory is one that carries a "partition" attribute;
-        // the disk directory also holds "queue", "power" and others that do not.
+        // The disk directory also holds "queue", "power" and others without this attribute.
         if (QFileInfo::exists(QStringLiteral("%1/%2/partition").arg(dir.absolutePath(), entry))) {
             names.append(entry);
         }
@@ -123,10 +120,8 @@ QVector<MountEntry> readMounts()
         return mounts;
     }
 
-    // readAll() rather than a QTextStream loop: procfs reports every file as
-    // zero bytes, and QTextStream::atEnd() believes it, so a read loop exits
-    // before reading a single line. This is why the mount table came back
-    // empty — and with it every mount point and the whole device guard.
+    // Not a QTextStream loop: procfs files report zero bytes, so atEnd() is true at once
+    // and the mount table, and with it the device guard, would come back empty.
     const QStringList lines =
         QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &line : lines) {
@@ -153,18 +148,14 @@ QVector<MountEntry> readMounts()
 
 bool isUsbBlockDevice(const QString &diskName)
 {
-    // /sys/block/sdb is a symlink into /sys/devices, and the resolved path
-    // spells out the bus: .../pci0000:00/0000:00:14.0/usb2/2-1/2-1:1.0/host6/...
-    // A "usb" path component means the device is behind a USB controller.
+    // e.g. .../pci0000:00/0000:00:14.0/usb2/2-1/2-1:1.0/host6/...
     const QFileInfo link(QStringLiteral("%1/%2").arg(SysBlock, diskName));
     const QString resolved = link.canonicalFilePath();
     if (resolved.isEmpty()) {
         return false;
     }
 
-    // A USB host controller appears as "usbN" and nothing else in a block
-    // device's path does, so the match is anchored rather than a substring
-    // search that "usbcore" or a vendor string could satisfy by accident.
+    // Anchored, so "usbcore" or a vendor string cannot match by accident.
     static const QRegularExpression usbController(QStringLiteral("^usb[0-9]+$"));
     for (const QString &component : resolved.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
         if (usbController.match(component).hasMatch()) {
@@ -189,8 +180,6 @@ QString stableDeviceIdLink(const QString &diskName)
         if (info.canonicalFilePath() != target) {
             continue;
         }
-        // The usb- form carries vendor, product and serial; the wwn- form is
-        // just an opaque number, so it is only used if nothing better exists.
         if (entry.startsWith(QStringLiteral("usb-"))) {
             return entry;
         }
@@ -236,18 +225,8 @@ QString parentDiskName(const QString &partitionName)
 
 namespace {
 
-// One property from what udev recorded when the device appeared. Its database
-// is world-readable, which /dev/sdX is not: since the privileged work moved
-// into the helper the GUI runs as an ordinary user and cannot open a block
-// device at all. Without this every disk in the list would read
-// "RAW / unknown".
-//
-// Second-hand and possibly stale — it describes the disk as udev last saw it —
-// so nothing but what the user is shown depends on it; the helper re-reads the
-// disk itself. Property lines are "E:KEY=value".
-// Reads every requested property in one pass over the file. Values land in
-// the returned list at the same index as their key; a key the database does
-// not record leaves an empty entry.
+// udev's database is world-readable where /dev/sdX is not, but possibly stale, so
+// only display depends on it. Values match keys by index; a missing key stays empty.
 QList<QByteArray> udevProperties(const DeviceNumber &number, const QList<QByteArray> &keys)
 {
     QList<QByteArray> values(keys.size());
@@ -305,9 +284,7 @@ QString fileSystemTypeForDevice(const QString &sysfsPath)
     const QByteArray &type = values.at(0);
     const QByteArray &version = values.at(1);
 
-    // The kernel driver name "vfat" covers the whole FAT family; the variant
-    // the user would recognise — FAT32, FAT16, FAT12 — is recorded separately.
-    // The app formats and talks about "FAT32", so answer in the same terms.
+    // "vfat" covers the whole FAT family; the variant the user knows is recorded separately.
     if (type == QByteArrayLiteral("vfat") && !version.isEmpty()) {
         return QString::fromLatin1(version);
     }
@@ -327,9 +304,7 @@ PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSiz
         return PartitionStyle::Unknown;
     }
 
-    // GPT's header lives in the sector after the protective MBR, so a GPT disk
-    // also has a valid-looking MBR. Check for GPT first or every GPT disk
-    // reports as MBR.
+    // A GPT disk also has a valid protective MBR, so GPT must be checked first.
     if (device.seek(sector)) {
         const QByteArray second = device.read(8);
         if (second == QByteArrayLiteral("EFI PART")) {

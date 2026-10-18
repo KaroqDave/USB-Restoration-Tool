@@ -12,9 +12,8 @@ namespace {
 constexpr quint32 GptHeaderSize = 92;
 constexpr quint64 MbrMaxSectors = 0xFFFFFFFFull;
 
-// Classic BIOS translation geometry. Everything past its reach is written as
-// the all-ones "look at the LBA fields instead" marker, which is what fdisk
-// does and what BIOS-era devices expect to see.
+// Classic BIOS translation geometry; past its reach CHS is written as the
+// all-ones "use LBA" marker, as fdisk does.
 constexpr quint32 MbrHeads = 255;
 constexpr quint32 MbrSectorsPerTrack = 63;
 
@@ -52,16 +51,8 @@ quint64 sectorCount(const PartitionTableRequest &request)
     return request.diskSize / sector;
 }
 
-// Every LBA the GPT layout is built out of: protective MBR at LBA 0, primary
-// header at LBA 1, entry array from LBA 2, and a matching array and header at
-// the end of the disk. Derived once and shared by the header writer, the
-// backup image offset and the write gate, so that a layout cannot pass the
-// gate and then overlap the headers that get written, and so that moving the
-// entry array is one edit rather than three that have to stay in lockstep.
-//
-// `fits` is false when the disk cannot hold both copies, which is the only
-// case in which the end-of-disk fields would underflow. Nothing else in the
-// struct is meaningful then.
+// Shared by the header writer, backup offset and write gate so a layout cannot
+// pass the gate and then overlap the headers. Nothing else is valid unless `fits`.
 struct GptGeometry {
     bool fits = false;
     quint32 arraySectors = 0;
@@ -98,8 +89,7 @@ QByteArray buildEntryArray(const PartitionTableRequest &request)
 
     const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
     const quint64 firstLba = request.layout.startOffset / sector;
-    // Inclusive, as GPT defines it: the last sector that belongs to the
-    // partition, not the first one after it.
+    // Inclusive, as GPT defines it.
     const quint64 lastLba = (request.layout.startOffset + request.layout.length) / sector - 1;
 
     writeBytes(entries, 0, gptPartitionTypeGuid(request.fileSystem), 16);
@@ -139,16 +129,13 @@ QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &e
     writeLe32(header, 84, GptEntrySize);
     writeLe32(header, 88, gptCrc32(entries));
 
-    // The header checksum covers exactly the first HeaderSize bytes, with the
-    // checksum field itself read as zero — which it still is at this point.
+    // Computed while the checksum field is still zero, as the spec requires.
     const quint32 headerCrc = gptCrc32(header.left(static_cast<int>(GptHeaderSize)));
     writeLe32(header, 16, headerCrc);
 
     return header;
 }
 
-// CHS for a given LBA under the 255/63 translation, or the all-ones marker
-// once the LBA no longer fits.
 void writeChs(QByteArray &buffer, int offset, quint64 lba)
 {
     const quint64 cylinder = lba / (MbrHeads * MbrSectorsPerTrack);
@@ -197,9 +184,8 @@ quint32 gptCrc32(const QByteArray &data)
 
 QByteArray basicDataPartitionTypeGuid()
 {
-    // EBD0A0A2-B9E5-4433-87C0-68B6B72699C7. The first three groups are stored
-    // little-endian and the last two as written, which is the mixed-endian
-    // layout GPT inherited from Microsoft's GUID struct.
+    // EBD0A0A2-B9E5-4433-87C0-68B6B72699C7: first three groups little-endian,
+    // the last two as written.
     static const char bytes[16] = {
         static_cast<char>(0xA2),
         static_cast<char>(0xA0),
@@ -223,8 +209,7 @@ QByteArray basicDataPartitionTypeGuid()
 
 QByteArray linuxFilesystemPartitionTypeGuid()
 {
-    // 0FC63DAF-8483-4772-8E79-3D69D8477DE4, mixed-endian the same way as the
-    // basic-data GUID above.
+    // 0FC63DAF-8483-4772-8E79-3D69D8477DE4, mixed-endian as above.
     static const char bytes[16] = {
         static_cast<char>(0xAF),
         static_cast<char>(0x3D),
@@ -312,8 +297,7 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
     }
 
     if (request.style == PartitionStyle::Mbr) {
-        // MBR addresses sectors in 32 bits. On a 512-byte-sector disk that is
-        // 2 TiB, which no USB stick reaches but an external drive can.
+        // 32-bit sector addresses: 2 TiB at 512 bytes, which an external drive can exceed.
         if (endLba > MbrMaxSectors) {
             return refuse(QStringLiteral("MBR cannot address a partition this far into the disk. Use GPT."));
         }
@@ -333,8 +317,7 @@ QByteArray buildGptPrimary(const PartitionTableRequest &request)
     const QByteArray entries = buildEntryArray(request);
     const QByteArray header = buildHeader(request, entries, true);
 
-    // The protective MBR: one 0xEE partition covering the whole disk, so a tool
-    // that only understands MBR sees an occupied disk rather than an empty one.
+    // One 0xEE partition over the whole disk so MBR-only tools see it as occupied.
     QByteArray protectiveMbr(static_cast<int>(sector), '\0');
     protectiveMbr[446] = static_cast<char>(0x00);
     protectiveMbr[447] = static_cast<char>(0x00);
@@ -354,8 +337,7 @@ QByteArray buildGptPrimary(const PartitionTableRequest &request)
     image.append(header);
     image.append(entries);
 
-    // The entry array is padded to whole sectors so the buffer can be written
-    // in one call starting at offset 0.
+    // Pad to whole sectors so the buffer is one raw write.
     const int arrayBytes = static_cast<int>(gptEntryArraySectors(sector) * sector);
     image.append(arrayBytes - entries.size(), '\0');
     return image;
@@ -383,8 +365,6 @@ std::uint64_t gptBackupOffset(const PartitionTableRequest &request)
     if (!geometry.fits) {
         return 0;
     }
-    // The array starts arraySectors before the last sector, and the backup
-    // header occupies that last sector.
     return geometry.backupEntryLba * sector;
 }
 
@@ -395,14 +375,10 @@ QByteArray buildMbr(const PartitionTableRequest &request)
     const quint64 sectorSpan = request.layout.length / sector;
     const quint64 lastLba = firstLba + sectorSpan - 1;
 
-    // Sized to a whole sector, not to the 512 bytes an MBR occupies: a raw
-    // write to a 4 Kn device has to be a full sector or it is rejected.
     QByteArray mbr(static_cast<int>(sector), '\0');
 
-    // The 4-byte disk signature. Windows uses it to tell disks apart and gets
-    // confused by two that share one, so leaving it as zero — which is what a
-    // table written from nothing would otherwise carry — is worth avoiding.
-    // The first four bytes of the disk GUID are already random.
+    // Windows tells disks apart by this signature, so never leave it zero; the
+    // GUID's first four bytes are already random.
     if (request.diskGuid.size() >= 4) {
         writeBytes(mbr, 440, request.diskGuid.left(4), 4);
     }

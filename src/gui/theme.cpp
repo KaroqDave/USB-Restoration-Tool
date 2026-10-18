@@ -41,15 +41,13 @@ Palette lightPalette()
     p.surfaceAlt = QColor("#eef2f9");
     p.border = QColor("#d5dce8");
     p.text = QColor("#1f2937");
-    // #64748b sits at 4.40:1 against the page background, under the 4.5:1 WCAG
-    // AA floor for the subtitle and footnote labels that live outside a card.
+    // Dark enough for WCAG AA's 4.5:1 on the page background, where labels sit outside a card.
     p.mutedText = QColor("#5b6a80");
     p.accent = QColor("#2563eb");
     p.accentHover = QColor("#1d4ed8");
     p.accentPressed = QColor("#1e40af");
     p.accentText = QColor("#ffffff");
-    // The restore button is the one control in the app that destroys data, so
-    // it is the one control that is not the ordinary accent colour.
+    // The restore button destroys data, so it alone is not the accent colour.
     p.danger = QColor("#b91c1c");
     p.dangerHover = QColor("#991b1b");
     p.dangerPressed = QColor("#7f1d1d");

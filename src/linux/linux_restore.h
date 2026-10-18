@@ -4,31 +4,17 @@
 
 namespace usbrestore {
 
-// The privileged half of a Linux restore, on its own so that it can run either
-// inside the GUI process (when that process is already root) or inside the
-// helper described in docs/polkit-helper.md. It touches no widgets and creates
-// no event loop; the only way it reports anything is through the reporter it is
-// handed.
-//
-// It re-establishes every fact it depends on: the disk is enumerated again, the
-// guard is built again, and the identity is confirmed through the open
-// descriptor. That is what lets the same code be safe on both sides of a
-// privilege boundary — the caller supplies a request, never a conclusion.
+// Runs in the root GUI or in the helper, so it re-derives every fact it relies on:
+// the caller supplies a request, never a conclusion.
 
 // How many step() calls a successful restore makes.
 inline constexpr int LinuxRestoreStepCount = 10;
 
-// The step at which the disk is first written: "Clearing old MBR, GPT and ISO
-// signatures". Everything before it verifies, unmounts, or opens. Must move
-// with the step list in performLinuxRestore() — the GUI tells the user that
-// unplugging is safe strictly before this step, so being late here is worse
-// than being early.
+// "Clearing old MBR, GPT and ISO signatures"; keep in step with performLinuxRestore().
+// The GUI says unplugging is safe only before this step, so late is worse than early.
 inline constexpr int LinuxFirstDestructiveStep = 5;
 
-// Whether mkfs can produce this filesystem on this disk at all. Lives here
-// rather than on the DiskService so that both halves of the privilege split ask
-// the same question: the GUI before it offers the restore, and the helper again
-// against the disk it re-derived for itself.
+// Not on the DiskService so the GUI and the helper ask the same question.
 bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason);
 
 bool performLinuxRestore(const RestoreRequest &request,

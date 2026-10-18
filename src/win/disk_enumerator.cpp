@@ -54,8 +54,7 @@ bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *e
         return false;
     }
 
-    // BusType is part of the query rather than a check afterwards, so a disk
-    // number that has been reused by a non-USB device returns nothing at all.
+    // BusType in the query means a number reused by a non-USB device returns nothing.
     const auto objects = storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2")
                                            .arg(diskNumber)
                                            .arg(UsbBusType));
@@ -111,9 +110,7 @@ QStringList DiskEnumerator::driveLettersForDisk(quint32 diskNumber) const
             continue;
         }
 
-        // Every letter is checked, C: included. A USB disk that somehow holds
-        // the system drive has to be visible to the safety check, not filtered
-        // out before it gets there.
+        // C: included, so a USB disk holding the system drive reaches the safety check.
         const HANDLE handle = openVolumeForQuery(QChar(letter));
         if (handle == INVALID_HANDLE_VALUE) {
             continue;

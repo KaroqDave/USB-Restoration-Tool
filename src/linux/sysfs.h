@@ -10,9 +10,7 @@
 
 namespace usbrestore {
 
-// A device's kernel device number, which is the only identifier that ties a
-// mount in /proc/self/mountinfo back to the block device it came from. Mount
-// entries name a major:minor pair, not a path.
+// The only identifier that ties a mountinfo entry back to its block device.
 struct DeviceNumber {
     quint32 major = 0;
     quint32 minor = 0;
@@ -28,49 +26,36 @@ struct MountEntry {
     bool readOnly = false;
 };
 
-// Reads a sysfs attribute, trimmed. Returns an empty string when the attribute
-// does not exist, which for sysfs is the normal way of saying "not applicable
-// to this device".
+// Empty when the attribute does not exist, sysfs's way of saying "not applicable".
 QString readSysfsAttribute(const QString &path);
 
-// Every whole disk under /sys/block, by kernel name ("sda", "mmcblk0"),
-// excluding the virtual devices that are never restore targets: loop, ram,
-// device-mapper, MD arrays, zram, network block devices and optical drives.
+// Kernel names ("sda", "mmcblk0"), without virtual and optical devices.
 QStringList listBlockDeviceNames();
 
-// The partitions of a disk, by kernel name ("sda1", "mmcblk0p1").
+// Kernel names ("sda1", "mmcblk0p1").
 QStringList listPartitionNames(const QString &diskName);
 
 DeviceNumber readDeviceNumber(const QString &sysfsPath);
 
-// Everything currently mounted, from /proc/self/mountinfo.
 QVector<MountEntry> readMounts();
 
-// Whether the device sits behind a USB controller. Derived from the sysfs
-// device link, which spells out the whole bus path from the PCI root down —
-// the same thing udisks2 reads to report a ConnectionBus of "usb".
+// Reads the bus path from the sysfs device link, as udisks2 does for ConnectionBus "usb".
 bool isUsbBlockDevice(const QString &diskName);
 
-// The /dev/disk/by-id symlink that names this disk, preferring the "usb-"
-// form, which carries the vendor, product and serial the device reported.
+// Prefers the "usb-" form, which carries vendor, product and serial.
 QString stableDeviceIdLink(const QString &diskName);
 
-// The filesystem label of a partition, from /dev/disk/by-label.
 QString labelForPartition(const QString &partitionName);
 
-// The filesystem on a device ("vfat", "ext4", "iso9660"), as udev recorded it
-// when the device appeared. Takes the device's sysfs path, like
-// readDeviceNumber(). Empty when there is none or udev has not seen one.
-// Display only: the restore never trusts it.
+// "vfat" is reported as its FAT variant ("FAT32"). Display only, from udev's
+// possibly stale record: the restore never trusts it. Empty when unknown.
 QString fileSystemTypeForDevice(const QString &sysfsPath);
 
-// The disk a partition belongs to, or an empty string when the name is not a
-// partition. "sda1" -> "sda", "nvme0n1p2" -> "nvme0n1".
+// "sda1" -> "sda", "nvme0n1p2" -> "nvme0n1"; empty when the name is not a partition.
 QString parentDiskName(const QString &partitionName);
 
-// Reads the first sectors of a device to see which partition table, if any, is
-// already on it. Falls back to what udev recorded when the device node cannot
-// be opened, which is the ordinary case for the unprivileged GUI.
+// Falls back to udev's record when the node cannot be opened, the usual case for the
+// unprivileged GUI.
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize);
 
 } // namespace usbrestore

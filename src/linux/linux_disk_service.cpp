@@ -16,9 +16,7 @@ namespace usbrestore {
 
 namespace {
 
-// Whether this process is the one that will do the writing. True under sudo and
-// inside the AppImage, which cannot register a polkit action and so keeps the
-// old behaviour; false for an ordinary installed run, where the helper does it.
+// True under sudo, which the AppImage relies on because it cannot register a polkit action.
 bool runningAsRoot()
 {
     return ::geteuid() == 0;
@@ -33,9 +31,6 @@ std::unique_ptr<DiskService> DiskService::create()
 
 PrivilegeMode LinuxDiskService::privilegeMode() const
 {
-    // Nothing this process does needs privilege any more except the restore
-    // itself, and that is the helper's job. The question is no longer "am I
-    // root" but "can a restore be carried out at all", which has two answers.
     if (runningAsRoot()) {
         return PrivilegeMode::Elevated;
     }
@@ -44,9 +39,7 @@ PrivilegeMode LinuxDiskService::privilegeMode() const
 
 QString LinuxDiskService::privilegeHint() const
 {
-    // Reached only when both routes are closed: not root, and no installed
-    // helper to ask polkit about. That is an AppImage or a build directory
-    // started without sudo.
+    // Only shown when not root and no helper is installed: an AppImage or build run without sudo.
     return QStringLiteral(
                "USB Restoration Tool cannot get permission to restore USB disks.\n\nInstall it, so that "
                "it can ask for permission when a restore starts, or start it again with sudo:\n\n    "
@@ -76,8 +69,7 @@ QVector<FileSystemType> LinuxDiskService::supportedFileSystems() const
 
 bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason) const
 {
-    // Delegated so that the helper applies exactly this rule to the disk it
-    // re-derived for itself. See canCreateFileSystemOn().
+    // Shared so the helper applies exactly this rule to the disk it re-derived.
     return canCreateFileSystemOn(type, disk, reason);
 }
 
@@ -99,9 +91,6 @@ QString LinuxDiskService::restoredLocationNoun() const
 bool LinuxDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
-    // The same restore either way; the only question is which process runs it.
-    // Already root means sudo or the AppImage, where there is no privilege to
-    // ask for and no policy to ask under.
     if (runningAsRoot()) {
         return performLinuxRestore(request, reporter, result, error);
     }
