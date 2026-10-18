@@ -30,6 +30,13 @@ If runtime DLLs are missing, install the
 
 ### Linux
 
+On Ubuntu 24.04 or later and Debian 13 or later, install the `.deb`. It pulls
+in the formatters and pkexec:
+
+```bash
+sudo apt install ./usb-restoration-tool_*_amd64.deb
+```
+
 An installed build runs the GUI as your normal user and asks for authentication
 when restoring. Launch it from the applications menu or run `usb-restoration-tool`.
 See [Development](docs/development.md) to build and install from source.
@@ -41,7 +48,7 @@ chmod +x USB-Restoration-Tool-*-x86_64.AppImage
 sudo ./USB-Restoration-Tool-*-x86_64.AppImage
 ```
 
-Install the formatter for the filesystem you want:
+With the AppImage or a source build, install the formatter for the filesystem you want:
 
 | Filesystem | Debian / Ubuntu | Fedora | Arch |
 | --- | --- | --- | --- |

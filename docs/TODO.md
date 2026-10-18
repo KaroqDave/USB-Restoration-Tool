@@ -5,10 +5,16 @@
 - [ ] Test that each backend's reported step count and first destructive step
   match the restore sequence. Also handle GUI/helper version skew explicitly;
   a local step-count test alone cannot detect an older installed helper.
-- [ ] Add Linux distribution packaging, starting with one of `.deb`, `.rpm` or AUR.
-  Install the helper and polkit policy together at their configured paths.
+- [ ] Add `.rpm` or AUR packaging alongside the `.deb`, installing the helper and
+  polkit policy together at their configured paths.
+- [ ] Install the `.deb` on a desktop and run a restore through pkexec on
+  disposable media. CI only installs it and queries the helper and action.
 
 ## Recently completed
+
+- 2026-10-18: Added a `.deb` built by CPack through `scripts/build-deb.sh`, with
+  the helper at `/usr/libexec/usb-restoration-helper` and its polkit action. CI
+  builds, checks and installs it; releases attach it.
 
 - 2026-10-18: The Linux helper catches `SIGPIPE`/`SIGHUP`, and both backends
   confirm the disk again after the partition table is written and before

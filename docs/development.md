@@ -77,10 +77,26 @@ only `cmake --install --prefix` would break that relationship. See the
 | --- | --- | --- |
 | Windows portable | `./scripts/build-standalone.ps1` | Folder, ZIP and checksums under `standalone/` |
 | Linux AppImage | `./scripts/build-appimage.sh` | AppImage and checksum under `standalone/` |
+| Debian package | `./scripts/build-deb.sh` | `.deb` and checksum under `standalone/` |
 
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options
 remain available in the packaging script's help.
+
+The `.deb` is built by CPack from the `install()` rules, with the prefix fixed at
+`/usr`. Build it on the oldest release it should install on (CI uses Ubuntu 24.04),
+against the distribution's Qt:
+
+```bash
+sudo apt install cmake g++ qt6-base-dev dpkg-dev
+./scripts/build-deb.sh
+```
+
+Leave `CMAKE_PREFIX_PATH` unset so CMake finds the system Qt; `dpkg-shlibdeps`
+fails on a Qt kit no package owns. The script checks that the package contains
+the helper at `/usr/libexec/usb-restoration-helper` and a polkit action naming
+that path. `cpack` refuses any prefix other than `/usr`, since polkit reads
+actions only from `/usr/share/polkit-1/actions`.
 
 `PROJECT_VERSION` in `CMakeLists.txt` is the version source. Before tagging
 `vX.Y.Z`, update the changelog and the README's `## What's New in X.Y.Z` section.

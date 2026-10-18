@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Added
+
+- A `.deb` package for Ubuntu 24.04 and Debian 13 or later, built with CPack by
+  `scripts/build-deb.sh`. It installs the GUI, `usb-restoration-helper` in
+  `/usr/libexec` and its polkit action, so the restore runs through pkexec
+  instead of the whole app running as root. It depends on the system Qt,
+  pkexec and the four formatters. CI builds it, checks its contents and
+  installs it; release builds attach it.
+
 ### Fixed
 
 - The Linux helper no longer dies when the GUI goes away mid-restore. A
