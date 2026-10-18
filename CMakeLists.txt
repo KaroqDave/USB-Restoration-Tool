@@ -611,7 +611,7 @@ else()
         set(CPACK_PACKAGE_VENDOR KaroqDave)
         set(CPACK_PACKAGE_CONTACT "KaroqDave <47065562+KaroqDave@users.noreply.github.com>")
         set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
-        set(CPACK_PACKAGE_DESCRIPTION
+        string(CONCAT CPACK_PACKAGE_DESCRIPTION
             "Erases an ISO-written USB drive and leaves one GPT or MBR partition formatted exFAT, FAT32, NTFS or "
             "ext4. The interface runs unprivileged; the restore itself runs in a separate helper started "
             "through pkexec.")
@@ -628,9 +628,14 @@ else()
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
         # Not linked, so shlibdeps cannot see them: Qt's platform and SVG
         # plugins, pkexec, and the formatters linux_restore.cpp looks for.
-        set(CPACK_DEBIAN_PACKAGE_DEPENDS
-            "qt6-qpa-plugins, qt6-svg-plugins | libqt6svg6, pkexec | policykit-1, exfatprogs | exfat-utils, "
-            "dosfstools, ntfs-3g, e2fsprogs")
+        string(JOIN ", " CPACK_DEBIAN_PACKAGE_DEPENDS
+            qt6-qpa-plugins
+            "qt6-svg-plugins | libqt6svg6"
+            "pkexec | policykit-1"
+            "exfatprogs | exfat-utils"
+            dosfstools
+            ntfs-3g
+            e2fsprogs)
 
         include(CPack)
     endif()

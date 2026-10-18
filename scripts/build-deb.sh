@@ -79,7 +79,8 @@ dpkg-deb --extract "$Deb" "$Extracted"
 # pkexec authorises one absolute path; all three must name the same one.
 grep -qF "<annotate key=\"org.freedesktop.policykit.exec.path\">$HelperPath</annotate>" "$Extracted$PolicyPath" \
     || fail "the polkit action does not name $HelperPath"
-grep -qaF "$HelperPath" "$Extracted/usr/bin/usb-restoration-tool" \
+# QStringLiteral stores the path as UTF-16, hence -el.
+strings -el "$Extracted/usr/bin/usb-restoration-tool" | grep -qxF "$HelperPath" \
     || fail "usb-restoration-tool was not built to start $HelperPath"
 echo "  GUI and polkit action both name $HelperPath"
 
