@@ -899,9 +899,13 @@ void MainWindow::onRestoreFailed(const QString &message)
 void MainWindow::onRestoreCancelled()
 {
     setRunning(false);
-    m_logger.log(QStringLiteral("Restore cancelled before any change was made"));
+    m_logger.log(QStringLiteral("Restore cancelled before erasing the disk; existing volumes may need to be mounted "
+                               "again or have their drive letters reassigned"));
     refreshDisks();
-    setStatus(StatusKind::Info, QStringLiteral("Restore cancelled."), QStringLiteral("The disk was not changed."));
+    setStatus(StatusKind::Info,
+              QStringLiteral("Restore cancelled."),
+              QStringLiteral("The restore did not erase the disk. Existing volumes may need to be mounted again "
+                             "or have their drive letters reassigned."));
 }
 
 void MainWindow::onRestoreFinished(const QString &location)
