@@ -8,12 +8,26 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The Linux helper no longer dies when the GUI goes away mid-restore. A
+  progress line written to a closed pipe raised `SIGPIPE`, whose default action
+  could stop the helper between the partition table and `mkfs` and leave a
+  blank stick; `SIGPIPE` and `SIGHUP` are now caught.
+- The disk is confirmed again after the partition table is written, before the
+  new volume is formatted. Linux re-enumerates the disk, re-verifies its node,
+  ties the partition node to it through sysfs and, on kernel 5.15 and later,
+  compares the disk sequence number. Windows asks the open handle again before
+  assigning a drive letter and before formatting. Previously both found the new
+  volume by name or disk number alone, after a wait long enough for a different
+  stick to take either.
 - Cancellation feedback now explains that existing volumes may need to be
   mounted again or have their drive letters reassigned, instead of claiming
   that nothing changed.
 
 ### Documentation
 
+- SECURITY.md describes what happens after the partition table is written on
+  each platform, covers the helper's command-line exception, and asks Linux
+  reporters for their distribution and how the tool was run.
 - Consolidated contributor guidance and open tasks under `docs/`.
 - Removed the Obsidian vault, hardware-test logs and standalone signing guide.
 - Shortened the README and retained detailed release history here.

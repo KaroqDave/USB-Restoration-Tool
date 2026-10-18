@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <cstdint>
+#include <optional>
 
 namespace usbrestore {
 
@@ -39,6 +40,20 @@ class BlockDevice {
     // else between one open and the next, so this is asked of the descriptor
     // rather than of the path.
     bool verifyIdentity(const DiskInfo &expected, QString *error = nullptr);
+
+    // The kernel's sequence number for the disk behind this descriptor, which
+    // is never reused: a stick unplugged and replaced by another gets a new one
+    // even when it takes the same name and major:minor. Asked through a
+    // partition, it answers for the partition's disk. False on kernels older
+    // than 5.15, which do not have it.
+    bool diskSequence(std::uint64_t *sequence) const;
+
+    // Confirms, through the open descriptor, that this node is a partition of
+    // the whole disk `diskName` — and, when a sequence is given, of the very
+    // disk instance that carried it rather than one that took its name since.
+    bool verifyPartitionOf(const QString &diskName,
+                           const std::optional<std::uint64_t> &expectedSequence,
+                           QString *error = nullptr) const;
 
     std::uint64_t sizeInBytes() const;
     quint32 logicalSectorSize() const;

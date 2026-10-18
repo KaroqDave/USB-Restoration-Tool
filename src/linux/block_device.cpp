@@ -17,6 +17,12 @@
 #include <cstring>
 #include <utility>
 
+// Added to the kernel headers in 5.15. Defined here for older headers so the
+// build does not depend on them; on an older kernel the ioctl simply fails.
+#ifndef BLKGETDISKSEQ
+#define BLKGETDISKSEQ _IOR(0x12, 128, __u64)
+#endif
+
 namespace usbrestore {
 
 namespace {
@@ -162,6 +168,68 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
     // device swapped between the scan and now cannot get past.
     if (!isUsbBlockDevice(diskName)) {
         return refuse(QStringLiteral("%1 is not on the USB bus.").arg(m_devicePath));
+    }
+
+    return true;
+}
+
+bool BlockDevice::diskSequence(std::uint64_t *sequence) const
+{
+    if (m_fd < 0) {
+        return false;
+    }
+    std::uint64_t value = 0;
+    if (::ioctl(m_fd, BLKGETDISKSEQ, &value) != 0 || value == 0) {
+        return false;
+    }
+    if (sequence) {
+        *sequence = value;
+    }
+    return true;
+}
+
+bool BlockDevice::verifyPartitionOf(const QString &diskName,
+                                    const std::optional<std::uint64_t> &expectedSequence,
+                                    QString *error) const
+{
+    const auto refuse = [error](const QString &text) {
+        if (error) {
+            *error = text;
+        }
+        return false;
+    };
+
+    if (m_fd < 0) {
+        return refuse(QStringLiteral("%1 is not open.").arg(m_devicePath));
+    }
+
+    struct stat status = {};
+    if (::fstat(m_fd, &status) != 0) {
+        return refuse(errorText(QStringLiteral("Could not stat %1").arg(m_devicePath), errno));
+    }
+    if (!S_ISBLK(status.st_mode)) {
+        return refuse(QStringLiteral("%1 is not a block device.").arg(m_devicePath));
+    }
+
+    // A partition is published inside its disk's sysfs directory and nowhere
+    // else under /sys/block, so finding the node's major:minor there is what
+    // ties it to that disk rather than to whichever disk the name now suggests.
+    const QString partitionName = QFileInfo(m_devicePath).fileName();
+    const DeviceNumber expectedNumber =
+        readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partitionName));
+    const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
+    const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
+    if (!expectedNumber.isValid() || actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
+        return refuse(QStringLiteral("%1 is not a partition of /dev/%2.").arg(m_devicePath, diskName));
+    }
+
+    if (expectedSequence) {
+        std::uint64_t actualSequence = 0;
+        if (!diskSequence(&actualSequence) || actualSequence != *expectedSequence) {
+            return refuse(QStringLiteral("%1 belongs to a different disk than the one the partition table was written "
+                                         "to.")
+                              .arg(m_devicePath));
+        }
     }
 
     return true;

@@ -366,6 +366,62 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
     return missing(QStringLiteral("That filesystem is not supported."));
 }
 
+// The exclusive descriptor that was verified has to be closed before udev will
+// publish the new partition, and the wait that follows can run for tens of
+// seconds — long enough for the stick to drop off the bus and another to take
+// its name and major:minor. mkfs is handed a path, so everything it is about to
+// write through is confirmed again here: the disk re-enumerated and compared
+// with the one selected, its node re-opened and re-verified, and the partition
+// node tied to that disk through sysfs and, where the kernel has one, the disk
+// sequence number that no replacement can share.
+bool confirmNewPartition(const DiskInfo &disk,
+                         const QString &partitionPath,
+                         const std::optional<std::uint64_t> &diskSequence,
+                         RestoreReporter &reporter,
+                         QString *error)
+{
+    QString reason;
+    const auto refuse = [&disk, &reason, error]() {
+        if (error) {
+            *error = QStringLiteral("Stopped before formatting %1: %2 If the original USB disk was unplugged, its "
+                                    "partition table has already been rewritten. Plug it back in and run the restore "
+                                    "on it again.")
+                         .arg(disk.deviceId, reason);
+        }
+        return false;
+    };
+
+    DiskInfo current;
+    if (!refreshUsbDisk(disk.deviceId, &current, &reason) || !isSameRestoreTarget(disk, current, &reason)) {
+        return refuse();
+    }
+
+    BlockDevice wholeDisk(disk.deviceId);
+    if (!wholeDisk.open(BlockDevice::Access::Inspect, &reason) || !wholeDisk.verifyIdentity(disk, &reason)) {
+        return refuse();
+    }
+    if (diskSequence) {
+        std::uint64_t sequence = 0;
+        if (!wholeDisk.diskSequence(&sequence) || sequence != *diskSequence) {
+            reason = QStringLiteral("%1 is no longer the disk the partition table was written to.").arg(disk.deviceId);
+            return refuse();
+        }
+    }
+
+    BlockDevice partition(partitionPath);
+    const QString diskName = QFileInfo(disk.deviceId).fileName();
+    if (!partition.open(BlockDevice::Access::Inspect, &reason) ||
+        !partition.verifyPartitionOf(diskName, diskSequence, &reason)) {
+        return refuse();
+    }
+
+    reporter.detail(diskSequence ? QStringLiteral("Confirmed %1 is still the selected disk (sequence %2)")
+                                       .arg(disk.deviceId)
+                                       .arg(*diskSequence)
+                                 : QStringLiteral("Confirmed %1 is still the selected disk").arg(disk.deviceId));
+    return true;
+}
+
 } // namespace
 
 // Whether mkfs can be trusted to produce this filesystem on this disk, asked
@@ -571,6 +627,14 @@ bool performLinuxRestore(const RestoreRequest &request,
     if (!device.rereadPartitionTable(error)) {
         return false;
     }
+    // Taken after the re-read, so whatever the re-read itself does to the
+    // number is already in it. What closing the descriptor gives up is checked
+    // against this before mkfs.
+    std::optional<std::uint64_t> diskSequence;
+    if (std::uint64_t sequence = 0; device.diskSequence(&sequence)) {
+        diskSequence = sequence;
+    }
+
     // The descriptor is closed before the kernel is asked for the new
     // partition: udev creates the node, and it will not while the disk is
     // still held open exclusively.
@@ -606,6 +670,10 @@ bool performLinuxRestore(const RestoreRequest &request,
     // a moment to do whatever it is going to do, then undo it.
     QThread::msleep(500);
     if (!unmountDisk(disk, reporter, error)) {
+        return false;
+    }
+
+    if (!confirmNewPartition(disk, partitionPath, diskSequence, reporter, error)) {
         return false;
     }
 

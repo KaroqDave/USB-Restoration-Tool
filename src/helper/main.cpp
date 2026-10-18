@@ -23,11 +23,34 @@
 #include <QTextStream>
 
 #include <poll.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include <cstdio>
 
 namespace {
+
+void ignoreSignal(int) {}
+
+// The caller going away must not take a restore down with it. SIGPIPE arrives
+// with the first line written after the GUI has gone — crashed, killed, or
+// closed by a logout — and SIGHUP when the terminal it was started from closes;
+// the default action of either would stop this process between the partition
+// table and mkfs and leave a blank stick behind. A write to a closed pipe then
+// fails with EPIPE instead, which writeLine() already ignores.
+//
+// A handler that does nothing rather than SIG_IGN: an ignored signal stays
+// ignored across exec, so mkfs would inherit it, while a caught one is reset to
+// the default in the child.
+void outliveCaller()
+{
+    struct sigaction action = {};
+    action.sa_handler = ignoreSignal;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    ::sigaction(SIGPIPE, &action, nullptr);
+    ::sigaction(SIGHUP, &action, nullptr);
+}
 
 void writeLine(const QString &line)
 {
@@ -120,6 +143,7 @@ int main(int argc, char *argv[])
     // This process is root by definition, so it matters more here than in the
     // GUI it was split out of.
     usbrestore::hardenProcessStartup();
+    outliveCaller();
 
     // QProcess needs an application object to exist; nothing here needs it to
     // run, and exec() is deliberately never called.

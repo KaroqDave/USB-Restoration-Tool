@@ -10,6 +10,12 @@
 
 ## Recently completed
 
+- 2026-10-18: The Linux helper catches `SIGPIPE`/`SIGHUP`, and both backends
+  confirm the disk again after the partition table is written and before
+  formatting. SECURITY.md updated to match. Windows Release build and core tests
+  passed; the Linux build and both restore paths still need a run on disposable
+  media.
+
 - 2026-10-18: Clarified cancellation feedback about remounting and drive letters.
   Windows Release build and core tests passed.
 - 2026-10-18: Consolidated documentation into `docs/`, removed the Obsidian vault,

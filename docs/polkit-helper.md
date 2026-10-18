@@ -61,7 +61,9 @@ The constants and exact encoding live in `src/core/restore_protocol.*`.
 
 The GUI sends `cancel` on standard input. Cancellation is honored only at
 checkpoints before destructive work. End of input is not a cancellation:
-if the GUI exits during a write, the helper should finish the restore.
+if the GUI exits during a write, the helper finishes the restore. It catches
+`SIGPIPE` and `SIGHUP` so that writing a progress line to a closed pipe, or the
+GUI's terminal closing, does not stop it between the partition table and `mkfs`.
 
 A failed attempt to kill `pkexec` does not prove cancellation, because the
 process may already be elevated. The GUI judges the actual protocol output and

@@ -25,6 +25,24 @@ quint32 windowsFat32AllocationUnitSize(const DiskInfo &disk)
     return fat32AllocationUnitSize(layout.length, disk.sectorSize, MaximumWindowsFat32VolumeBytes);
 }
 
+// The identity check for the steps after the partition is created. By then the
+// stick is already blank, so a refusal has to say so and say what to do.
+bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error)
+{
+    QString reason;
+    if (rawDisk.verifyIdentity(disk, &reason)) {
+        return true;
+    }
+    if (error) {
+        *error = QStringLiteral("Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
+                                "partition table has already been rewritten. Plug it back in and run the restore on "
+                                "it again.")
+                     .arg(disk.number)
+                     .arg(reason);
+    }
+    return false;
+}
+
 } // namespace
 
 std::unique_ptr<DiskService> DiskService::create()
@@ -252,6 +270,17 @@ bool WindowsDiskService::restore(
         return false;
     }
 
+    // From here the volume is found, lettered and formatted by disk number
+    // alone, after a wait long enough for the stick to drop off the bus and
+    // another to be given its number. The handle opened at the start still
+    // answers for the device that passed every check, so asking it again is
+    // what proves the number still names that device — once before the volume
+    // is lettered and once right before the format, whose own extent check then
+    // ties the volume to the number.
+    if (!confirmStillSelected(rawDisk, disk, error)) {
+        return false;
+    }
+
     reporter.step(QStringLiteral("Assigning a drive letter"));
     const QString driveRoot = volumes.mountVolume(volumeName, error);
     if (driveRoot.isEmpty()) {
@@ -259,6 +288,9 @@ bool WindowsDiskService::restore(
     }
 
     reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!confirmStillSelected(rawDisk, disk, error)) {
+        return false;
+    }
     if (!volumes.formatVolume(
             volumeName, driveRoot, disk.number, request.fileSystem, allocationUnitSize, request.volumeLabel, error)) {
         return false;
