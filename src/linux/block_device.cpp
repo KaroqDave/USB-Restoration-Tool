@@ -17,8 +17,7 @@
 #include <cstring>
 #include <utility>
 
-// Added to the kernel headers in 5.15. Defined here for older headers so the
-// build does not depend on them; on an older kernel the ioctl simply fails.
+// Missing from headers older than 5.15; the ioctl then just fails.
 #ifndef BLKGETDISKSEQ
 #define BLKGETDISKSEQ _IOR(0x12, 128, __u64)
 #endif
@@ -211,9 +210,7 @@ bool BlockDevice::verifyPartitionOf(const QString &diskName,
         return refuse(QStringLiteral("%1 is not a block device.").arg(m_devicePath));
     }
 
-    // A partition is published inside its disk's sysfs directory and nowhere
-    // else under /sys/block, so finding the node's major:minor there is what
-    // ties it to that disk rather than to whichever disk the name now suggests.
+    // Only the owning disk lists the partition under /sys/block/<disk>/.
     const QString partitionName = QFileInfo(m_devicePath).fileName();
     const DeviceNumber expectedNumber =
         readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partitionName));

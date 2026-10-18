@@ -25,8 +25,7 @@ quint32 windowsFat32AllocationUnitSize(const DiskInfo &disk)
     return fat32AllocationUnitSize(layout.length, disk.sectorSize, MaximumWindowsFat32VolumeBytes);
 }
 
-// The identity check for the steps after the partition is created. By then the
-// stick is already blank, so a refusal has to say so and say what to do.
+// After partitioning the stick is blank, so the refusal says how to recover.
 bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error)
 {
     QString reason;
@@ -270,13 +269,8 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    // From here the volume is found, lettered and formatted by disk number
-    // alone, after a wait long enough for the stick to drop off the bus and
-    // another to be given its number. The handle opened at the start still
-    // answers for the device that passed every check, so asking it again is
-    // what proves the number still names that device — once before the volume
-    // is lettered and once right before the format, whose own extent check then
-    // ties the volume to the number.
+    // The rest goes by disk number alone; a live handle that still reports it
+    // proves no other stick has taken it.
     if (!confirmStillSelected(rawDisk, disk, error)) {
         return false;
     }

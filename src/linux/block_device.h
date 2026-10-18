@@ -41,16 +41,12 @@ class BlockDevice {
     // rather than of the path.
     bool verifyIdentity(const DiskInfo &expected, QString *error = nullptr);
 
-    // The kernel's sequence number for the disk behind this descriptor, which
-    // is never reused: a stick unplugged and replaced by another gets a new one
-    // even when it takes the same name and major:minor. Asked through a
-    // partition, it answers for the partition's disk. False on kernels older
-    // than 5.15, which do not have it.
+    // Never reused, so a replacement stick gets a new one even under the same
+    // name. False before kernel 5.15.
     bool diskSequence(std::uint64_t *sequence) const;
 
-    // Confirms, through the open descriptor, that this node is a partition of
-    // the whole disk `diskName` — and, when a sequence is given, of the very
-    // disk instance that carried it rather than one that took its name since.
+    // Whether this node is a partition of `diskName`, and of the disk instance
+    // with `expectedSequence` when one is given.
     bool verifyPartitionOf(const QString &diskName,
                            const std::optional<std::uint64_t> &expectedSequence,
                            QString *error = nullptr) const;

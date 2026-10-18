@@ -59,10 +59,11 @@ Platform calls report failure through a `QString *error` out-parameter and a
 the USB stick, not for a stack trace: say which disk, which operation, and what
 to do next.
 
-Comment the *why*. A comment that restates the call below it is noise; a comment
-explaining that a `4096` return value means "queued, not done", or that procfs
-reports every file as zero bytes so `QTextStream::atEnd()` lies, is the reason
-the next reader does not reintroduce the bug.
+Comment sparingly, and only the *why*: a non-obvious reason, such as a `4096`
+return value meaning "queued, not done", or procfs reporting every file as zero
+bytes so `QTextStream::atEnd()` lies. Keep it to one or two lines. Leave out
+comments that restate the code, narrate history, or repeat what a nearby
+comment or the docs already say.
 
 ## Testing Guidelines
 

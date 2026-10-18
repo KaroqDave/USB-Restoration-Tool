@@ -366,14 +366,8 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
     return missing(QStringLiteral("That filesystem is not supported."));
 }
 
-// The exclusive descriptor that was verified has to be closed before udev will
-// publish the new partition, and the wait that follows can run for tens of
-// seconds — long enough for the stick to drop off the bus and another to take
-// its name and major:minor. mkfs is handed a path, so everything it is about to
-// write through is confirmed again here: the disk re-enumerated and compared
-// with the one selected, its node re-opened and re-verified, and the partition
-// node tied to that disk through sysfs and, where the kernel has one, the disk
-// sequence number that no replacement can share.
+// The verified descriptor is closed while waiting for the partition, long
+// enough for another stick to take the name, so mkfs's target is checked again.
 bool confirmNewPartition(const DiskInfo &disk,
                          const QString &partitionPath,
                          const std::optional<std::uint64_t> &diskSequence,
@@ -627,9 +621,7 @@ bool performLinuxRestore(const RestoreRequest &request,
     if (!device.rereadPartitionTable(error)) {
         return false;
     }
-    // Taken after the re-read, so whatever the re-read itself does to the
-    // number is already in it. What closing the descriptor gives up is checked
-    // against this before mkfs.
+    // Read after the re-read, so the re-read cannot change it afterwards.
     std::optional<std::uint64_t> diskSequence;
     if (std::uint64_t sequence = 0; device.diskSequence(&sequence)) {
         diskSequence = sequence;

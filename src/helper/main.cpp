@@ -32,16 +32,8 @@ namespace {
 
 void ignoreSignal(int) {}
 
-// The caller going away must not take a restore down with it. SIGPIPE arrives
-// with the first line written after the GUI has gone — crashed, killed, or
-// closed by a logout — and SIGHUP when the terminal it was started from closes;
-// the default action of either would stop this process between the partition
-// table and mkfs and leave a blank stick behind. A write to a closed pipe then
-// fails with EPIPE instead, which writeLine() already ignores.
-//
-// A handler that does nothing rather than SIG_IGN: an ignored signal stays
-// ignored across exec, so mkfs would inherit it, while a caught one is reset to
-// the default in the child.
+// A GUI that exits mid-restore must not kill the helper between the partition
+// table and mkfs. A no-op handler, not SIG_IGN, so mkfs does not inherit it.
 void outliveCaller()
 {
     struct sigaction action = {};
