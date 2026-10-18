@@ -4,14 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Cancellation feedback now explains that existing volumes may need to be
+  mounted again or have their drive letters reassigned, instead of claiming
+  that nothing changed.
+
+### Documentation
+
+- Consolidated contributor guidance and open tasks under `docs/`.
+- Removed the Obsidian vault, hardware-test logs and standalone signing guide.
+- Shortened the README and retained detailed release history here.
+
 ## 1.5.0 - 2026-08-20
 
-A choice of filesystem, the same way 1.1.0 added a choice of partition style —
-and the first release whose Linux path has been proven on physical hardware:
-every prior-layout class, both partition styles, all four filesystems and all
-three cancel behaviours, on both the installed (helper) route and the AppImage.
-There was no 1.4.x release; those versions were built and tested but never
-tagged, and everything since 1.3.0 ships here.
+Filesystem selection, clearer progress feedback and the first Linux hardware
+validation. The untagged 1.4.x development changes shipped in this release.
 
 ### Added
 
@@ -123,8 +133,8 @@ bundled, which is a packaging project of its own.
   node cannot be opened, so the unprivileged GUI still shows GPT or MBR rather
   than "RAW / unknown" for every disk.
 
-> None of this has been exercised against a physical USB stick, and the pkexec
-> round trip has not been exercised at all. See `docs/polkit-helper.md`.
+> At the time of the 1.3.0 release, Linux hardware and polkit validation were
+> still pending. Both paths have since been tested.
 
 ## 1.1.0 - 2026-08-06
 
