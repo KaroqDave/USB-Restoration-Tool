@@ -121,14 +121,12 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
 
 int WindowsDiskService::totalRestoreSteps() const
 {
-    return 14;
+    return static_cast<int>(windowsRestorePlan().size());
 }
 
 int WindowsDiskService::firstDestructiveStep() const
 {
-    // "Deleting existing partition records"; detaching letters only edits the mount manager's
-    // database. Must move with the step list in restore().
-    return 5;
+    return firstDestructiveStepOf(windowsRestorePlan());
 }
 
 QString WindowsDiskService::restoredLocationNoun() const
@@ -149,8 +147,9 @@ bool WindowsDiskService::restore(
     }
 
     VolumeManager volumes;
+    RestoreStepCounter steps(windowsRestorePlan());
 
-    reporter.step(QStringLiteral("Verifying the selected USB disk"));
+    reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
     if (!m_enumerator.diskByNumber(disk.number, &currentDisk, error)) {
         return false;
@@ -175,7 +174,8 @@ bool WindowsDiskService::restore(
 
     // Kept open for the whole restore so raw operations hit the verified device,
     // not whatever \\.\PhysicalDriveN names later.
-    reporter.step(QStringLiteral("Opening and identifying the physical drive"));
+    reportPlannedStep(steps, reporter, RestoreStep::OpenDrive,
+                      QStringLiteral("Opening and identifying the physical drive"));
     RawDisk rawDisk(disk.number);
     if (!rawDisk.open(error) || !rawDisk.verifyIdentity(disk, error)) {
         return false;
@@ -185,12 +185,14 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reporter.step(QStringLiteral("Refreshing Windows disk metadata"));
+    reportPlannedStep(steps, reporter, RestoreStep::RefreshMetadata,
+                      QStringLiteral("Refreshing Windows disk metadata"));
     if (!volumes.refreshDisk(disk.number, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Detaching existing drive letters"));
+    reportPlannedStep(steps, reporter, RestoreStep::DetachDriveLetters,
+                      QStringLiteral("Detaching existing drive letters"));
     if (!volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
         return false;
     }
@@ -205,12 +207,13 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reporter.step(QStringLiteral("Deleting existing partition records"));
+    reportPlannedStep(steps, reporter, RestoreStep::DeletePartitions,
+                      QStringLiteral("Deleting existing partition records"));
     if (!volumes.deletePartitionsForDisk(disk.number, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Locking the physical drive"));
+    reportPlannedStep(steps, reporter, RestoreStep::LockDrive, QStringLiteral("Locking the physical drive"));
     QString lockError;
     if (!rawDisk.lock(&lockError)) {
         reporter.detail(QStringLiteral("Physical-drive lock skipped: %1").arg(lockError));
@@ -225,28 +228,32 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reporter.step(QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
+    reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures,
+                      QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     if (!rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Resetting the disk to RAW"));
+    reportPlannedStep(steps, reporter, RestoreStep::ResetToRaw, QStringLiteral("Resetting the disk to RAW"));
     if (!rawDisk.setRaw(error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Creating one %1 data partition").arg(partitionStyleLabel(request.style)));
+    reportPlannedStep(steps, reporter, RestoreStep::CreatePartition,
+                      QStringLiteral("Creating one %1 data partition").arg(partitionStyleLabel(request.style)));
     if (!rawDisk.createSinglePartition(request.style, request.fileSystem, disk.size, disk.sectorSize, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Waiting for Windows to discover the new volume"));
+    reportPlannedStep(steps, reporter, RestoreStep::WaitForVolume,
+                      QStringLiteral("Waiting for Windows to discover the new volume"));
     const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error, &reporter);
     if (volumeName.isEmpty()) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Refreshing Windows disk metadata"));
+    reportPlannedStep(steps, reporter, RestoreStep::RefreshNewVolume,
+                      QStringLiteral("Refreshing Windows disk metadata"));
     if (!volumes.refreshDisk(disk.number, error) || !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
         return false;
     }
@@ -257,13 +264,14 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reporter.step(QStringLiteral("Assigning a drive letter"));
+    reportPlannedStep(steps, reporter, RestoreStep::AssignDriveLetter, QStringLiteral("Assigning a drive letter"));
     const QString driveRoot = volumes.mountVolume(volumeName, error);
     if (driveRoot.isEmpty()) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    reportPlannedStep(steps, reporter, RestoreStep::Format,
+                      QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
     if (!confirmStillSelected(rawDisk, disk, error)) {
         return false;
     }
@@ -272,7 +280,7 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reporter.step(QStringLiteral("Restore complete"));
+    reportPlannedStep(steps, reporter, RestoreStep::Complete, QStringLiteral("Restore complete"));
     if (result) {
         result->location = driveRoot;
     }

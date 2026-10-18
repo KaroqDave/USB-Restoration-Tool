@@ -255,7 +255,8 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
     // Before the exit code: no line from a mismatched helper can be trusted, its
     // "success" or "cancelled" included.
     if (run.sawVersion && !run.versionAccepted) {
-        return failWith(describeRestoreExit(RestoreExitUsage, run.helperStderr));
+        return failWith(run.versionError.isEmpty() ? describeRestoreExit(RestoreExitUsage, run.helperStderr)
+                                                   : run.versionError);
     }
 
     if (!run.sawVersion) {
@@ -305,9 +306,14 @@ QString sanitizeProtocolText(const QString &text)
     return sanitized;
 }
 
-QString encodeVersionLine(int version)
+QString encodeVersionLine(int version, const QString &appVersion, const QVector<RestoreStep> &plan)
 {
-    return QStringLiteral("version %1").arg(version);
+    QString line = QStringLiteral("version %1").arg(version);
+    const QString app = sanitizeProtocolText(appVersion);
+    if (!app.isEmpty() && !app.contains(QLatin1Char(' '))) {
+        line += QStringLiteral(" app %1").arg(app);
+    }
+    return line + QStringLiteral(" steps %1 destructive %2").arg(plan.size()).arg(firstDestructiveStepOf(plan));
 }
 
 QString encodeStepLine(int step, int totalSteps, const QString &message)
@@ -339,13 +345,36 @@ ProtocolLine parseProtocolLine(const QString &line)
 
     bool ok = false;
     if (keyword == QStringLiteral("version")) {
-        const int version = remainder.toInt(&ok);
+        const QStringList fields = remainder.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        const int version = fields.value(0).toInt(&ok);
         if (!ok) {
             return parsed;
         }
         parsed.kind = ProtocolLineKind::Version;
         parsed.version = version;
-        return parsed;
+
+        // Malformed details leave all of them unset, which acceptHelperAnnouncement() refuses.
+        ProtocolLine details = parsed;
+        for (int index = 1; index < fields.size(); index += 2) {
+            const QString key = fields.at(index);
+            const QString value = fields.value(index + 1);
+            if (value.isEmpty()) {
+                return parsed;
+            }
+            if (key == QStringLiteral("app")) {
+                details.appVersion = value;
+            } else if (key == QStringLiteral("steps")) {
+                details.totalSteps = value.toInt(&ok);
+            } else if (key == QStringLiteral("destructive")) {
+                details.firstDestructiveStep = value.toInt(&ok);
+            } else {
+                ok = false;
+            }
+            if (!ok) {
+                return parsed;
+            }
+        }
+        return details;
     }
 
     if (keyword == QStringLiteral("step")) {
@@ -385,6 +414,34 @@ ProtocolLine parseProtocolLine(const QString &line)
     }
 
     return parsed;
+}
+
+bool acceptHelperAnnouncement(const ProtocolLine &announcement, const QString &ourAppVersion,
+                              const QVector<RestoreStep> &plan, QString *error)
+{
+    if (announcement.kind != ProtocolLineKind::Version) {
+        return fail(error, describeRestoreExit(RestoreExitUsage, QString()));
+    }
+
+    const bool samePlan = announcement.totalSteps == plan.size() &&
+                          announcement.firstDestructiveStep == firstDestructiveStepOf(plan);
+    if (announcement.version == RestoreProtocolVersion && samePlan) {
+        return true;
+    }
+
+    QString theirs;
+    if (announcement.appVersion.isEmpty()) {
+        theirs = QStringLiteral("an older version");
+    } else if (announcement.appVersion == ourAppVersion) {
+        theirs = QStringLiteral("a different build of version %1").arg(announcement.appVersion);
+    } else {
+        theirs = QStringLiteral("version %1").arg(announcement.appVersion);
+    }
+    return fail(error, QStringLiteral("USB Restoration Tool is version %1, but its restore helper is from %2, so "
+                                      "the two disagree about how a restore proceeds. This usually means a partly "
+                                      "upgraded installation. Reinstall the application so both come from the same "
+                                      "release.")
+                           .arg(ourAppVersion, theirs));
 }
 
 } // namespace usbrestore

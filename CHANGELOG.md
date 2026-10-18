@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- A Linux GUI and restore helper from different releases are now refused
+  before the password prompt, with an error naming both versions. The helper
+  announces its step count and first destructive step along with the protocol
+  version (now 3), because the GUI uses its own copy of those numbers to say
+  whether unplugging the stick is still safe.
+
+### Changed
+
+- Each backend's restore steps are listed once in `src/core/restore_steps.cpp`.
+  The step count and first destructive step are derived from that list and
+  pinned by tests, and a backend that reports a step out of order is logged.
+
 ## 1.6.0 - 2026-10-18
 
 A Debian package that keeps the Linux GUI unprivileged, and a second identity

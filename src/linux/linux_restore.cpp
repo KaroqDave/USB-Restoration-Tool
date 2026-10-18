@@ -449,7 +449,8 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    reporter.step(QStringLiteral("Verifying the selected USB disk"));
+    RestoreStepCounter steps(linuxRestorePlan());
+    reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
     if (!refreshUsbDisk(disk.deviceId, &currentDisk, error)) {
         return false;
@@ -472,7 +473,7 @@ bool performLinuxRestore(const RestoreRequest &request,
     }
 
     // Before unmounting, so a wrong device is caught after only a read-only open.
-    reporter.step(QStringLiteral("Identifying the block device"));
+    reportPlannedStep(steps, reporter, RestoreStep::IdentifyDevice, QStringLiteral("Identifying the block device"));
     {
         BlockDevice inspect(disk.deviceId);
         if (!inspect.open(BlockDevice::Access::Inspect, error) || !inspect.verifyIdentity(disk, error)) {
@@ -484,14 +485,14 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    reporter.step(QStringLiteral("Unmounting existing filesystems"));
+    reportPlannedStep(steps, reporter, RestoreStep::Unmount, QStringLiteral("Unmounting existing filesystems"));
     if (!unmountDisk(disk, reporter, error)) {
         return false;
     }
 
     // Retried because the desktop automounter can remount the stick between the
     // umount and the open, which O_EXCL then refuses.
-    reporter.step(QStringLiteral("Opening the device exclusively"));
+    reportPlannedStep(steps, reporter, RestoreStep::OpenExclusive, QStringLiteral("Opening the device exclusively"));
     BlockDevice device(disk.deviceId);
     QString openError;
     bool opened = false;
@@ -537,7 +538,8 @@ bool performLinuxRestore(const RestoreRequest &request,
     }
 
     // No cancellation past here: a half-written table is worse than a finished one.
-    reporter.step(QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
+    reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures,
+                      QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     const std::uint64_t sector = disk.sectorSize;
     const std::uint64_t clearBytes = (qMin(SignatureClearBytes, disk.size / 4) / sector) * sector;
     if (clearBytes < sector) {
@@ -551,7 +553,8 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    reporter.step(QStringLiteral("Writing the %1 partition table").arg(partitionStyleLabel(request.style)));
+    reportPlannedStep(steps, reporter, RestoreStep::WritePartitionTable,
+                      QStringLiteral("Writing the %1 partition table").arg(partitionStyleLabel(request.style)));
     if (request.style == PartitionStyle::Gpt) {
         if (!device.writeAt(0, buildGptPrimary(tableRequest), error) ||
             !device.writeAt(gptBackupOffset(tableRequest), buildGptBackup(tableRequest), error)) {
@@ -563,7 +566,8 @@ bool performLinuxRestore(const RestoreRequest &request,
         }
     }
 
-    reporter.step(QStringLiteral("Re-reading the partition table"));
+    reportPlannedStep(steps, reporter, RestoreStep::RereadPartitionTable,
+                      QStringLiteral("Re-reading the partition table"));
     if (!device.flush(error)) {
         return false;
     }
@@ -579,7 +583,8 @@ bool performLinuxRestore(const RestoreRequest &request,
     // udev will not create the partition node while the disk is held exclusively.
     device.close();
 
-    reporter.step(QStringLiteral("Waiting for the new partition to appear"));
+    reportPlannedStep(steps, reporter, RestoreStep::WaitForPartition,
+                      QStringLiteral("Waiting for the new partition to appear"));
     const QString diskName = QFileInfo(disk.deviceId).fileName();
     const QString partitionPath = devicePathFor(partitionNameFor(diskName, 1));
     QElapsedTimer timer;
@@ -613,12 +618,13 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    reportPlannedStep(steps, reporter, RestoreStep::Format,
+                      QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
     if (!formatPartition(request.fileSystem, formatTool, partitionPath, request.volumeLabel, reporter, error)) {
         return false;
     }
 
-    reporter.step(QStringLiteral("Restore complete"));
+    reportPlannedStep(steps, reporter, RestoreStep::Complete, QStringLiteral("Restore complete"));
     if (result) {
         // Not mounted here: a root mount would leave a volume the user cannot write to.
         result->location = partitionPath;

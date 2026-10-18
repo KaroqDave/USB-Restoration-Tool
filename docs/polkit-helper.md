@@ -15,6 +15,7 @@ policy needed by a separate helper.
 - `helper_client.*`: starts the helper and interprets its output.
 - `src/helper/main.cpp`: validates requests and reports progress.
 - `src/core/restore_protocol.*`: shared argument and message parsing.
+- `src/core/restore_steps.*`: the restore step plan both sides number steps by.
 
 Keep enumeration and restore separate so the helper does not need the GUI or
 `LinuxDiskService`.
@@ -45,8 +46,13 @@ lists, never through a shell. See [SECURITY.md](../SECURITY.md) for the full pol
 ## Protocol and cancellation
 
 The GUI probes `--protocol-version` before authentication. The helper also emits
-a version line when it starts a restore. A mismatch is rejected; if detected
-during the run, the GUI sends a cancellation request immediately.
+a version line when it starts a restore. The line names the protocol version,
+the helper's application version, its step count and its first destructive
+step, for example `version 3 app 1.5.1 steps 10 destructive 5`. The GUI numbers
+the helper's steps and decides when unplugging is still safe from its own copy
+of the plan, so it rejects a different protocol or plan, naming both
+application versions. If the mismatch is detected during the run, the GUI sends
+a cancellation request immediately. Application versions alone may differ.
 
 Standard output carries `version`, `step`, `detail` and `result` lines. Control
 characters are stripped before encoding messages. Errors use standard error.

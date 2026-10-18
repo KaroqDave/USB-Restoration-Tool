@@ -5,6 +5,10 @@
 #include <QFileInfo>
 #include <QProcess>
 
+#ifndef USBRESTORE_APP_VERSION
+#error "USBRESTORE_APP_VERSION must be defined by the build"
+#endif
+
 #ifndef USBRESTORE_HELPER_PATH
 #define USBRESTORE_HELPER_PATH "/usr/libexec/usb-restoration-helper"
 #endif
@@ -40,6 +44,11 @@ QString findPkexec()
     return {};
 }
 
+bool acceptAnnouncement(const ProtocolLine &line, QString *error)
+{
+    return acceptHelperAnnouncement(line, QStringLiteral(USBRESTORE_APP_VERSION), linuxRestorePlan(), error);
+}
+
 // Unprivileged, so a mismatched helper is caught before the password prompt.
 bool helperSpeaksOurProtocol(const QString &helper, QString *error)
 {
@@ -56,14 +65,8 @@ bool helperSpeaksOurProtocol(const QString &helper, QString *error)
         return false;
     }
 
-    const ProtocolLine line = parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed());
-    if (line.kind != ProtocolLineKind::Version || line.version != RestoreProtocolVersion) {
-        if (error) {
-            *error = describeRestoreExit(RestoreExitUsage, QString());
-        }
-        return false;
-    }
-    return true;
+    return acceptAnnouncement(parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed()),
+                              error);
 }
 
 // Leaves a partial last line in the buffer for the next read.
@@ -145,6 +148,7 @@ bool runHelperRestore(const RestoreRequest &request,
     QString location;
     bool sawVersion = false;
     bool versionAccepted = false;
+    QString versionError;
     bool cancelTokenWritten = false;
     bool killRequested = false;
 
@@ -166,7 +170,7 @@ bool runHelperRestore(const RestoreRequest &request,
             switch (parsed.kind) {
             case ProtocolLineKind::Version:
                 sawVersion = true;
-                versionAccepted = parsed.version == RestoreProtocolVersion;
+                versionAccepted = acceptAnnouncement(parsed, &versionError);
                 // Stop now, before the disk is touched; the helper is root, so the
                 // cancel token is the only lever. Reachable only if the binary changed.
                 if (!versionAccepted) {
@@ -218,6 +222,7 @@ bool runHelperRestore(const RestoreRequest &request,
     run.exitCode = process.exitCode();
     run.sawVersion = sawVersion;
     run.versionAccepted = versionAccepted;
+    run.versionError = versionError;
     run.killRequested = killRequested;
     run.location = location;
     run.helperStderr = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
