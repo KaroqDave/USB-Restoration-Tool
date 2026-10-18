@@ -79,9 +79,7 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
             }
 
             const auto *extents = reinterpret_cast<const VOLUME_DISK_EXTENTS *>(buffer.constData());
-            // NumberOfDiskExtents is a count reported by the driver. It is
-            // trusted only as far as the bytes that actually came back, so a
-            // wrong count cannot walk this loop off the end of the buffer.
+            // The driver's count is bounded by the bytes returned so it cannot overrun the buffer.
             const DWORD fits = (returned - headerSize) / sizeof(DISK_EXTENT);
             const DWORD count = qMin(extents->NumberOfDiskExtents, fits);
             for (DWORD i = 0; i < count; ++i) {
@@ -147,8 +145,7 @@ QStringList protectedSystemDriveLetters()
 
 bool openAsInvokingUser(const QString &target)
 {
-    // The target is quoted for explorer's command line, so a quote inside it
-    // would end the argument early. Nothing this app opens contains one.
+    // A quote would end explorer's quoted argument early.
     if (target.isEmpty() || target.contains(QLatin1Char('"'))) {
         return false;
     }

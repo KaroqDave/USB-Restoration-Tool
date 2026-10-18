@@ -15,9 +15,8 @@ QString normalizedIdentity(const QString &value)
     return value.trimmed().toCaseFolded();
 }
 
-// "C:", "C:\" and a bare "C" all name a Windows drive. The bare form matters:
-// the Windows backend builds its guard from single letters while a disk
-// reports its mounts as "E:", and without this the two would never match.
+// The bare "C" form matters: the Windows guard holds single letters while disks
+// report "E:", and the two would otherwise never match.
 bool looksLikeDriveLetter(const QString &value)
 {
     if (value.size() == 1) {
@@ -26,8 +25,6 @@ bool looksLikeDriveLetter(const QString &value)
     return value.size() >= 2 && value.at(1) == QLatin1Char(':');
 }
 
-// "e:\", "E:", "e" all name the same drive; "/run/media/dave/USB/" and
-// "/run/media/dave/USB" the same directory.
 QString normalizedMountPoint(const QString &value)
 {
     QString mount = value.trimmed();
@@ -46,8 +43,6 @@ QString normalizedMountPoint(const QString &value)
     return mount;
 }
 
-// Both values are known and they differ. An identifier that one side does not
-// report says nothing about identity, so it must not count as a mismatch.
 bool bothKnownAndDifferent(const QString &left, const QString &right)
 {
     const QString a = normalizedIdentity(left);
@@ -55,8 +50,7 @@ bool bothKnownAndDifferent(const QString &left, const QString &right)
     return !a.isEmpty() && !b.isEmpty() && a != b;
 }
 
-// Deliberately not the negation of the above: an empty entry in the protected
-// device list must match nothing, rather than matching everything.
+// Not the negation of the above: an empty protected entry must match nothing.
 bool bothKnownAndEqual(const QString &left, const QString &right)
 {
     const QString a = normalizedIdentity(left);
@@ -84,10 +78,8 @@ std::uint64_t fat32DataClusterCount(std::uint64_t volumeSize, quint32 sectorSize
     std::uint64_t low = 0;
     std::uint64_t high = (totalSectors - reservedSectors) / sectorsPerCluster;
 
-    // Find the greatest data-cluster count whose reserved area, two FATs and
-    // data region all fit. This includes the two reserved FAT entries and
-    // avoids accepting a boundary that raw volumeSize / allocationUnitSize
-    // would put just on the wrong side of FAT16/FAT32.
+    // Counts the FATs and reserved area, which volumeSize / allocationUnitSize
+    // ignores and which can move a volume across the FAT16/FAT32 boundary.
     while (low < high) {
         const std::uint64_t clusters = low + (high - low + 1) / 2;
         const std::uint64_t fatBytes = (clusters + 2) * fatEntryBytes;
@@ -121,9 +113,7 @@ bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protect
             return true;
         }
 
-        // A POSIX mount point that contains a protected path is protected too:
-        // a disk mounted at "/" holds "/boot" whether or not "/boot" was listed
-        // as a separate mount. Drive letters have no such containment.
+        // A disk mounted at "/" holds "/boot" whether or not that is a separate mount.
         if (!looksLikeDriveLetter(candidate) && !looksLikeDriveLetter(guarded)) {
             const QString prefix = candidate == QStringLiteral("/") ? candidate : candidate + QLatin1Char('/');
             if (guarded.startsWith(prefix)) {
@@ -184,8 +174,7 @@ bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QStrin
         return refuse(QStringLiteral("This disk reports no device path to restore."));
     }
 
-    // Checked before anything else and without an "unknown is fine" escape
-    // hatch: an unreadable bus is a reason to stop, not a reason to continue.
+    // No "unknown is fine" escape: an unreadable bus is a reason to stop.
     if (disk.busType != UsbBusType) {
         return refuse(QStringLiteral("%1 is on the %2 bus, not USB.").arg(name, busTypeName(disk.busType)));
     }
@@ -261,9 +250,7 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
         return refuse(QStringLiteral("sector size"));
     }
 
-    // Every identifier both sides report has to agree. Stopping at the first
-    // strong identifier that matched let a device keep its serial number while
-    // changing its path and still pass as unchanged.
+    // Check all of them: a device can keep its serial while changing its path.
     if (bothKnownAndDifferent(selected.serialNumber, current.serialNumber)) {
         return refuse(QStringLiteral("serial number"));
     }
@@ -290,17 +277,13 @@ QString serialFromUsbByIdLink(const QString &link, const QString &productName)
     static const QRegularExpression hostSuffix(QStringLiteral("-[0-9]+:[0-9]+$"));
     value.remove(hostSuffix);
 
-    // "usb-" is a prefix, not a field. Counting parts of the remainder is what
-    // distinguishes vendor_product_serial from vendor_product.
     const QStringList parts = value.mid(4).split(QLatin1Char('_'), Qt::SkipEmptyParts);
     if (parts.size() < 3) {
         return {};
     }
 
     const QString candidate = parts.last();
-    // Product names with underscores already satisfy the three-part rule
-    // ("Generic_Flash_Disk"). A tail that appears in the product is the
-    // product, not a serial.
+    // "Generic_Flash_Disk" passes the three-part rule; its tail is the product.
     if (!productName.isEmpty() && productName.contains(candidate, Qt::CaseInsensitive)) {
         return {};
     }
@@ -334,21 +317,16 @@ GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize)
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
     const std::uint64_t oneMiB = 1024ull * 1024ull;
     const std::uint64_t start = ((oneMiB + sector - 1) / sector) * sector;
-    // The backup GPT is one entry array plus its header: 33 sectors at 512
-    // bytes, 5 at 4096. Derived rather than stated, because the write gate
-    // refuses a partition that reaches into the same sectors and the two have
-    // to agree. Reserved under MBR too, so switching the partition style never
-    // changes where the data starts or ends.
+    // Derived, not hard-coded, so it agrees with the write gate. Reserved under MBR
+    // too, so the partition style never moves where the data starts or ends.
     const std::uint64_t backupGpt = (gptEntryArraySectors(sectorSize) + 1ull) * sector;
 
     if (diskSize <= start + backupGpt + sector) {
         return {};
     }
 
-    // The length is rounded down to the same 1 MiB the partition starts on, so
-    // the end lands on a 1 MiB boundary too. That is what fdisk, gdisk and
-    // Windows all produce, and `sgdisk -v` complains about a partition that
-    // ends anywhere else. It costs under a megabyte of a disk.
+    // End on a 1 MiB boundary as fdisk, gdisk and Windows do; `sgdisk -v`
+    // complains about a partition that ends anywhere else.
     const std::uint64_t alignment = qMax<std::uint64_t>(oneMiB, sector);
     const std::uint64_t rawLength = diskSize - start - backupGpt;
     const std::uint64_t length = (rawLength / alignment) * alignment;
@@ -360,8 +338,7 @@ GptLayout calculateGptLayout(std::uint64_t diskSize, quint32 sectorSize)
 
 quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, std::uint64_t maximumVolumeSize)
 {
-    // These are the limits enforced by the Windows format stack. Staying
-    // within them also keeps the volume away from FAT16's cluster range.
+    // The Windows format stack's limits; they also keep clear of FAT16's range.
     constexpr std::uint64_t minimumClusters = 65527;
     constexpr std::uint64_t maximumClusters = 4177917;
     constexpr std::array<quint32, 10> allocationUnitSizes = {
@@ -381,11 +358,8 @@ quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, st
         return 0;
     }
 
-    // The unit format.com itself would pick for this volume size. Taking
-    // merely the smallest legal unit instead produces a valid but degenerate
-    // filesystem: a 1 GiB volume with 512-byte clusters carries roughly 2.1
-    // million clusters and about 16 MB of FAT across both copies, where the
-    // Windows default is 4 KiB.
+    // format.com's default unit. The smallest legal unit is valid but degenerate:
+    // 512-byte clusters give a 1 GiB volume about 16 MB of FAT.
     constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
     constexpr std::uint64_t oneGiB = 1024ull * oneMiB;
     quint32 preferred = 32 * 1024;
@@ -403,13 +377,10 @@ quint32 fat32AllocationUnitSize(std::uint64_t volumeSize, quint32 sectorSize, st
         preferred = 16 * 1024;
     }
 
-    // The largest legal unit no larger than the preferred one; failing that,
-    // the smallest legal unit at all, because a working filesystem with odd
-    // clusters beats a refusal.
+    // Fall back to any legal unit: odd clusters beat a refusal.
     quint32 best = 0;
     for (const quint32 allocationUnitSize : allocationUnitSizes) {
-        // Windows only permits 128 KiB and 256 KiB FAT allocation units when
-        // the physical sector is larger than 512 bytes.
+        // Windows allows 128 and 256 KiB units only on sectors above 512 bytes.
         if ((allocationUnitSize > 64 * 1024 && sectorSize == 512) || allocationUnitSize < sectorSize ||
             allocationUnitSize % sectorSize != 0) {
             continue;
@@ -433,26 +404,19 @@ std::uint64_t minimumMkfsFat32VolumeBytes(quint32 sectorSize)
         return 0;
     }
 
-    // MIN_CLUST_32 in mkfs.fat.c. Two clusters short of the 65,527 the Windows
-    // formatter demands, because the two came from different vendors; the
-    // stricter number is not the one dosfstools checks against.
+    // MIN_CLUST_32 in mkfs.fat.c, two short of the 65,527 Windows demands.
     constexpr std::uint64_t minimumClusters = 65525;
     constexpr std::uint64_t reservedSectors = 32;
     constexpr std::uint64_t fatCount = 2;
     constexpr std::uint64_t fatEntryBytes = 4;
 
-    // One sector per cluster: the smallest cluster mkfs.vfat can pick, and so
-    // the geometry that reaches the cluster minimum on the smallest volume.
-    // Anything below this cannot reach it at any cluster size.
+    // One sector per cluster reaches the cluster minimum on the smallest volume.
     const std::uint64_t fatBytes = (minimumClusters + 2) * fatEntryBytes;
     const std::uint64_t fatSectors = (fatBytes + sectorSize - 1) / sectorSize;
     const std::uint64_t bare = (reservedSectors + fatCount * fatSectors + minimumClusters) * sectorSize;
 
-    // Rounded up to a whole mebibyte. mkfs.vfat aligns the reserved area, each
-    // FAT and the sector count itself, which moves the real floor up by a
-    // handful of sectors — measured at eleven with 512-byte sectors, and not a
-    // calculation worth reproducing here to chase. A megabyte is the alignment
-    // the partition already uses, and the floor is around 33 MiB either way.
+    // mkfs.vfat's own alignment raises the floor by a few sectors (eleven at 512
+    // bytes); rounding up to a mebibyte covers that without reproducing it.
     constexpr std::uint64_t oneMiB = 1024ull * 1024ull;
     return ((bare + oneMiB - 1) / oneMiB) * oneMiB;
 }
@@ -463,8 +427,7 @@ std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize)
         return 0;
     }
 
-    // num_sectors in mkfs.fat.c is a uint32_t, so the largest volume it can
-    // describe is that many sectors — 2 TiB at 512 bytes, 16 TiB at 4096.
+    // num_sectors in mkfs.fat.c is a uint32_t.
     return static_cast<std::uint64_t>(std::numeric_limits<quint32>::max()) * sectorSize;
 }
 

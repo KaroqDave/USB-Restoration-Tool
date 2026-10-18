@@ -10,9 +10,7 @@ namespace usbrestore {
 struct AppSettings {
     Theme theme = Theme::System;
     QByteArray geometry;
-    // Remembered because someone restoring sticks for an old car stereo wants
-    // MBR every time, not once. It is a preference about the person's devices,
-    // not about any particular disk.
+    // A preference about the person's devices (e.g. MBR for a car stereo), not any one disk.
     PartitionStyle partitionStyle = PartitionStyle::Gpt;
     FileSystemType fileSystem = FileSystemType::ExFat;
 };

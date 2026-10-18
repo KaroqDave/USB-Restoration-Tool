@@ -29,7 +29,7 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
 
 Tests live in `tests/test_core.cpp`. `tools/partition_dump.cpp` backs
 `scripts/verify-partition-tables.sh`. Docs beyond the README go in `docs/`.
-Working notes (the task list, hardware log, decisions) live in `vault/`.
+Build and project guidance lives in `docs/development.md`; open tasks live in `docs/TODO.md`.
 
 ## Build, Test, and Development Commands
 
@@ -44,7 +44,8 @@ Working notes (the task list, hardware log, decisions) live in `vault/`.
 - `ctest --preset windows` — run the `src/core` tests.
 - `./scripts/verify-partition-tables.sh build-linux` — hand the partition tables
   to `sgdisk` and `fdisk`. Needs the `usb-partition-dump` target built.
-- `./scripts/build-standalone.ps1` / `./scripts/build-appimage.sh` — package.
+- `./scripts/build-standalone.ps1` / `./scripts/build-appimage.sh` /
+  `./scripts/build-deb.sh` — package.
 - `clang-format -i src/**/*.cpp src/**/*.h` — the repo ships a `.clang-format`.
 
 ## Coding Style & Naming Conventions
@@ -59,10 +60,11 @@ Platform calls report failure through a `QString *error` out-parameter and a
 the USB stick, not for a stack trace: say which disk, which operation, and what
 to do next.
 
-Comment the *why*. A comment that restates the call below it is noise; a comment
-explaining that a `4096` return value means "queued, not done", or that procfs
-reports every file as zero bytes so `QTextStream::atEnd()` lies, is the reason
-the next reader does not reintroduce the bug.
+Comment sparingly, and only the *why*: a non-obvious reason, such as a `4096`
+return value meaning "queued, not done", or procfs reporting every file as zero
+bytes so `QTextStream::atEnd()` lies. Keep it to one or two lines. Leave out
+comments that restate the code, narrate history, or repeat what a nearby
+comment or the docs already say.
 
 ## Testing Guidelines
 
@@ -78,16 +80,14 @@ spec and still be rejected by the tools that have to read the disk. Add a case
 to the script for any new layout the tool can produce.
 
 The backends drive real hardware and have no automated coverage. Never test a
-restore on a drive whose contents matter. Verify by hand on a disposable stick:
-an ISO-written drive, a drive with several partitions, and a drive with no
-partition table at all — on both platforms and both partition styles.
+restore on a drive whose contents matter. Use disposable media for manual checks
+when a backend change needs them. Do not maintain a per-device hardware-test log.
 
 ## Commit & Pull Request Guidelines
 
 History uses Conventional Commit prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
 Keep commits scoped. Pull requests should state the problem, summarise the
-change, and report test results — including which physical drives a restore was
-verified on, when the change touches a backend.
+change, and report relevant test results and any validation limits.
 
 **No AI attribution anywhere in this repository.** Commits and pull requests
 carry no `Co-Authored-By:` trailer naming an assistant, no "Generated with"
@@ -118,20 +118,21 @@ in the wrong place.
 On Linux an installed build runs the GUI unprivileged and the restore in
 `usb-restoration-helper` through pkexec; the AppImage still runs everything as
 root, because it can register no polkit policy. `docs/polkit-helper.md` is the
-design and carries the status — as of 1.3.0 the whole path is implemented and
-none of it has been exercised on hardware. Read it before restructuring
-`src/linux`.
+design. Both platforms have been tested across devices and systems. Read the
+helper design before restructuring `src/linux`.
 
 `PROJECT_VERSION` in `CMakeLists.txt` is the single source of the version.
 Tagging `vX.Y.Z` triggers `release.yml`, which fails unless the tag matches that
 version and the README has a `## What's New in X.Y.Z` section to use as the
 release body.
 
-## Working notes (Obsidian)
+## Documentation and tasks
 
-The task list and hardware-test log live in `vault/` at the repository root.
-Read `vault/TODO.md` when planning work; update it when a task is added,
-finished, or blocked. Log physical restores in `vault/Hardware Testing.md`.
-Repo files remain the published source of truth — do not duplicate README,
-SECURITY.md, or `docs/` into the vault. Use wiki links `[[Note]]`, and keep
-paths repository-relative (`vault/TODO.md`), never machine-specific.
+Read `docs/TODO.md` when planning work; update it when a task is added, finished,
+or blocked. Keep only actionable tasks and brief completion notes there.
+
+Use README for download and usage, `docs/development.md` for build and contributor
+instructions, `docs/polkit-helper.md` for the helper design, `SECURITY.md` for
+safety policy, and `CHANGELOG.md` for release history. Avoid duplicating these
+across files. Use ordinary relative Markdown links, not Obsidian wiki links.
+Hardware-test logs and per-device matrices are no longer maintained.

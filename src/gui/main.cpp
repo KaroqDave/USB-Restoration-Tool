@@ -25,10 +25,8 @@
 namespace {
 
 #ifdef Q_OS_WIN
-// Holds the process COM apartment open for the lifetime of main(). The GUI
-// thread enters an STA here rather than leaving it to whichever component gets
-// there first, so that CoInitializeSecurity below runs before any interface is
-// marshalled.
+// Enters the STA here, not in whichever component gets there first, so that
+// CoInitializeSecurity runs before any interface is marshalled.
 class ComScope {
   public:
     ComScope()
@@ -56,33 +54,19 @@ class ComScope {
 
 int main(int argc, char *argv[])
 {
-    // Before anything else runs: on Windows this narrows the DLL search order
-    // before the first DLL loads, on Linux it disables core dumps and tightens
-    // the file mode. Both have to happen before Qt starts.
+    // Before the first DLL load and before Qt starts, on both platforms.
     usbrestore::hardenProcessStartup();
 
 #ifdef Q_OS_LINUX
-    // A root process usually has no session D-Bus — sudo strips the address —
-    // so Qt's GNOME platform theme opens every sudo and AppImage run with four
-    // stderr lines about a bus it was never going to reach. Nothing is lost:
-    // the app's own theming does not use the session bus. Silence that one
-    // category rather than let every root start look like an error — but only
-    // when the bus really is absent (a root session that kept its address
-    // would reach it fine, and its warnings would then be real), and leave
-    // any user-provided logging rules alone.
+    // sudo strips the session D-Bus address, so Qt's GNOME theme warns on every root
+    // start; silence it only when the bus is really absent and no rules were given.
     if (::geteuid() == 0 && !qEnvironmentVariableIsSet("DBUS_SESSION_BUS_ADDRESS")
         && !qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
         qputenv("QT_LOGGING_RULES", QByteArrayLiteral("qt.qpa.theme.*=false"));
     }
 
-    // GNOME's Wayland compositor refuses server-side window decorations, and
-    // the fallback Qt draws itself is a bare white strip with no close,
-    // minimize or maximize buttons — confirmed on Ubuntu 26.04, 2026-08-20,
-    // where the same build under XWayland gets ordinary GNOME decorations.
-    // So on a GNOME Wayland session, prefer xcb, keeping wayland as the
-    // fallback for a session with no XWayland. Compositors that provide
-    // decorations (KDE and the wlroots family speak xdg-decoration) are left
-    // alone, and so is anyone who chose a platform themselves.
+    // GNOME Wayland refuses server-side decorations and Qt's fallback has no window
+    // buttons (Ubuntu 26.04), so prefer XWayland there; wayland stays the fallback.
     if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM") && qEnvironmentVariableIsSet("WAYLAND_DISPLAY")
         && qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QStringLiteral("GNOME"), Qt::CaseInsensitive)) {
         qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("xcb;wayland"));
@@ -103,11 +87,8 @@ int main(int argc, char *argv[])
 
     const std::unique_ptr<usbrestore::DiskService> service = usbrestore::DiskService::create();
 
-    // Windows asks for elevation through the manifest, so reaching this without
-    // it means something bypassed that. On Linux this process no longer needs
-    // privilege at all — it asks for it when a restore starts — so a false here
-    // means neither route is open: no helper installed and not root either.
-    // Both cases would otherwise fail partway through rather than up front.
+    // Windows elevates via the manifest; on Linux false means no helper and not root.
+    // Either would otherwise fail partway through rather than up front.
     if (!service->isPrivileged()) {
         QMessageBox::critical(nullptr, QStringLiteral("Elevated permission required"), service->privilegeHint());
         return 1;

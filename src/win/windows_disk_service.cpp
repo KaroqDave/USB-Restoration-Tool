@@ -14,8 +14,7 @@ namespace usbrestore {
 
 namespace {
 
-// How long Windows is given to publish the volume it has just been told to
-// create. Slow flash media on a busy machine can take well over ten seconds.
+// Slow flash media on a busy machine can take well over ten seconds.
 constexpr int NewVolumeTimeoutMs = 60 * 1000;
 constexpr std::uint64_t MaximumWindowsFat32VolumeBytes = 32ull * 1024ull * 1024ull * 1024ull;
 
@@ -23,6 +22,23 @@ quint32 windowsFat32AllocationUnitSize(const DiskInfo &disk)
 {
     const GptLayout layout = calculateGptLayout(disk.size, disk.sectorSize);
     return fat32AllocationUnitSize(layout.length, disk.sectorSize, MaximumWindowsFat32VolumeBytes);
+}
+
+// After partitioning the stick is blank, so the refusal says how to recover.
+bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error)
+{
+    QString reason;
+    if (rawDisk.verifyIdentity(disk, &reason)) {
+        return true;
+    }
+    if (error) {
+        *error = QStringLiteral("Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
+                                "partition table has already been rewritten. Plug it back in and run the restore on "
+                                "it again.")
+                     .arg(disk.number)
+                     .arg(reason);
+    }
+    return false;
 }
 
 } // namespace
@@ -34,8 +50,7 @@ std::unique_ptr<DiskService> DiskService::create()
 
 PrivilegeMode WindowsDiskService::privilegeMode() const
 {
-    // Windows has no helper: UAC gates the whole process at launch, so either
-    // this process is elevated or nothing can work.
+    // No helper on Windows: UAC elevates the whole process at launch or not at all.
     return isProcessElevated() ? PrivilegeMode::Elevated : PrivilegeMode::None;
 }
 
@@ -85,8 +100,7 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
     case FileSystemType::Ntfs:
         return true;
     case FileSystemType::Fat32:
-        // MSFT_Volume.Format refuses FAT32 above 32 GiB. The partition is a
-        // megabyte smaller than the disk, so the layout length is what matters.
+        // MSFT_Volume.Format refuses FAT32 above 32 GiB; the partition is smaller than the disk.
         if (calculateGptLayout(disk.size, disk.sectorSize).length > MaximumWindowsFat32VolumeBytes) {
             return refuse(QStringLiteral(
                 "Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
@@ -112,10 +126,8 @@ int WindowsDiskService::totalRestoreSteps() const
 
 int WindowsDiskService::firstDestructiveStep() const
 {
-    // "Deleting existing partition records": the first change to the disk
-    // itself. Detaching drive letters (step 4) edits the mount manager's
-    // database on the system disk, not the stick. Must move with the step
-    // list in restore().
+    // "Deleting existing partition records"; detaching letters only edits the mount manager's
+    // database. Must move with the step list in restore().
     return 5;
 }
 
@@ -151,10 +163,7 @@ bool WindowsDiskService::restore(
     }
     disk = currentDisk;
 
-    // Asked against the disk this process just re-derived, not the one it was
-    // handed. isSameRestoreTarget() and isSafeRestoreTarget() happen to refuse
-    // a size or sector-size change, but that is two unrelated checks holding
-    // up a third.
+    // Checked against the re-derived disk, not the one handed in.
     if (!canFormatFileSystem(request.fileSystem, disk, &reason)) {
         if (error) {
             *error = reason;
@@ -164,10 +173,8 @@ bool WindowsDiskService::restore(
     const quint32 allocationUnitSize =
         request.fileSystem == FileSystemType::Fat32 ? windowsFat32AllocationUnitSize(disk) : 0;
 
-    // The handle is opened and checked before anything is changed, and it stays
-    // open for the rest of the restore. Every raw operation below therefore
-    // acts on the device object this check passed on, not on whatever
-    // \\.\PhysicalDriveN happens to name later.
+    // Kept open for the whole restore so raw operations hit the verified device,
+    // not whatever \\.\PhysicalDriveN names later.
     reporter.step(QStringLiteral("Opening and identifying the physical drive"));
     RawDisk rawDisk(disk.number);
     if (!rawDisk.open(error) || !rawDisk.verifyIdentity(disk, error)) {
@@ -188,18 +195,12 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    // Last chance to stop. Deleting the partition records below is the first
-    // change to the disk itself — detaching drive letters only edits the mount
-    // manager's database on the system disk — so the checkpoint sits here,
-    // where stopping is still harmless, not after the deletion.
+    // Last harmless stop: deleting the partition records is the first change to the disk itself.
     if (reporter.cancelRequested()) {
         return false;
     }
 
-    // The WMI calls address the disk by number, not through the handle whose
-    // identity was checked, so the identity is confirmed once more immediately
-    // before the first destructive call, while the handle is still open and
-    // pins the number to the device it named.
+    // WMI addresses the disk by number, not through the handle, so re-check right before it.
     if (!rawDisk.verifyIdentity(disk, error)) {
         return false;
     }
@@ -219,9 +220,7 @@ bool WindowsDiskService::restore(
     }
     rawDisk.refreshLayout(nullptr);
 
-    // Repeated before the raw writes begin: the partition records above are
-    // already gone, so this cannot make the restore reversible — it guards the
-    // sector writes against the handle having gone stale underneath.
+    // Guards the sector writes against the handle having gone stale.
     if (!rawDisk.verifyIdentity(disk, error)) {
         return false;
     }
@@ -252,6 +251,12 @@ bool WindowsDiskService::restore(
         return false;
     }
 
+    // The rest goes by disk number alone; a live handle that still reports it
+    // proves no other stick has taken it.
+    if (!confirmStillSelected(rawDisk, disk, error)) {
+        return false;
+    }
+
     reporter.step(QStringLiteral("Assigning a drive letter"));
     const QString driveRoot = volumes.mountVolume(volumeName, error);
     if (driveRoot.isEmpty()) {
@@ -259,6 +264,9 @@ bool WindowsDiskService::restore(
     }
 
     reporter.step(QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!confirmStillSelected(rawDisk, disk, error)) {
+        return false;
+    }
     if (!volumes.formatVolume(
             volumeName, driveRoot, disk.number, request.fileSystem, allocationUnitSize, request.volumeLabel, error)) {
         return false;

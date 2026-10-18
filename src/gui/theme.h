@@ -18,8 +18,7 @@ enum class ColorScheme {
     Dark,
 };
 
-// What the status badge is currently saying. Each maps to one accent colour so
-// the same information reads the same way in both colour schemes.
+// Each maps to one accent colour so it reads the same in both colour schemes.
 enum class StatusKind {
     Info,
     Ready,
@@ -64,8 +63,6 @@ Theme themeFromSettings(int value);
 int themeToSettings(Theme theme);
 QString themeButtonText(Theme theme);
 
-// Applies the Fusion base style, a matching QPalette, and the generated
-// stylesheet for the resolved colour scheme.
 void applyTheme(QApplication &app, Theme theme);
 
 QString statusBadgePrefix(StatusKind status);

@@ -6,16 +6,12 @@ namespace usbrestore {
 
 namespace {
 
-// Long enough for any message the tool produces, short enough that a helper
-// spraying output cannot make the reader hold an unbounded line in memory.
+// Bounds what a helper spraying output can make the reader hold in memory.
 constexpr int MaxProtocolTextLength = 2000;
 
-// A kernel block device name: no separators, so nothing that could climb out of
-// /dev or name a path element the caller chose.
 constexpr int MaxDeviceNameLength = 64;
 
-// The exFAT limit. Anything longer would be truncated by mkfs, which means the
-// label the user was shown and the label on the disk would disagree.
+// The exFAT limit; mkfs would silently truncate a longer label.
 constexpr int MaxVolumeLabelLength = 11;
 
 constexpr char DeviceNodePrefix[] = "/dev/";
@@ -28,9 +24,7 @@ bool isDeviceNameCharacter(QChar character)
     return character.isLetterOrNumber() || character == QLatin1Char('_') || character == QLatin1Char('-');
 }
 
-// Restricted to ASCII rather than to everything exFAT can store. The tool only
-// ever produces one label, and a narrow set is one less thing to reason about
-// on the far side of a privilege boundary.
+// Narrower than exFAT allows: less to reason about across a privilege boundary.
 bool isVolumeLabelCharacter(QChar character)
 {
     if (character > QChar(0x7F)) {
@@ -75,10 +69,7 @@ bool isValidVolumeLabel(const QString &label)
         return false;
     }
 
-    // A label that begins with "-" would reach mkfs as what looks like an
-    // option. QProcess passes arguments as a list rather than through a shell,
-    // so this is not a quoting problem, but the tool on the other end still
-    // parses its own argv.
+    // No shell is involved, but mkfs would still parse a leading "-" as an option.
     if (label.startsWith(QLatin1Char('-'))) {
         return false;
     }
@@ -106,10 +97,8 @@ QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, Fi
     arguments << QStringLiteral("--expect-size") << QString::number(disk.size);
     arguments << QStringLiteral("--expect-sector-size") << QString::number(disk.sectorSize);
 
-    // Omitted when the GUI has nothing to say. isSameRestoreTarget() treats an
-    // identifier only one side reports as no information rather than as a
-    // mismatch, so an absent flag weakens the comparison to exactly the degree
-    // that not knowing the value does.
+    // isSameRestoreTarget() skips an identifier only one side reports, so omitting
+    // an unknown value costs no more than not knowing it.
     const auto appendIfKnown = [&arguments](const QString &flag, const QString &value) {
         if (!value.trimmed().isEmpty()) {
             arguments << flag << value;
@@ -199,10 +188,8 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
 
     result.expected.deviceId = device;
     result.expected.displayId = device;
-    // busType is deliberately left at 0. The caller does not get to assert that
-    // its target is on the USB bus; the helper reads that from sysfs, and a
-    // DiskInfo built from argv alone must fail isSafeRestoreTarget() if it is
-    // ever handed to it by mistake.
+    // busType stays 0: the caller cannot assert USB, and a DiskInfo built from argv
+    // alone must fail isSafeRestoreTarget().
 
     if (parsed) {
         *parsed = result;
@@ -220,8 +207,7 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr)
         return {};
 
     case RestoreExitFailed:
-        // The helper always explains itself on stderr. The fallback is for a
-        // helper that died before it could.
+        // Fallback for a helper that died before writing to stderr.
         return reported.isEmpty() ? QStringLiteral("The restore failed.") : reported;
 
     case RestoreExitUsage:
@@ -255,11 +241,8 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
         return HelperRunVerdict::Failed;
     };
 
-    // The kill landed while pkexec was still authenticating: the process died
-    // — or pkexec reported the authentication dismissed — without a version
-    // line ever arriving, so the helper never ran and the disk was never
-    // touched. This is the only place a requested kill is believed, and only
-    // because the process demonstrably did no work.
+    // Died, or pkexec reported auth dismissed, before any version line: the helper
+    // never ran. The only case a requested kill is believed.
     if (run.killRequested && !run.sawVersion && (run.crashed || run.exitCode == 126)) {
         return HelperRunVerdict::Cancelled;
     }
@@ -269,19 +252,15 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
                                        "tool before using it."));
     }
 
-    // Before the exit code, not after: a helper that announced a version this
-    // build does not speak was asked to stop the moment it said so, and
-    // however it then exited — cancelled, failed, or "success" — none of its
-    // lines can be trusted to mean what this build would mean by them.
+    // Before the exit code: no line from a mismatched helper can be trusted, its
+    // "success" or "cancelled" included.
     if (run.sawVersion && !run.versionAccepted) {
         return failWith(describeRestoreExit(RestoreExitUsage, run.helperStderr));
     }
 
     if (!run.sawVersion) {
-        // The helper never spoke, so the exit code is pkexec's or a
-        // stranger's. 126 and 127 carry real meanings worth passing through;
-        // a success or cancellation claimed by a process that never announced
-        // a version is not believed.
+        // The exit code is pkexec's or a stranger's: pass 126/127 through, but do
+        // not believe a success or cancellation from a process that never spoke.
         const bool claimsFinished =
             run.exitCode == RestoreExitSuccess || run.exitCode == RestoreExitCancelled;
         return failWith(describeRestoreExit(claimsFinished ? RestoreExitUsage : run.exitCode, run.helperStderr));
@@ -309,10 +288,6 @@ QString sanitizeProtocolText(const QString &text)
 
     bool pendingSpace = false;
     for (const QChar character : text) {
-        // Newlines above all: a message carrying one would arrive at the reader
-        // as a second line it would then parse as a message the helper never
-        // sent. Every other control character goes the same way for the same
-        // reason.
         const bool isSeparator = character.isSpace() || character.category() == QChar::Other_Control;
         if (isSeparator) {
             pendingSpace = !sanitized.isEmpty();

@@ -11,14 +11,11 @@
 
 namespace usbrestore {
 
-// Return value the MSFT_Storage classes use for "the work was accepted and is
-// running as a job". It is not a completion: the caller has to wait for the
-// job before the disk actually looks the way the call asked for.
+// MSFT_Storage "accepted, running as a job": not a completion, the job must be waited for.
 inline constexpr quint32 WmiMethodStartedJob = 4096;
 
-// Sets the process-wide COM authentication level once, before any interface is
-// marshalled. Called from main() so that every later WMI proxy inherits packet
-// privacy rather than the machine default.
+// Call before any interface is marshalled so every WMI proxy uses packet privacy:
+// the traffic names disks about to be erased.
 bool initializeComSecurity(QString *error = nullptr);
 
 class WmiObject {
@@ -48,8 +45,7 @@ class WmiObject {
 
 struct WmiCallResult {
     quint32 returnValue = UINT_MAX;
-    // Set when returnValue is WmiMethodStartedJob: the MSFT_StorageJob to wait
-    // on. Empty when Windows completed the call synchronously.
+    // Empty when Windows completed the call synchronously.
     QString jobPath;
     QString extendedStatus;
 
@@ -75,8 +71,7 @@ class WmiConnection {
                              const wchar_t *methodName,
                              const QVector<QPair<QString, QVariant>> &inputs = {}) const;
 
-    // Runs a method and, when Windows answered with a storage job, waits for
-    // that job to finish. Returns false with a filled-in error on any failure.
+    // Also waits for the storage job when Windows only queued the work.
     bool callMethodAndWait(const QString &className,
                            const QString &objectPath,
                            const wchar_t *methodName,

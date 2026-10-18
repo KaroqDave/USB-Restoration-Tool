@@ -88,18 +88,14 @@ class MainWindow : public QMainWindow {
     StatusKind m_status = StatusKind::Info;
     bool m_restoreRunning = false;
 
-    // The stall watch: how long the backend has been silent on the current
-    // step, so a stick stuck in uninterruptible sleep looks different from a
-    // hung program.
+    // Stall watch: tells a stick stuck in uninterruptible sleep apart from a hung program.
     QElapsedTimer m_restoreActivity;
     int m_restoreStep = 0;
     QString m_restoreStepText;
     bool m_stallNoticeShown = false;
     bool m_stallExplained = false;
 
-    // What the running restore was asked to produce. The completion message
-    // reports this rather than re-reading the combo box, which is re-enabled
-    // (and in principle changeable) before the message is built.
+    // For the completion message: the combo box is re-enabled before it is built.
     FileSystemType m_restoreFileSystem = FileSystemType::ExFat;
 
     QListWidget *m_diskList = nullptr;

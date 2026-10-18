@@ -9,37 +9,23 @@
 
 namespace usbrestore {
 
-// Reading what disks exist and what state they are in, separated from the
-// DiskService that presents it. The privileged helper needs exactly this and
-// none of the rest of the backend: everything it is told by the GUI is a claim,
-// and these are the functions that produce the facts it checks the claim
-// against.
-//
-// All of it is read-only. Nothing here opens a device for writing, and nothing
-// here needs to be privileged.
+// Read-only and unprivileged: the facts the helper checks the GUI's claims against.
 
 // "/dev/sdb" for "sdb".
 QString devicePathFor(const QString &kernelName);
 
-// Everything the tool knows about one whole disk, read fresh from sysfs and
-// /proc/self/mountinfo. The caller supplies the kernel name ("sdb"), not a
-// path, so there is no way to point this at something that is not a block
-// device the kernel is publishing.
+// Takes a kernel name ("sdb"), not a path, so it cannot be pointed at anything
+// that is not a block device the kernel publishes.
 DiskInfo diskInfoFor(const QString &diskName);
 
 QVector<DiskInfo> listUsbDiskInfos(QString *error = nullptr);
 
-// Re-reads one disk by device path, refusing a path that no longer names a
-// whole disk on the USB bus. "/dev/sdb1" fails here rather than later: a
-// partition has no directory under /sys/block.
+// Fails for a partition such as "/dev/sdb1", which has no /sys/block directory.
 bool refreshUsbDisk(const QString &deviceId, DiskInfo *current, QString *error = nullptr);
 
-// The filesystems a running Linux system is built out of, plus the disks
-// anything is actually mounted on one of them from.
 RestoreGuard linuxRestoreGuard();
 
-// The protected mount points on their own, for the check made against the live
-// mount table immediately before an unmount rather than against a snapshot.
+// For checking the live mount table right before an unmount, not a snapshot.
 const QStringList &protectedSystemMounts();
 
 } // namespace usbrestore

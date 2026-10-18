@@ -9,9 +9,7 @@ namespace {
 constexpr auto SettingsOrganization = "KaroqDave";
 constexpr auto SettingsApplication = "USB Restoration Tool";
 
-// Nothing about a disk is remembered between runs, deliberately: a restore
-// target has to be chosen against what is plugged in right now, not restored
-// from a file written the last time the app ran.
+// Disks are deliberately not remembered: a target is chosen against what is plugged in now.
 
 } // namespace
 

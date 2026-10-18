@@ -4,18 +4,8 @@
 
 namespace usbrestore {
 
-// The Linux backend: sysfs and /proc for what exists and what state it is in,
-// a plain file descriptor on /dev/sdX for the raw work, and mkfs for the
-// filesystem.
-//
-// Almost nothing happens here. Enumeration lives in linux_enumerate.* and the
-// restore sequence in linux_restore.*, because the privileged helper described
-// in docs/polkit-helper.md needs both of those and none of this class. What is
-// left is the DiskService interface bolted onto them.
-//
-// It deliberately does not talk to udisks2. The daemon would add a runtime
-// dependency and a polkit round trip without answering any question sysfs
-// cannot, and the privilege split this tool wants is one it can make itself.
+// A thin shell: enumeration and restore live in linux_enumerate.* and linux_restore.*
+// because the privileged helper needs them without this class.
 class LinuxDiskService : public DiskService {
   public:
     PrivilegeMode privilegeMode() const override;

@@ -602,6 +602,43 @@ else()
             RENAME usb-restoration-tool.svg)
     install(FILES resources/icons/app.png DESTINATION share/icons/hicolor/256x256/apps
             RENAME usb-restoration-tool.png)
+
+    # A package without the helper would be the AppImage's run-as-root mode
+    # with none of the AppImage's portability, so there is none.
+    if(USBRESTORE_INSTALL_HELPER)
+        set(CPACK_GENERATOR DEB)
+        set(CPACK_PACKAGE_NAME usb-restoration-tool)
+        set(CPACK_PACKAGE_VENDOR KaroqDave)
+        set(CPACK_PACKAGE_CONTACT "KaroqDave <47065562+KaroqDave@users.noreply.github.com>")
+        set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+        string(CONCAT CPACK_PACKAGE_DESCRIPTION
+            "Erases an ISO-written USB drive and leaves one GPT or MBR partition formatted exFAT, FAT32, NTFS or "
+            "ext4. The interface runs unprivileged; the restore itself runs in a separate helper started "
+            "through pkexec.")
+        set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/KaroqDave/USB-Restoration-Tool")
+        set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+        set(CPACK_USBRESTORE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+        set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpack_project_config.cmake")
+        set(CPACK_STRIP_FILES ON)
+
+        set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+        set(CPACK_DEBIAN_PACKAGE_SECTION admin)
+        # dpkg-shlibdeps fails on a Qt that no package owns, which keeps a
+        # build against a private Qt kit from producing a .deb.
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+        # Not linked, so shlibdeps cannot see them: Qt's platform and SVG
+        # plugins, pkexec, and the formatters linux_restore.cpp looks for.
+        string(JOIN ", " CPACK_DEBIAN_PACKAGE_DEPENDS
+            qt6-qpa-plugins
+            "qt6-svg-plugins | libqt6svg6"
+            "pkexec | policykit-1"
+            "exfatprogs | exfat-utils"
+            dosfstools
+            ntfs-3g
+            e2fsprogs)
+
+        include(CPack)
+    endif()
 endif()
 
 usbrestore_setup_clangd()

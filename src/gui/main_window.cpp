@@ -52,15 +52,11 @@ namespace {
 constexpr auto AppAuthor = "KaroqDave";
 constexpr auto AppProfileUrl = "https://github.com/KaroqDave/USB-Restoration-Tool";
 
-// What every restore produces. Named once so the plan shown to the user and
-// the label actually written cannot drift apart.
+// Named once so the plan shown to the user and the label written cannot drift apart.
 const QString RestoreVolumeLabel = QStringLiteral("USB");
 
-// How long a restore step may stay silent before the progress bar starts
-// counting the silence, and before the status spells out that the device may
-// have stalled. A USB stick can sit in uninterruptible sleep for minutes and
-// recover — seen on hardware, 2026-08-19: four and a half minutes in D state
-// while the GUI gave no hint which side was stuck.
+// Silence before the progress bar counts it, and before the stall is explained. A stick
+// can sit in uninterruptible sleep for minutes and recover (4.5 minutes seen on hardware).
 constexpr qint64 StallCountSeconds = 15;
 constexpr qint64 StallExplainSeconds = 60;
 
@@ -108,8 +104,7 @@ QString joinOrDash(const QStringList &values)
 
 void styleComboPopup(QComboBox *combo)
 {
-    // A QListView popup so the item styling in the stylesheet applies; the
-    // native popup ignores it.
+    // The native popup ignores the stylesheet's item styling.
     auto *popupView = new QListView(combo);
     popupView->setFrameShape(QFrame::NoFrame);
     combo->setView(popupView);
@@ -132,9 +127,8 @@ QString diskListEntry(const DiskInfo &disk)
             mounts);
 }
 
-// Opens a file or link without dragging the elevated process's privileges into
-// whatever handles it. On Windows that means routing through explorer, which
-// runs as the logged-in user; elsewhere QDesktopServices is already right.
+// Keeps elevated privileges out of whatever handles the target: on Windows explorer
+// opens it as the logged-in user.
 void openExternally(const QString &target, bool isLocalFile)
 {
 #ifdef Q_OS_WIN
@@ -151,8 +145,7 @@ MainWindow::MainWindow(DiskService &service, Theme initialTheme, QWidget *parent
     : QMainWindow(parent), m_service(service), m_theme(initialTheme)
 {
     setWindowTitle(QStringLiteral("USB Restoration Tool"));
-    // Small enough to sit comfortably on a laptop screen. Moving the activity
-    // log into its own window is what bought the room.
+    // Small enough to sit comfortably on a laptop screen.
     setMinimumSize(760, 560);
     resize(880, 640);
 
@@ -217,8 +210,7 @@ void MainWindow::buildUi()
     m_stallTimer->setInterval(1000);
     connect(m_stallTimer, &QTimer::timeout, this, &MainWindow::onStallTick);
 
-    // Lives outside the layout: it is the activity dialog's contents, and it
-    // accumulates lines whether or not that dialog is open.
+    // Outside the layout: it fills the activity dialog and logs whether or not that is open.
     m_log = new QTextEdit;
     m_log->setObjectName(QStringLiteral("activityLog"));
     m_log->setReadOnly(true);
@@ -239,10 +231,8 @@ QLayout *MainWindow::buildHeaderLayout()
         new QLabel(QStringLiteral("Restore a USB drive written by an ISO writer back to one clean volume."));
     subtitle->setObjectName(QStringLiteral("subtitle"));
 
-    // The badge states how this run actually gets its privilege, which on an
-    // installed Linux build is precisely *not* running as root — the helper
-    // is. Claiming ROOT there would misreport the privilege split it exists
-    // to advertise.
+    // On an installed Linux build the helper, not this process, is root, so the
+    // badge must not claim ROOT there.
     auto *badge = new QLabel;
     badge->setObjectName(QStringLiteral("adminBadge"));
     switch (m_service.privilegeMode()) {
@@ -262,8 +252,7 @@ QLayout *MainWindow::buildHeaderLayout()
             "and a separate root helper does the writing."));
         break;
     case PrivilegeMode::None:
-        // Unreachable in practice: main() refuses to open this window without
-        // a route to privilege. Stated anyway rather than left blank.
+        // Unreachable: main() refuses to open this window without a route to privilege.
         badge->setText(QStringLiteral("NO ACCESS"));
         badge->setToolTip(m_service.privilegeHint());
         break;
@@ -549,8 +538,7 @@ void MainWindow::refreshDisks()
     renderDisks();
     onSelectionChanged();
 
-    // Reported after the selection has been rebuilt, so the failure is the last
-    // word on screen rather than being overwritten by the empty-list status.
+    // Reported last so the empty-list status cannot overwrite the failure.
     if (!error.isEmpty()) {
         m_logger.log(QStringLiteral("Scan failed: %1").arg(error));
         setStatus(StatusKind::Error, QStringLiteral("Could not scan for USB disks."), error);
@@ -696,9 +684,7 @@ bool MainWindow::confirmErase(const DiskInfo &disk, PartitionStyle style, FileSy
     confirm.setText(QStringLiteral("This cannot be undone."));
     confirm.setInformativeText(summary);
 
-    // The gate is here rather than on the main window: it is attached to the
-    // summary naming this specific disk, so what is being agreed to is on
-    // screen at the moment it is agreed to.
+    // Gated here, beside the summary naming this disk, so what is agreed to is on screen.
     auto *understood = new QCheckBox(
         QStringLiteral("I understand that everything on %1 will be permanently erased.").arg(disk.displayId));
     confirm.setCheckBox(understood);
@@ -769,8 +755,7 @@ void MainWindow::startRestore()
     connect(worker, &RestoreWorker::progress, this, &MainWindow::onRestoreProgress);
     connect(worker, &RestoreWorker::logMessage, &m_logger, &Logger::log, Qt::QueuedConnection);
     connect(worker, &RestoreWorker::logFileOnly, &m_logger, &Logger::logFileOnly, Qt::QueuedConnection);
-    // Any line from the backend is proof the device is still answering, detail
-    // lines included — a long mkfs that keeps talking is not a stall.
+    // Detail lines count too: a long mkfs that keeps talking is not a stall.
     connect(worker, &RestoreWorker::logMessage, this, &MainWindow::noteRestoreActivity);
     connect(worker, &RestoreWorker::logFileOnly, this, &MainWindow::noteRestoreActivity);
     connect(worker, &RestoreWorker::failed, this, &MainWindow::onRestoreFailed);
@@ -820,12 +805,8 @@ void MainWindow::noteRestoreActivity()
     m_restoreActivity.restart();
 }
 
-// Once a second while a restore runs: how long has the backend been silent?
-// Before the first step there is nothing to time — that quiet belongs to the
-// authentication dialog, where the user is allowed to think. The elapsed count
-// and the explanation are display only; nothing here stops or decides
-// anything, because a stalled device usually recovers and the backend already
-// handles the failure if it does not.
+// Display only: a stalled device usually recovers, and the backend handles it if not.
+// Before step 1 the quiet belongs to the authentication dialog, so it is not timed.
 void MainWindow::onStallTick()
 {
     if (!m_restoreRunning || m_restoreStep == 0) {
@@ -840,10 +821,8 @@ void MainWindow::onStallTick()
     const qint64 seconds = m_restoreActivity.elapsed() / 1000;
     if (seconds < StallCountSeconds) {
         if (m_stallNoticeShown) {
-            // The device came back: put the plain step display back. The
-            // detail label is only restored when the stall explanation itself
-            // overwrote it — anything else there (the cancel explanation, for
-            // one) is not this watch's to erase.
+            // Only undo the detail label if the stall text overwrote it; anything
+            // else there (e.g. the cancel explanation) is not this watch's to erase.
             m_stallNoticeShown = false;
             m_progress->setFormat(base);
             if (m_stallExplained) {
@@ -864,10 +843,8 @@ void MainWindow::onStallTick()
         return;
     }
 
-    // The one sentence that must not be wrong. Before the backend's first
-    // write the restore has not changed the disk — but the system may still
-    // be flushing its own writes to it (an unmount flush is the most likely
-    // place to stall at all), so unplugging is never called flatly "safe".
+    // Before the first write the disk is unchanged, but the system may still be
+    // flushing to it (a likely place to stall), so unplugging is never called "safe".
     m_stallExplained = true;
     if (m_restoreStep < m_service.firstDestructiveStep()) {
         m_detailLabel->setText(QStringLiteral(
@@ -884,9 +861,8 @@ void MainWindow::onStallTick()
     }
 }
 
-// The three endings share a shape: stop, rescan — because the disk on screen
-// has just changed underneath the list — and only then set the status, so the
-// rescan's own "ready to restore" verdict does not overwrite the outcome.
+// Each ending rescans before setting the status, so the rescan's "ready to restore"
+// verdict cannot overwrite the outcome.
 void MainWindow::onRestoreFailed(const QString &message)
 {
     setRunning(false);
@@ -899,9 +875,13 @@ void MainWindow::onRestoreFailed(const QString &message)
 void MainWindow::onRestoreCancelled()
 {
     setRunning(false);
-    m_logger.log(QStringLiteral("Restore cancelled before any change was made"));
+    m_logger.log(QStringLiteral("Restore cancelled before erasing the disk; existing volumes may need to be mounted "
+                               "again or have their drive letters reassigned"));
     refreshDisks();
-    setStatus(StatusKind::Info, QStringLiteral("Restore cancelled."), QStringLiteral("The disk was not changed."));
+    setStatus(StatusKind::Info,
+              QStringLiteral("Restore cancelled."),
+              QStringLiteral("The restore did not erase the disk. Existing volumes may need to be mounted again "
+                             "or have their drive letters reassigned."));
 }
 
 void MainWindow::onRestoreFinished(const QString &location)
@@ -1058,9 +1038,7 @@ bool MainWindow::waitForRestoreThread(int timeoutMs)
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_restoreRunning && m_restoreThread && m_restoreThread->isRunning()) {
-        // Killing the process partway through a partition rewrite leaves a disk
-        // that neither the system nor the previous ISO can read, so closing
-        // waits rather than offering to abandon the work.
+        // Killing a partition rewrite midway leaves a disk nothing can read, so closing waits.
         QMessageBox::information(
             this,
             QStringLiteral("Restore in progress"),

@@ -56,8 +56,25 @@ The tool closes that gap by re-reading identity from the open handle itself:
   from sysfs.
 
 Both run immediately after opening and again immediately before the first
-destructive write, and the descriptor stays open for the whole restore, so
-every raw operation acts on the device that passed those checks.
+destructive write. What happens after the partition table is written differs:
+
+- **Windows** keeps the handle open for the whole restore. Partition deletion,
+  volume discovery, the drive letter and the format address the disk by number
+  through WMI and volume handles rather than through that handle, so the handle
+  is asked again before the deletion, before the new volume is given a letter,
+  and right before the format. A live handle that still reports the number is what
+  proves no other disk has been given it.
+- **Linux** has to close the exclusive descriptor after re-reading the
+  partition table, because udev will not publish the new partition while the
+  disk is held. Before `mkfs` runs, the disk is re-enumerated and compared with
+  the selection, its node is re-opened and re-verified, and the partition node
+  is confirmed through sysfs to belong to it. On kernel 5.15 and later the
+  disk sequence number (`BLKGETDISKSEQ`), taken before the descriptor was
+  closed, must also match: a replacement stick gets a new one even when it
+  takes the same name and `major:minor`.
+
+A refusal at that stage leaves the original stick with a new partition table
+and no filesystem; running the restore on it again finishes the job.
 
 On Linux the exclusive open is itself a gate: `O_EXCL` on a block device is
 refused by the kernel while any partition of it is mounted or otherwise
@@ -101,8 +118,19 @@ Both:
 
 - Every count and offset a driver reports is bounded against the bytes actually
   returned before it is used to index a buffer.
-- The app takes no command-line arguments. There is no way to script a restore,
-  and that is deliberate.
+- The app takes no command-line arguments. There is no way to script a restore
+  from the GUI, and that is deliberate.
+
+The one exception is `usb-restoration-helper` on an installed Linux build. It
+takes the restore request as arguments, and any local process can start it
+through pkexec once polkit grants administrator authentication. It treats every
+argument as a claim it may only refuse on: it enumerates the disk itself, builds
+its own protected set, and runs every check above before opening anything. See
+the [helper design](docs/polkit-helper.md).
+
+The helper also outlives its caller. A closed output pipe or a terminal hangup
+does not stop it, so a GUI that crashes or is closed mid-write does not leave a
+half-restored stick behind.
 
 ### What the log contains
 
@@ -118,7 +146,8 @@ attaching it to a report.
 Open a [GitHub security advisory](https://github.com/KaroqDave/USB-Restoration-Tool/security/advisories/new)
 with:
 
-- Windows version and tool version.
+- Tool version, and the Windows version or Linux distribution and kernel.
+- On Linux, how the tool was run: installed build, AppImage, or under `sudo`.
 - The disk layout and USB model, if relevant.
 - The log file, with anything private redacted.
 

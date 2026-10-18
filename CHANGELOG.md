@@ -4,14 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- A `.deb` package for Ubuntu 24.04 and Debian 13 or later, built with CPack by
+  `scripts/build-deb.sh`. It installs the GUI, `usb-restoration-helper` in
+  `/usr/libexec` and its polkit action, so the restore runs through pkexec
+  instead of the whole app running as root. It depends on the system Qt,
+  pkexec and the four formatters. CI builds it, checks its contents and
+  installs it; release builds attach it.
+
+### Fixed
+
+- The Linux helper no longer dies when the GUI goes away mid-restore. A
+  progress line written to a closed pipe raised `SIGPIPE`, whose default action
+  could stop the helper between the partition table and `mkfs` and leave a
+  blank stick; `SIGPIPE` and `SIGHUP` are now caught.
+- The disk is confirmed again after the partition table is written, before the
+  new volume is formatted. Linux re-enumerates the disk, re-verifies its node,
+  ties the partition node to it through sysfs and, on kernel 5.15 and later,
+  compares the disk sequence number. Windows asks the open handle again before
+  assigning a drive letter and before formatting. Previously both found the new
+  volume by name or disk number alone, after a wait long enough for a different
+  stick to take either.
+- Cancellation feedback now explains that existing volumes may need to be
+  mounted again or have their drive letters reassigned, instead of claiming
+  that nothing changed.
+
+### Documentation
+
+- SECURITY.md describes what happens after the partition table is written on
+  each platform, covers the helper's command-line exception, and asks Linux
+  reporters for their distribution and how the tool was run.
+- Consolidated contributor guidance and open tasks under `docs/`.
+- Removed the Obsidian vault, hardware-test logs and standalone signing guide.
+- Shortened the README and retained detailed release history here.
+
 ## 1.5.0 - 2026-08-20
 
-A choice of filesystem, the same way 1.1.0 added a choice of partition style —
-and the first release whose Linux path has been proven on physical hardware:
-every prior-layout class, both partition styles, all four filesystems and all
-three cancel behaviours, on both the installed (helper) route and the AppImage.
-There was no 1.4.x release; those versions were built and tested but never
-tagged, and everything since 1.3.0 ships here.
+Filesystem selection, clearer progress feedback and the first Linux hardware
+validation. The untagged 1.4.x development changes shipped in this release.
 
 ### Added
 
@@ -123,8 +156,8 @@ bundled, which is a packaging project of its own.
   node cannot be opened, so the unprivileged GUI still shows GPT or MBR rather
   than "RAW / unknown" for every disk.
 
-> None of this has been exercised against a physical USB stick, and the pkexec
-> round trip has not been exercised at all. See `docs/polkit-helper.md`.
+> At the time of the 1.3.0 release, Linux hardware and polkit validation were
+> still pending. Both paths have since been tested.
 
 ## 1.1.0 - 2026-08-06
 

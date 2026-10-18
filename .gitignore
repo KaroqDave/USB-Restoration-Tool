@@ -42,11 +42,6 @@ CMakeUserPresets.json
 *.dll
 .deps/
 
-# Obsidian local UI state
-vault/.obsidian/workspace.json
-vault/.obsidian/workspace-mobile.json
-vault/.obsidian/cache/
-
 # AI assistant local state. Kept out of the repo entirely; AGENTS.md and
 # CLAUDE.md are the checked-in guidance.
 .claude/

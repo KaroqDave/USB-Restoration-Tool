@@ -11,17 +11,13 @@ namespace usbrestore {
 
 namespace {
 
-// sysfs always reports sizes in 512-byte units regardless of the device's real
-// sector size. Multiplying by the logical sector size instead is a mistake that
-// silently quadruples the size of every 4 Kn disk.
+// sysfs sizes are always in 512-byte units, whatever the device's real sector size.
 constexpr std::uint64_t SysfsSectorUnit = 512;
 
 } // namespace
 
 const QStringList &protectedSystemMounts()
 {
-    // The filesystems a running Linux system is built out of. A USB disk that
-    // has somehow ended up hosting one of these is not a restore target.
     static const QStringList mounts = {
         QStringLiteral("/"),
         QStringLiteral("/boot"),
@@ -73,9 +69,7 @@ DiskInfo diskInfoFor(const QString &diskName)
     disk.health = static_cast<quint16>(HealthStatus::Healthy);
     disk.partitionStyle = static_cast<quint16>(detectPartitionStyle(disk.deviceId, disk.sectorSize));
 
-    // Mount points, labels and filesystems come from the partitions, plus the
-    // whole-disk device itself for a stick written with a bare filesystem and
-    // no table — an ISO writer leaves iso9660 on the disk device too.
+    // The whole-disk device counts too: an ISO writer leaves iso9660 there with no table.
     const QVector<MountEntry> mounts = readMounts();
     const DeviceNumber diskNumber = readDeviceNumber(sysfs);
     QVector<DeviceNumber> owned;
@@ -158,9 +152,8 @@ RestoreGuard linuxRestoreGuard()
     RestoreGuard guard;
     guard.mountPoints = protectedSystemMounts();
 
-    // Anything actually mounted at a protected path pins the disk it lives on,
-    // so a stick that somehow backs / cannot be selected even if its mount
-    // point is spelled differently than the list above.
+    // Pin the disk behind each protected mount, so a stick backing / is refused
+    // even if its mount point is spelled differently than the list.
     const QVector<MountEntry> mounts = readMounts();
     for (const MountEntry &mount : mounts) {
         if (!isProtectedMountPoint(mount.mountPoint, guard.mountPoints)) {

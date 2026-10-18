@@ -14,25 +14,18 @@ namespace {
 
 constexpr auto LogFileName = "usb-restoration-tool.log";
 
-// Past this the log is rolled over to a single .1 backup. A restore writes a
-// couple of dozen lines, so this holds a long history without the file growing
-// without bound on a machine that restores sticks all day.
+// Rolled over to a single .1 backup past this; a restore writes a few dozen lines.
 constexpr qint64 MaxLogBytes = 1024 * 1024;
 
 } // namespace
 
 Logger::Logger(QObject *parent) : QObject(parent)
 {
-    // Beside the executable first: this is a portable tool, and a copy on a
-    // stick should carry its own log rather than scatter one into the profile
-    // of every machine it is plugged into.
     if (openAt(QCoreApplication::applicationDirPath())) {
         m_portable = true;
         return;
     }
 
-    // Read-only install directory, or an AppImage's squashfs mount. A log in
-    // the user's own data directory is worth more than no log at all.
     const QString fallback = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (!fallback.isEmpty() && QDir().mkpath(fallback)) {
         openAt(fallback);

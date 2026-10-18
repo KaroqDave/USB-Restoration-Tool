@@ -22,10 +22,8 @@ constexpr GUID BasicDataPartitionGuid = {0xebd0a0a2,
                                          0x4433,
                                          {0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99, 0xc7}};
 
-// The window at each end of the disk that gets zeroed. A GPT header lives in
-// the first and last 33 sectors, an MBR in the first, and hybrid ISO layouts
-// scatter signatures through the first megabyte; 4 MiB covers all of them with
-// room to spare at both ends.
+// Zeroed at each end: covers GPT (first/last 33 sectors), MBR and hybrid-ISO
+// signatures in the first megabyte, with room to spare.
 constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
 
 std::uint64_t alignDown(std::uint64_t value, std::uint64_t alignment)
@@ -33,9 +31,7 @@ std::uint64_t alignDown(std::uint64_t value, std::uint64_t alignment)
     return alignment == 0 ? value : (value / alignment) * alignment;
 }
 
-// The serial number lives at a byte offset the driver reports, inside the same
-// buffer. Both the offset and the string's length are therefore driver-supplied
-// and are bounded against the bytes that actually came back.
+// The offset and string length are driver-supplied, so both are bounded by the returned bytes.
 QString serialFromDescriptor(const QByteArray &buffer)
 {
     if (buffer.size() < static_cast<int>(sizeof(STORAGE_DEVICE_DESCRIPTOR))) {
@@ -68,13 +64,8 @@ QString normalizedSerial(const QString &value)
     return normalized;
 }
 
-// The same device's serial reaches WMI and the storage descriptor by different
-// routes, and the two can differ in padding, punctuation, or a vendor prefix on
-// one side only. So the comparison is deliberately loose: it exists to catch a
-// different physical device, not to insist on identical formatting. Either side
-// being silent about its serial proves nothing and is not treated as a
-// mismatch — the device number, bus type, byte length and sector size checks
-// around it do not depend on this one.
+// Deliberately loose: WMI and the storage descriptor can differ in padding, punctuation or a
+// vendor prefix. A missing serial on either side proves nothing, so it is not a mismatch.
 bool serialsAgree(const QString &reported, const QString &expected)
 {
     const QString a = normalizedSerial(reported);
@@ -85,9 +76,7 @@ bool serialsAgree(const QString &reported, const QString &expected)
     return a == b || a.contains(b) || b.contains(a);
 }
 
-// Two-step read: the header says how big the descriptor is, then it is read in
-// full. A single fixed-size buffer would fail outright on a device with a long
-// vendor or product string rather than returning what it asked for.
+// Read the header first for the size: a fixed buffer fails outright on long vendor/product strings.
 bool readStorageDeviceDescriptor(HANDLE handle, QByteArray *buffer)
 {
     STORAGE_PROPERTY_QUERY query = {};
@@ -201,9 +190,7 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
                           .arg(m_diskNumber));
     }
 
-    // Bus type is re-read from the device rather than trusted from the WMI
-    // snapshot taken earlier: this is the check that a replug between
-    // enumeration and here cannot slip past.
+    // Re-read from the device, not the WMI snapshot, so a replug since enumeration is caught.
     QByteArray descriptorBuffer;
     if (!readStorageDeviceDescriptor(m_handle, &descriptorBuffer)) {
         return refuse(lastError(QStringLiteral("Could not read the storage properties of the opened drive")));
@@ -307,9 +294,7 @@ bool RawDisk::clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSiz
 {
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
 
-    // Never let the head and tail windows meet in the middle: on a small disk
-    // a fixed 4 MiB from each end would overlap and the second write would
-    // seek backwards past the first.
+    // On a small disk a fixed 4 MiB from each end would overlap.
     const std::uint64_t clearBytes = alignDown(qMin(SignatureClearBytes, diskSize / 4), sector);
     if (clearBytes < sector) {
         if (error) {
@@ -465,10 +450,8 @@ bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType f
         return false;
     }
 
-    // An MBR layout is always four entries: the on-disk table has four slots
-    // and IOCTL_DISK_SET_DRIVE_LAYOUT_EX rejects any other count. The three
-    // unused ones are written as empty rather than left alone, so nothing of
-    // the previous table survives in them.
+    // IOCTL_DISK_SET_DRIVE_LAYOUT_EX rejects any MBR count but four; the unused
+    // slots are rewritten empty so nothing of the old table survives.
     constexpr int MbrPartitionCount = 4;
     const int layoutBytes =
         static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) +
@@ -486,8 +469,7 @@ bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType f
     partition.PartitionLength.QuadPart = static_cast<LONGLONG>(layout.length);
     partition.PartitionNumber = 1;
     partition.RewritePartition = TRUE;
-    // The type byte is what a BIOS-era device reads to decide it recognises
-    // the stick: 0x07 for exFAT/NTFS, 0x0C for FAT32 LBA.
+    // 0x07 for exFAT/NTFS, 0x0C for FAT32 LBA; older devices check this to recognise the stick.
     partition.Mbr.PartitionType = mbrPartitionType(fileSystem);
     partition.Mbr.BootIndicator = FALSE;
     partition.Mbr.RecognizedPartition = TRUE;
@@ -521,8 +503,6 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
         return true;
     }
 
-    // The range has to cover whole sectors at a whole-sector offset; the
-    // shared refusal lives in core, where it is tested.
     const QString unaligned = unalignedZeroRangeError(offset, bytes, sectorSize);
     if (!unaligned.isEmpty()) {
         if (error) {
@@ -540,8 +520,7 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
         return false;
     }
 
-    // Raw writes to a physical drive have to be whole sectors, so the buffer is
-    // a sector multiple rather than a round megabyte.
+    // Raw physical-drive writes must be whole sectors.
     const std::uint64_t sector = sectorSize == 0 ? 512 : sectorSize;
     const auto bufferSize = static_cast<int>(alignDown(1024ull * 1024ull, sector));
     QByteArray buffer(bufferSize > 0 ? bufferSize : static_cast<int>(sector), '\0');

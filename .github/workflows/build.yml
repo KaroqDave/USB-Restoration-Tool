@@ -109,3 +109,43 @@ jobs:
             standalone/*.AppImage
             standalone/*.AppImage.sha256
           if-no-files-found: error
+
+  # Built against Ubuntu's own Qt rather than the kit above, because the .deb
+  # depends on the distribution's Qt packages and has to link the same libraries.
+  build-deb:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ qt6-base-dev dpkg-dev file
+
+      - name: Build .deb
+        run: ./scripts/build-deb.sh
+
+      # The same tests again, because this build links Qt 6.4 rather than 6.8.
+      - name: Test
+        run: ctest --test-dir build-deb --output-on-failure
+
+      - name: List package contents
+        run: dpkg-deb -c standalone/*.deb
+
+      # Installs the package but never restores: CI has no disk to spare.
+      - name: Install and smoke-test the package
+        run: |
+          sudo apt-get install -y ./standalone/*.deb
+          /usr/libexec/usb-restoration-helper --protocol-version
+          pkaction --action-id dev.karoqdave.usb-restoration-tool.restore --verbose
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: usb-restoration-tool-deb
+          path: |
+            standalone/*.deb
+            standalone/*.deb.sha256
+          if-no-files-found: error
