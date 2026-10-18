@@ -9,8 +9,8 @@ Nothing open.
 - 2026-10-18: Step plans for both backends moved to `src/core/restore_steps.*`
   with tests pinning the step count and first destructive step. The helper
   announces its plan and app version (protocol 3), and the GUI refuses a
-  mismatched helper. Windows Release build passed; the tests and the Linux
-  build run in CI.
+  mismatched helper. CI passes on Windows and Linux, and a restore with the
+  installed package is tested and confirmed working. Ships in 1.6.1.
 
 - 2026-10-18: Added a `.deb` built by CPack through `scripts/build-deb.sh`, with
   the helper at `/usr/libexec/usb-restoration-helper` and its polkit action. CI

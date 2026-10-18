@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.6.1 - 2026-10-18
+
+A Linux GUI and restore helper from different builds are now refused before
+anything is asked or written.
+
 ### Fixed
 
 - A Linux GUI and restore helper from different releases are now refused

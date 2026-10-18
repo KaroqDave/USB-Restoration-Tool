@@ -96,7 +96,15 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.6.0
+## What's New in 1.6.1
+
+- On Linux, the app checks that its restore helper comes from a matching build
+  before asking for your password, and names both versions if it does not.
+  Install the 1.6.1 `.deb` to upgrade both together; a 1.6.0 helper is refused.
+- The point up to which unplugging is reported as safe is now taken from one
+  list of restore steps per platform, checked by tests.
+
+### Previously, in 1.6.0
 
 - A `.deb` package for Ubuntu 24.04 and Debian 13 or later. The app runs as your
   normal user and asks for authentication only to restore.
