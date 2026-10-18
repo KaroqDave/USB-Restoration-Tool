@@ -96,14 +96,13 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.5.0
+## What's New in 1.6.0
 
-- Filesystem selection, with ext4 available on Linux.
-- Filesystem names in the selected-disk panel.
-- Progress feedback when a device stops responding.
-- Accurate privilege badges and GNOME Wayland window decorations.
-- More reliable cancellation during Linux authentication.
-- FAT32 geometry checks and Linux ext4 ownership fixes.
+- A `.deb` package for Ubuntu 24.04 and Debian 13 or later. The app runs as your
+  normal user and asks for authentication only to restore.
+- The disk is confirmed again after partitioning, just before it is formatted.
+- A Linux restore keeps going if the app is closed partway through.
+- Clearer messages after cancelling about remounting and drive letters.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
