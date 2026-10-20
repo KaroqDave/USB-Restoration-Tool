@@ -611,6 +611,9 @@ if(USBRESTORE_BUILD_TESTS)
         target_link_options(usb-core-fuzz PRIVATE -fsanitize=fuzzer)
     endif()
     usbrestore_sanitize(usb-core-fuzz)
+    # CI and release builds name their targets; building the tests must bring
+    # the replayer along, or ctest reports its test as "Not Run".
+    add_dependencies(usb-restoration-tool-tests usb-core-fuzz)
 
     file(GLOB _usbrestore_fuzz_seeds CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz-corpus/*")
     add_test(NAME usb-core-fuzz-corpus COMMAND usb-core-fuzz ${_usbrestore_fuzz_seeds})
