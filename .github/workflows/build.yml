@@ -110,6 +110,54 @@ jobs:
             standalone/*.AppImage.sha256
           if-no-files-found: error
 
+  # The core tests and partition tables under ASan and UBSan, then a short
+  # libFuzzer run of the parsers the helper trusts nothing through.
+  sanitizers:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libclang-rt-18-dev qt6-base-dev gdisk fdisk
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+          -DUSBRESTORE_SANITIZE=ON -DUSBRESTORE_FUZZ=ON
+
+      - name: Build
+        run: cmake --build build-sanitize --target usb-restoration-tool-tests usb-partition-dump usb-core-fuzz
+
+      - name: Test
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build-sanitize --output-on-failure
+
+      - name: Verify generated partition tables
+        run: ./scripts/verify-partition-tables.sh build-sanitize
+
+      # Fuzzes a copy so the checked-in seeds only change by hand.
+      - name: Fuzz
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          mkdir -p fuzz-work fuzz-crashes
+          cp tests/fuzz-corpus/* fuzz-work/
+          ./build-sanitize/usb-core-fuzz -max_total_time=120 -timeout=10 -max_len=8192 \
+            -artifact_prefix=fuzz-crashes/ fuzz-work
+
+      - name: Upload fuzz crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashes
+          path: fuzz-crashes/
+          if-no-files-found: ignore
+
   # Built against Ubuntu's own Qt rather than the kit above, because the .deb
   # depends on the distribution's Qt packages and has to link the same libraries.
   build-deb:

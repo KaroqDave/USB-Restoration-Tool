@@ -2,7 +2,10 @@
 
 ## Next
 
-Nothing open.
+- Land `test/harden-parsers`: stricter argument and protocol parsing, a single
+  version announcement per helper run, the `usb-core-fuzz` harness and the
+  `sanitizers` CI job. Windows build and tests pass locally; the ASan/UBSan and
+  libFuzzer job needs its first CI pass (no Linux machine was available).
 
 ## Recently completed
 

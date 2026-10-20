@@ -28,7 +28,8 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
   trusted. See `docs/polkit-helper.md`.
 - `src/gui/` — `main.cpp`, `main_window.*`, `theme.*`, `app_settings.*`.
 
-Tests live in `tests/test_core.cpp`. `tools/partition_dump.cpp` backs
+Tests live in `tests/test_core.cpp`; `tests/fuzz_core.cpp` fuzzes the parsers and
+partition tables and replays `tests/fuzz-corpus`. `tools/partition_dump.cpp` backs
 `scripts/verify-partition-tables.sh`. Docs beyond the README go in `docs/`.
 Build and project guidance lives in `docs/development.md`; open tasks live in `docs/TODO.md`.
 

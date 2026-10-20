@@ -27,3 +27,5 @@
 *.png binary
 *.ico binary
 *.zip binary
+# Fuzz seeds are exact bytes; line-ending conversion would change them.
+tests/fuzz-corpus/** binary
