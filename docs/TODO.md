@@ -6,6 +6,14 @@ Nothing open.
 
 ## Recently completed
 
+- 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
+  digits only, a repeated version detail or second announcement is refused, and
+  protocol text stays within its limit without splitting a surrogate pair.
+  `usb-core-fuzz` fuzzes the parsers and partition tables and replays
+  `tests/fuzz-corpus` in ctest; the `sanitizers` CI job runs the core tests
+  and partition-table checks under ASan and UBSan and fuzzes for two minutes.
+  CI passes on all four jobs. Unreleased.
+
 - 2026-10-18: Step plans for both backends moved to `src/core/restore_steps.*`
   with tests pinning the step count and first destructive step. The helper
   announces its plan and app version (protocol 3), and the GUI refuses a

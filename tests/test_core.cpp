@@ -6,6 +6,8 @@
 
 #include <QtTest/QtTest>
 
+#include <limits>
+
 using namespace usbrestore;
 
 namespace {
@@ -902,6 +904,120 @@ class CoreTests : public QObject {
         QVERIFY(refuses(wordSize, QStringLiteral("--expect-size")));
     }
 
+    void refusesMalformedArgumentValues_data()
+    {
+        QTest::addColumn<QString>("flag");
+        QTest::addColumn<QString>("value");
+
+        const auto add = [](const char *name, const char *flag, const QString &value) {
+            QTest::newRow(name) << QString::fromLatin1(flag) << value;
+        };
+
+        add("device trailing slash", "--device", QStringLiteral("/dev/sdb/"));
+        add("device trailing newline", "--device", QStringLiteral("/dev/sdb\n"));
+        add("device trailing space", "--device", QStringLiteral("/dev/sdb "));
+        add("device relative", "--device", QStringLiteral("dev/sdb"));
+        add("device upper-case prefix", "--device", QStringLiteral("/DEV/sdb"));
+        add("device dot segment", "--device", QStringLiteral("/dev/./sdb"));
+        add("device embedded NUL", "--device", QStringLiteral("/dev/sd") + QChar(0) + QStringLiteral("b"));
+        add("device non-ASCII letter", "--device", QStringLiteral("/dev/sdé"));
+        add("device fullwidth letter", "--device", QStringLiteral("/dev/ｓdb"));
+        add("device name too long", "--device", QStringLiteral("/dev/") + QString(65, QLatin1Char('a')));
+
+        add("label empty", "--label", QString());
+        add("label lone dash", "--label", QStringLiteral("-"));
+        add("label newline", "--label", QStringLiteral("USB\n"));
+        add("label tab", "--label", QStringLiteral("USB\t1"));
+        add("label non-breaking space", "--label", QStringLiteral("US B"));
+        add("label umlaut", "--label", QStringLiteral("ÜSB"));
+        add("label zero-width space", "--label", QStringLiteral("USB​"));
+        add("label twelve characters", "--label", QStringLiteral("123456789012"));
+
+        // Only the decimal digits buildRestoreArguments() writes: a looser parse
+        // would turn a garbled claim into a plausible one.
+        add("size empty", "--expect-size", QString());
+        add("size negative", "--expect-size", QStringLiteral("-1"));
+        add("size plus sign", "--expect-size", QStringLiteral("+16"));
+        add("size leading space", "--expect-size", QStringLiteral(" 16"));
+        add("size trailing space", "--expect-size", QStringLiteral("16 "));
+        add("size hexadecimal", "--expect-size", QStringLiteral("0x10"));
+        add("size exponent", "--expect-size", QStringLiteral("1e9"));
+        add("size fraction", "--expect-size", QStringLiteral("16.0"));
+        add("size grouped", "--expect-size", QStringLiteral("16,000"));
+        add("size Arabic-Indic digits", "--expect-size", QStringLiteral("١٦"));
+        add("size past 64 bits", "--expect-size", QStringLiteral("18446744073709551616"));
+        add("sector size empty", "--expect-sector-size", QString());
+        add("sector size negative", "--expect-sector-size", QStringLiteral("-512"));
+        add("sector size plus sign", "--expect-sector-size", QStringLiteral("+512"));
+        add("sector size trailing space", "--expect-sector-size", QStringLiteral("512 "));
+        add("sector size past 32 bits", "--expect-sector-size", QStringLiteral("4294967296"));
+        add("sector size zero", "--expect-sector-size", QStringLiteral("0"));
+
+        add("style upper case", "--style", QStringLiteral("GPT"));
+        add("style trailing space", "--style", QStringLiteral("gpt "));
+        add("style empty", "--style", QString());
+        add("filesystem upper case", "--filesystem", QStringLiteral("EXFAT"));
+        add("filesystem trailing newline", "--filesystem", QStringLiteral("exfat\n"));
+        add("filesystem empty", "--filesystem", QString());
+    }
+
+    void refusesMalformedArgumentValues()
+    {
+        QFETCH(QString, flag);
+        QFETCH(QString, value);
+
+        QStringList arguments =
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"));
+        const int flagIndex = arguments.indexOf(flag);
+        QVERIFY(flagIndex >= 0);
+        arguments[flagIndex + 1] = value;
+
+        QString reason;
+        QVERIFY(!parseRestoreArguments(arguments, nullptr, &reason));
+        QVERIFY2(reason.contains(flag), qPrintable(reason));
+    }
+
+    void refusesUnrecognisedFlagSpellings_data()
+    {
+        QTest::addColumn<QStringList>("extra");
+
+        QTest::newRow("upper case") << QStringList{QStringLiteral("--Device"), QStringLiteral("/dev/sdc")};
+        QTest::newRow("single dash") << QStringList{QStringLiteral("-device"), QStringLiteral("/dev/sdc")};
+        QTest::newRow("joined value") << QStringList{QStringLiteral("--device=/dev/sdc"), QStringLiteral("x")};
+        QTest::newRow("trailing space") << QStringList{QStringLiteral("--device "), QStringLiteral("/dev/sdc")};
+        QTest::newRow("empty flag") << QStringList{QString(), QStringLiteral("/dev/sdc")};
+        QTest::newRow("end of options") << QStringList{QStringLiteral("--"), QStringLiteral("/dev/sdc")};
+        QTest::newRow("version flag") << QStringList{QString::fromLatin1(ProtocolVersionFlag), QStringLiteral("3")};
+    }
+
+    void refusesUnrecognisedFlagSpellings()
+    {
+        QFETCH(QStringList, extra);
+
+        QString reason;
+        QVERIFY(!parseRestoreArguments(
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat,
+                                  QStringLiteral("USB")) +
+                extra,
+            nullptr, &reason));
+        QVERIFY2(reason.contains(QStringLiteral("not a recognised option")), qPrintable(reason));
+    }
+
+    // The largest values each field holds still parse, so the strict parse refuses
+    // only spellings, not disks.
+    void acceptsTheLargestDiskAndSectorSizes()
+    {
+        QStringList arguments =
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"));
+        arguments[arguments.indexOf(QStringLiteral("--expect-size")) + 1] = QStringLiteral("18446744073709551615");
+        arguments[arguments.indexOf(QStringLiteral("--expect-sector-size")) + 1] = QStringLiteral("4294967295");
+
+        RestoreArguments parsed;
+        QVERIFY(parseRestoreArguments(arguments, &parsed));
+        QCOMPARE(parsed.expected.size, std::numeric_limits<std::uint64_t>::max());
+        QCOMPARE(parsed.expected.sectorSize, std::numeric_limits<quint32>::max());
+    }
+
     // mkfs output is logged verbatim, so a newline reaching the wire would arrive
     // at the GUI as a line the helper never sent.
     void keepsForgedLinesOutOfMessages()
@@ -1072,6 +1188,134 @@ class CoreTests : public QObject {
         QCOMPARE(bare.totalSteps, 0);
         QCOMPARE(parseProtocolLine(QStringLiteral("mkfs.exfat: not found")).kind, ProtocolLineKind::Unknown);
         QCOMPARE(parseProtocolLine(QString()).kind, ProtocolLineKind::Unknown);
+    }
+
+    void classifiesOddProtocolLines_data()
+    {
+        QTest::addColumn<QString>("line");
+        QTest::addColumn<ProtocolLineKind>("kind");
+        QTest::addColumn<QString>("text");
+
+        const auto add = [](const char *name, const QString &line, ProtocolLineKind kind, const QString &text) {
+            QTest::newRow(name) << line << kind << text;
+        };
+
+        add("keyword in upper case", QStringLiteral("DETAIL x"), ProtocolLineKind::Unknown, QString());
+        add("keyword with suffix", QStringLiteral("results /dev/sdb1"), ProtocolLineKind::Unknown, QString());
+        add("bare version", QStringLiteral("version"), ProtocolLineKind::Unknown, QString());
+        add("version with suffix", QStringLiteral("version 3x"), ProtocolLineKind::Unknown, QString());
+        add("three step counts", QStringLiteral("step 1/10/12 x"), ProtocolLineKind::Unknown, QString());
+        add("no step number", QStringLiteral("step /10 x"), ProtocolLineKind::Unknown, QString());
+        add("no step total", QStringLiteral("step 1/ x"), ProtocolLineKind::Unknown, QString());
+        add("bare step", QStringLiteral("step"), ProtocolLineKind::Unknown, QString());
+        add("leading tab", QStringLiteral("\tdetail x"), ProtocolLineKind::Detail, QStringLiteral("x"));
+        add("carriage return", QStringLiteral("result /dev/sdb1\r"), ProtocolLineKind::Result,
+            QStringLiteral("/dev/sdb1"));
+
+        // What the encoders write for an empty message, trimmed by the reader.
+        add("step without message", QStringLiteral("step 1/10"), ProtocolLineKind::Step, QString());
+        add("bare detail", QStringLiteral("detail"), ProtocolLineKind::Detail, QString());
+        add("bare result", QStringLiteral("result"), ProtocolLineKind::Result, QString());
+    }
+
+    void classifiesOddProtocolLines()
+    {
+        QFETCH(QString, line);
+        QFETCH(ProtocolLineKind, kind);
+        QFETCH(QString, text);
+
+        const ProtocolLine parsed = parseProtocolLine(line);
+        QCOMPARE(parsed.kind, kind);
+        QCOMPARE(parsed.text, text);
+    }
+
+    // Each detail decides whether the GUI's unplug boundary is right, so a line
+    // that names one twice or names an unknown one announces no plan at all.
+    void refusesAmbiguousVersionDetails_data()
+    {
+        QTest::addColumn<QString>("details");
+
+        QTest::newRow("repeated steps") << QStringLiteral("steps 10 steps 11 destructive 5");
+        QTest::newRow("repeated destructive") << QStringLiteral("steps 10 destructive 5 destructive 4");
+        QTest::newRow("repeated app") << QStringLiteral("app 1.6.1 app 1.6.2 steps 10 destructive 5");
+        QTest::newRow("unknown key") << QStringLiteral("steps 10 destructive 5 safe 1");
+        QTest::newRow("missing value") << QStringLiteral("steps 10 destructive");
+        QTest::newRow("hexadecimal count") << QStringLiteral("steps 0xA destructive 5");
+    }
+
+    void refusesAmbiguousVersionDetails()
+    {
+        QFETCH(QString, details);
+
+        const ProtocolLine parsed =
+            parseProtocolLine(QStringLiteral("version %1 %2").arg(RestoreProtocolVersion).arg(details));
+        QCOMPARE(parsed.kind, ProtocolLineKind::Version);
+        QCOMPARE(parsed.version, RestoreProtocolVersion);
+        QCOMPARE(parsed.totalSteps, 0);
+        QCOMPARE(parsed.firstDestructiveStep, 0);
+        QVERIFY(parsed.appVersion.isEmpty());
+        QVERIFY(!acceptHelperAnnouncement(parsed, QStringLiteral("1.6.1"), linuxRestorePlan()));
+    }
+
+    // Every line an encoder writes must read back as that line, whatever the
+    // message, after the same UTF-8 trip and trim the GUI's reader applies.
+    void readsBackEveryEncodedLine_data()
+    {
+        QTest::addColumn<QString>("message");
+
+        QTest::newRow("ordinary") << QStringLiteral("Formatting as exFAT");
+        QTest::newRow("empty") << QString();
+        QTest::newRow("only whitespace") << QStringLiteral(" \r\n\t ");
+        QTest::newRow("embedded line") << QStringLiteral("failed\nresult /dev/sda");
+        QTest::newRow("line separator") << QStringLiteral("a b\u0085c");
+        QTest::newRow("over the limit") << QString(5000, QLatin1Char('x'));
+        QTest::newRow("emoji at the limit") << QString(1999, QLatin1Char('x')) + QStringLiteral("\U0001F4BE");
+    }
+
+    void readsBackEveryEncodedLine()
+    {
+        QFETCH(QString, message);
+
+        const auto overTheWire = [](const QString &line) {
+            return parseProtocolLine(QString::fromUtf8(line.toUtf8()).trimmed());
+        };
+        const QString expected = sanitizeProtocolText(message);
+
+        const ProtocolLine step = overTheWire(encodeStepLine(4, 10, message));
+        QCOMPARE(step.kind, ProtocolLineKind::Step);
+        QCOMPARE(step.step, 4);
+        QCOMPARE(step.totalSteps, 10);
+        QCOMPARE(step.text, expected);
+
+        const ProtocolLine detail = overTheWire(encodeDetailLine(message));
+        QCOMPARE(detail.kind, ProtocolLineKind::Detail);
+        QCOMPARE(detail.text, expected);
+
+        const ProtocolLine result = overTheWire(encodeResultLine(message));
+        QCOMPARE(result.kind, ProtocolLineKind::Result);
+        QCOMPARE(result.text, expected);
+    }
+
+    // Cutting a surrogate pair in half would leave text that no longer survives
+    // the UTF-8 trip to the GUI unchanged.
+    void truncatesTextBetweenCharacters()
+    {
+        const QString floppy = QStringLiteral("\U0001F4BE");
+        const QString sanitized = sanitizeProtocolText(QString(1999, QLatin1Char('x')) + floppy + floppy);
+        QCOMPARE(sanitized, QString(1999, QLatin1Char('x')));
+
+        const QString fits = sanitizeProtocolText(QString(1998, QLatin1Char('x')) + floppy + floppy);
+        QCOMPARE(fits, QString(1998, QLatin1Char('x')) + floppy);
+        QCOMPARE(QString::fromUtf8(fits.toUtf8()), fits);
+
+        // Found by usb-core-fuzz: the space before the last word went in unchecked.
+        QCOMPARE(sanitizeProtocolText(QString(1999, QLatin1Char('x')) + QStringLiteral(" y")),
+                 QString(1999, QLatin1Char('x')));
+        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QStringLiteral(" y")),
+                 QString(1998, QLatin1Char('x')) + QStringLiteral(" y"));
+        // A space and a high surrogate fit, its low half does not: neither is kept.
+        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QLatin1Char(' ') + floppy),
+                 QString(1998, QLatin1Char('x')));
     }
 
     // The GUI tells the user unplugging is safe before firstDestructiveStep, so these

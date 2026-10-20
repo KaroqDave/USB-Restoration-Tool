@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- The restore helper refuses `--expect-size` and `--expect-sector-size` values
+  with a sign or surrounding whitespace, such as `+16` or `512 `, instead of
+  reading them as numbers. Only the plain digits the GUI writes are accepted.
+- A version announcement that names a detail twice, such as two step counts, is
+  refused rather than taking the last one.
+- The Linux GUI no longer lets a second version announcement from the helper
+  undo the refusal of the first. Any second announcement now fails the restore
+  and asks the helper to stop.
+- A step, detail or result line with an empty message is read back as that
+  line instead of being shown as unrecognised helper output.
+- Protocol text is cut at its 2000-character limit without going one character
+  over, which a space before the last word could cause, and without ending in
+  half of a surrogate pair, which did not survive the UTF-8 trip to the GUI.
+
+### Added
+
+- `usb-core-fuzz`, a fuzz harness for the helper's argument parser, the
+  protocol line parser and the partition-table builder. ctest replays its seed
+  corpus on every platform, and a new CI job runs the core tests and partition
+  table checks under ASan and UBSan, then fuzzes for two minutes.
+
 ## 1.6.1 - 2026-10-18
 
 A Linux GUI and restore helper from different builds are now refused before

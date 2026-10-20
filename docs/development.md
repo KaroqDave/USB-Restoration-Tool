@@ -50,6 +50,23 @@ cmake --build --preset linux --target usb-partition-dump
 This requires `gdisk` and `util-linux` and uses sparse files, not physical drives.
 Add a verification case for any new partition layout.
 
+`usb-core-fuzz` feeds arbitrary bytes to the helper's argument parser, the
+protocol line parser and the partition-table builder, and checks the properties
+the unit tests rely on, such as no argument list ever asserting a USB bus. ctest
+replays the seeds in `tests/fuzz-corpus` through it on every platform. With
+Clang on Linux it can also run as a libFuzzer target under ASan and UBSan, as CI
+does for two minutes on every push:
+
+```bash
+cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DUSBRESTORE_SANITIZE=ON -DUSBRESTORE_FUZZ=ON
+cmake --build build-sanitize --target usb-restoration-tool-tests usb-partition-dump usb-core-fuzz
+ctest --test-dir build-sanitize --output-on-failure
+mkdir -p fuzz-work && cp tests/fuzz-corpus/* fuzz-work/ && ./build-sanitize/usb-core-fuzz -max_total_time=60 fuzz-work
+```
+
+`USBRESTORE_SANITIZE` also works on its own with GCC. Once a crash it finds is
+fixed, add the input to `tests/fuzz-corpus` so every build replays it.
+
 The platform restore sequences have no automated hardware coverage. Use only
 disposable media for manual restore checks. A per-device test log is not required.
 

@@ -44,6 +44,16 @@ set(CMAKE_AUTORCC ON)
 
 option(USBRESTORE_BUILD_TESTS "Build the USB Restoration Tool C++ tests" ON)
 
+# CI aids for the test targets only; neither belongs in a build anyone runs.
+option(USBRESTORE_SANITIZE "Build the tests and tools with AddressSanitizer and UBSan (GCC or Clang)" OFF)
+option(USBRESTORE_FUZZ "Build usb-core-fuzz against libFuzzer instead of as a corpus replayer (Clang)" OFF)
+if(USBRESTORE_SANITIZE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(FATAL_ERROR "USBRESTORE_SANITIZE needs GCC or Clang.")
+endif()
+if(USBRESTORE_FUZZ AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "USBRESTORE_FUZZ needs Clang, which ships libFuzzer.")
+endif()
+
 # On by default because a real install — .deb, .rpm, AUR — is where the polkit
 # privilege split can actually work. The AppImage turns it off: polkit reads its
 # policies from system directories, so a self-contained bundle cannot register
@@ -202,6 +212,16 @@ function(usbrestore_harden target)
     endif()
 endfunction()
 
+# Not applied to the GUI or helper: they keep usbrestore_harden(), and
+# _FORTIFY_SOURCE does not combine cleanly with ASan.
+function(usbrestore_sanitize target)
+    if(USBRESTORE_SANITIZE)
+        set(_flags -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+        target_compile_options(${target} PRIVATE ${_flags})
+        target_link_options(${target} PRIVATE ${_flags})
+    endif()
+endfunction()
+
 function(usbrestore_json_escape str outvar)
     string(REPLACE "\\" "\\\\" str "${str}")
     string(REPLACE "\"" "\\\"" str "${str}")
@@ -308,6 +328,7 @@ function(usbrestore_export_clangd_compile_commands)
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool-tests_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-partition-dump_autogen/include${_suffix}"
+            "${CMAKE_CURRENT_BINARY_DIR}/usb-core-fuzz_autogen/include${_suffix}"
         )
     endforeach()
 
@@ -373,6 +394,7 @@ function(usbrestore_export_clangd_compile_commands)
         ${USBRESTORE_PLATFORM_SOURCES}
         ${USBRESTORE_GUI_SOURCES}
         tests/test_core.cpp
+        tests/fuzz_core.cpp
         tools/partition_dump.cpp
     )
     if(WIN32)
@@ -547,6 +569,7 @@ if(USBRESTORE_BUILD_TESTS)
         target_compile_definitions(usb-restoration-tool-tests PRIVATE UNICODE _UNICODE NOMINMAX)
         target_compile_options(usb-restoration-tool-tests PRIVATE /utf-8)
     endif()
+    usbrestore_sanitize(usb-restoration-tool-tests)
 
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
     if(WIN32)
@@ -568,6 +591,37 @@ if(USBRESTORE_BUILD_TESTS)
         target_compile_definitions(usb-partition-dump PRIVATE UNICODE _UNICODE NOMINMAX)
         target_compile_options(usb-partition-dump PRIVATE /utf-8)
     endif()
+    usbrestore_sanitize(usb-partition-dump)
+
+    # Replays tests/fuzz-corpus as an ordinary test; USBRESTORE_FUZZ turns the
+    # same source into a libFuzzer target that also accepts those files.
+    add_executable(usb-core-fuzz
+        ${USBRESTORE_CORE_SOURCES}
+        tests/fuzz_core.cpp
+    )
+    target_include_directories(usb-core-fuzz PRIVATE src)
+    target_link_libraries(usb-core-fuzz PRIVATE Qt6::Core)
+    if(MSVC)
+        target_compile_definitions(usb-core-fuzz PRIVATE UNICODE _UNICODE NOMINMAX)
+        target_compile_options(usb-core-fuzz PRIVATE /utf-8)
+    endif()
+    if(USBRESTORE_FUZZ)
+        target_compile_definitions(usb-core-fuzz PRIVATE USBRESTORE_LIBFUZZER)
+        target_compile_options(usb-core-fuzz PRIVATE -fsanitize=fuzzer)
+        target_link_options(usb-core-fuzz PRIVATE -fsanitize=fuzzer)
+    endif()
+    usbrestore_sanitize(usb-core-fuzz)
+    # CI and release builds name their targets; building the tests must bring
+    # the replayer along, or ctest reports its test as "Not Run".
+    add_dependencies(usb-restoration-tool-tests usb-core-fuzz)
+
+    file(GLOB _usbrestore_fuzz_seeds CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz-corpus/*")
+    add_test(NAME usb-core-fuzz-corpus COMMAND usb-core-fuzz ${_usbrestore_fuzz_seeds})
+    if(WIN32)
+        set_tests_properties(usb-core-fuzz-corpus PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+    endif()
+    unset(_usbrestore_fuzz_seeds)
 endif()
 
 if(WIN32)
