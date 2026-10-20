@@ -12,7 +12,7 @@ Nothing open.
   `usb-core-fuzz` fuzzes the parsers and partition tables and replays
   `tests/fuzz-corpus` in ctest; the `sanitizers` CI job runs the core tests
   and partition-table checks under ASan and UBSan and fuzzes for two minutes.
-  CI passes on all four jobs. Unreleased.
+  CI passes on all four jobs. Ships in 1.6.2.
 
 - 2026-10-18: Step plans for both backends moved to `src/core/restore_steps.*`
   with tests pinning the step count and first destructive step. The helper

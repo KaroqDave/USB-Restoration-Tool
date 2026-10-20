@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.6.2 - 2026-10-21
+
+Stricter checks on what passes between the Linux app and its restore helper,
+with the parsers on that boundary now fuzzed in CI.
+
+### Added
+
+- `usb-core-fuzz`, a fuzz harness for the helper's argument parser, the
+  protocol line parser and the partition-table builder. ctest replays its seed
+  corpus on every platform, and a new CI job runs the core tests and partition
+  table checks under ASan and UBSan, then fuzzes for two minutes.
+
 ### Fixed
 
 - The restore helper refuses `--expect-size` and `--expect-sector-size` values
@@ -21,13 +33,6 @@ All notable changes to this project are documented here. The format follows
 - Protocol text is cut at its 2000-character limit without going one character
   over, which a space before the last word could cause, and without ending in
   half of a surrogate pair, which did not survive the UTF-8 trip to the GUI.
-
-### Added
-
-- `usb-core-fuzz`, a fuzz harness for the helper's argument parser, the
-  protocol line parser and the partition-table builder. ctest replays its seed
-  corpus on every platform, and a new CI job runs the core tests and partition
-  table checks under ASan and UBSan, then fuzzes for two minutes.
 
 ## 1.6.1 - 2026-10-18
 
