@@ -1307,6 +1307,15 @@ class CoreTests : public QObject {
         const QString fits = sanitizeProtocolText(QString(1998, QLatin1Char('x')) + floppy + floppy);
         QCOMPARE(fits, QString(1998, QLatin1Char('x')) + floppy);
         QCOMPARE(QString::fromUtf8(fits.toUtf8()), fits);
+
+        // Found by usb-core-fuzz: the space before the last word went in unchecked.
+        QCOMPARE(sanitizeProtocolText(QString(1999, QLatin1Char('x')) + QStringLiteral(" y")),
+                 QString(1999, QLatin1Char('x')));
+        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QStringLiteral(" y")),
+                 QString(1998, QLatin1Char('x')) + QStringLiteral(" y"));
+        // A space and a high surrogate fit, its low half does not: neither is kept.
+        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QLatin1Char(' ') + floppy),
+                 QString(1998, QLatin1Char('x')));
     }
 
     // The GUI tells the user unplugging is safe before firstDestructiveStep, so these

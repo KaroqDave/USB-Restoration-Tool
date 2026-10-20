@@ -18,8 +18,9 @@ All notable changes to this project are documented here. The format follows
   and asks the helper to stop.
 - A step, detail or result line with an empty message is read back as that
   line instead of being shown as unrecognised helper output.
-- Protocol text cut at its 2000-character limit no longer ends in half of a
-  surrogate pair, which did not survive the UTF-8 trip to the GUI.
+- Protocol text is cut at its 2000-character limit without going one character
+  over, which a space before the last word could cause, and without ending in
+  half of a surrogate pair, which did not survive the UTF-8 trip to the GUI.
 
 ### Added
 

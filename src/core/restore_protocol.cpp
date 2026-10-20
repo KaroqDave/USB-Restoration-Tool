@@ -320,17 +320,22 @@ QString sanitizeProtocolText(const QString &text)
             pendingSpace = !sanitized.isEmpty();
             continue;
         }
+        // The pending space counts too, or it can carry the text one past the limit.
+        if (sanitized.size() + (pendingSpace ? 2 : 1) > MaxProtocolTextLength) {
+            break;
+        }
         if (pendingSpace) {
             sanitized.append(QLatin1Char(' '));
             pendingSpace = false;
         }
         sanitized.append(character);
-        if (sanitized.size() >= MaxProtocolTextLength) {
-            break;
-        }
     }
-    // A lone half of a surrogate pair would not survive the UTF-8 trip to the GUI.
+    // A lone half of a surrogate pair would not survive the UTF-8 trip to the GUI,
+    // and dropping it can expose the space before it.
     if (!sanitized.isEmpty() && sanitized.back().isHighSurrogate()) {
+        sanitized.chop(1);
+    }
+    if (sanitized.endsWith(QLatin1Char(' '))) {
         sanitized.chop(1);
     }
     return sanitized;
