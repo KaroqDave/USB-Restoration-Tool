@@ -2,6 +2,9 @@
 
 #include <QtGlobal>
 
+#include <cstdint>
+#include <limits>
+
 namespace usbrestore {
 
 namespace {
@@ -32,6 +35,29 @@ bool isVolumeLabelCharacter(QChar character)
     }
     return character.isLetterOrNumber() || character == QLatin1Char(' ') || character == QLatin1Char('_') ||
            character == QLatin1Char('-');
+}
+
+// Only the plain digits buildRestoreArguments() writes; QString::toULongLong()
+// also takes a sign and surrounding whitespace.
+bool parseDecimal(const QString &text, std::uint64_t maximum, std::uint64_t *value)
+{
+    if (text.isEmpty()) {
+        return false;
+    }
+    std::uint64_t result = 0;
+    for (const QChar character : text) {
+        const char16_t code = character.unicode();
+        if (code < u'0' || code > u'9') {
+            return false;
+        }
+        const std::uint64_t digit = code - u'0';
+        if (result > (maximum - digit) / 10) {
+            return false;
+        }
+        result = result * 10 + digit;
+    }
+    *value = result;
+    return true;
 }
 
 bool fail(QString *error, const QString &text)
@@ -176,15 +202,15 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
                                .arg(MaxVolumeLabelLength));
     }
 
-    bool ok = false;
-    result.expected.size = size.toULongLong(&ok);
-    if (!ok || result.expected.size == 0) {
+    std::uint64_t number = 0;
+    if (!parseDecimal(size, std::numeric_limits<std::uint64_t>::max(), &number) || number == 0) {
         return fail(error, QStringLiteral("--expect-size must be the disk size in bytes."));
     }
-    result.expected.sectorSize = sectorSize.toUInt(&ok);
-    if (!ok || result.expected.sectorSize == 0) {
+    result.expected.size = number;
+    if (!parseDecimal(sectorSize, std::numeric_limits<quint32>::max(), &number) || number == 0) {
         return fail(error, QStringLiteral("--expect-sector-size must be the logical sector size in bytes."));
     }
+    result.expected.sectorSize = static_cast<quint32>(number);
 
     result.expected.deviceId = device;
     result.expected.displayId = device;
@@ -303,6 +329,10 @@ QString sanitizeProtocolText(const QString &text)
             break;
         }
     }
+    // A lone half of a surrogate pair would not survive the UTF-8 trip to the GUI.
+    if (!sanitized.isEmpty() && sanitized.back().isHighSurrogate()) {
+        sanitized.chop(1);
+    }
     return sanitized;
 }
 
@@ -336,12 +366,13 @@ ProtocolLine parseProtocolLine(const QString &line)
     ProtocolLine parsed;
     const QString trimmed = line.trimmed();
 
-    const int firstSpace = trimmed.indexOf(QLatin1Char(' '));
-    if (firstSpace <= 0) {
+    if (trimmed.isEmpty()) {
         return parsed;
     }
-    const QString keyword = trimmed.left(firstSpace);
-    const QString remainder = trimmed.mid(firstSpace + 1);
+    // The reader trims, so an encoder's empty message arrives as a bare keyword.
+    const int firstSpace = trimmed.indexOf(QLatin1Char(' '));
+    const QString keyword = firstSpace < 0 ? trimmed : trimmed.left(firstSpace);
+    const QString remainder = firstSpace < 0 ? QString() : trimmed.mid(firstSpace + 1);
 
     bool ok = false;
     if (keyword == QStringLiteral("version")) {
@@ -355,12 +386,14 @@ ProtocolLine parseProtocolLine(const QString &line)
 
         // Malformed details leave all of them unset, which acceptHelperAnnouncement() refuses.
         ProtocolLine details = parsed;
+        QStringList seen;
         for (int index = 1; index < fields.size(); index += 2) {
             const QString key = fields.at(index);
             const QString value = fields.value(index + 1);
-            if (value.isEmpty()) {
+            if (value.isEmpty() || seen.contains(key)) {
                 return parsed;
             }
+            seen.append(key);
             if (key == QStringLiteral("app")) {
                 details.appVersion = value;
             } else if (key == QStringLiteral("steps")) {
@@ -379,10 +412,10 @@ ProtocolLine parseProtocolLine(const QString &line)
 
     if (keyword == QStringLiteral("step")) {
         const int countEnd = remainder.indexOf(QLatin1Char(' '));
-        if (countEnd <= 0) {
+        if (countEnd == 0 || remainder.isEmpty()) {
             return parsed;
         }
-        const QStringList counts = remainder.left(countEnd).split(QLatin1Char('/'));
+        const QStringList counts = (countEnd < 0 ? remainder : remainder.left(countEnd)).split(QLatin1Char('/'));
         if (counts.size() != 2) {
             return parsed;
         }
@@ -397,7 +430,7 @@ ProtocolLine parseProtocolLine(const QString &line)
         parsed.kind = ProtocolLineKind::Step;
         parsed.step = step;
         parsed.totalSteps = totalSteps;
-        parsed.text = remainder.mid(countEnd + 1);
+        parsed.text = countEnd < 0 ? QString() : remainder.mid(countEnd + 1);
         return parsed;
     }
 

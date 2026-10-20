@@ -169,8 +169,9 @@ bool runHelperRestore(const RestoreRequest &request,
             const ProtocolLine parsed = parseProtocolLine(line);
             switch (parsed.kind) {
             case ProtocolLineKind::Version:
+                // A second announcement is a malfunction, and must not undo a refusal.
+                versionAccepted = !sawVersion && acceptAnnouncement(parsed, &versionError);
                 sawVersion = true;
-                versionAccepted = acceptAnnouncement(parsed, &versionError);
                 // Stop now, before the disk is touched; the helper is root, so the
                 // cancel token is the only lever. Reachable only if the binary changed.
                 if (!versionAccepted) {
