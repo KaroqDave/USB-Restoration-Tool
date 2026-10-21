@@ -256,7 +256,14 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures,
                       QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
-    if (!rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error)) {
+    const bool cleared = rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error);
+    if (rawDisk.notReadyRetries() > 0) {
+        reporter.detail(QStringLiteral("Retried the first write to disk %1 %2 time(s) after Windows refused it as not "
+                                       "ready while removing the old volume.")
+                            .arg(disk.number)
+                            .arg(rawDisk.notReadyRetries()));
+    }
+    if (!cleared) {
         return false;
     }
 
