@@ -16,6 +16,8 @@ namespace {
 
 // Slow flash media on a busy machine can take well over ten seconds.
 constexpr int NewVolumeTimeoutMs = 60 * 1000;
+// Windows removes a volume only after its partition has left the layout.
+constexpr int OldVolumeTimeoutMs = 30 * 1000;
 constexpr std::uint64_t MaximumWindowsFat32VolumeBytes = 32ull * 1024ull * 1024ull * 1024ull;
 
 quint32 windowsFat32AllocationUnitSize(const DiskInfo &disk)
@@ -191,9 +193,14 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::DetachDriveLetters,
-                      QStringLiteral("Detaching existing drive letters"));
-    if (!volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
+    reportPlannedStep(
+        steps,
+        reporter,
+        RestoreStep::DetachDriveLetters,
+        QStringLiteral("Detaching existing volumes and drive letters"));
+    // Letterless volumes first, so a volume whose letter is about to be removed is not counted twice.
+    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, error, &reporter) ||
+        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
         return false;
     }
 
@@ -209,19 +216,27 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(steps, reporter, RestoreStep::DeletePartitions,
                       QStringLiteral("Deleting existing partition records"));
-    bool wholeDiskPlaceholder = false;
-    if (!volumes.deletePartitionsForDisk(disk.number, &wholeDiskPlaceholder, error)) {
+    bool partitionAtDiskStart = false;
+    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, error)) {
         return false;
     }
-    // Windows keeps an offline volume over that record and fails raw writes inside it as "device not
-    // ready", so the record is replaced through the verified handle before any sector is cleared.
-    if (wholeDiskPlaceholder) {
-        reporter.detail(QStringLiteral("Disk %1 has no partition table; writing an empty one so Windows stops "
-                                       "treating the whole disk as one partition.")
+    if (partitionAtDiskStart) {
+        reporter.detail(QStringLiteral("Disk %1 has a partition at its very start that Windows cannot delete, as on "
+                                       "a disk with no partition table; the empty table written next replaces it.")
                             .arg(disk.number));
-        if (!rawDisk.replaceWholeDiskPlaceholder(error)) {
-            return false;
-        }
+    }
+
+    // An empty GPT written through the verified handle removes what WMI could not, such as a superfloppy's
+    // offline volume, which refuses raw writes until Windows takes it away.
+    const QStringList oldVolumes = volumes.partitionVolumeDevices(disk.number);
+    if (!rawDisk.replaceLayoutWithEmptyGpt(error)) {
+        return false;
+    }
+    if (!volumes.waitForVolumesToLeaveDisk(oldVolumes, disk.number, OldVolumeTimeoutMs, &reporter)) {
+        reporter.detail(QStringLiteral("Windows had not removed the old volume on disk %1 after %2 seconds; "
+                                       "continuing.")
+                            .arg(disk.number)
+                            .arg(OldVolumeTimeoutMs / 1000));
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::LockDrive, QStringLiteral("Locking the physical drive"));
