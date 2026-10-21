@@ -12,11 +12,11 @@ Nothing open.
   with an offline volume that blocks `WriteFile`. Every restore now writes an
   empty GPT through the raw handle after the WMI deletes and waits for the old
   volumes to leave the disk. A RAW reset was not enough, since it keeps the
-  boot code's jump instruction. With the final code, the affected stick,
-  returned to its original sector 0 with the volume offline, and an ordinary
-  stick with a mounted partition both restored to GPT exFAT. A superfloppy
-  whose volume comes up online with a drive letter was not run. Release build,
-  core tests and CI pass.
+  boot code's jump instruction. With the final code, three cases restored to
+  GPT exFAT: the affected stick returned to its original sector 0 with the
+  volume offline, the same superfloppy with its volume online at a drive
+  letter, and an ordinary stick with a mounted partition. Release build, core
+  tests and CI pass.
 
 - 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
   digits only, a repeated version detail or second announcement is refused, and
