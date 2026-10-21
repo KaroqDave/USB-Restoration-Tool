@@ -159,6 +159,21 @@ QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint
         .arg(sector);
 }
 
+bool isPartitionAtDiskStart(std::optional<std::uint64_t> partitionOffset)
+{
+    return partitionOffset.has_value() && *partitionOffset == 0;
+}
+
+std::uint32_t boundedEntryCount(
+    std::uint32_t reportedCount, std::uint64_t returnedBytes, std::uint64_t headerBytes, std::uint64_t entryBytes)
+{
+    if (entryBytes == 0 || returnedBytes < headerBytes) {
+        return 0;
+    }
+    const std::uint64_t fits = (returnedBytes - headerBytes) / entryBytes;
+    return static_cast<std::uint32_t>(qMin<std::uint64_t>(reportedCount, fits));
+}
+
 bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QString *reason)
 {
     const auto refuse = [reason](const QString &text) {

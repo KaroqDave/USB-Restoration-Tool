@@ -26,6 +26,9 @@ constexpr GUID BasicDataPartitionGuid = {0xebd0a0a2,
 // signatures in the first megabyte, with room to spare.
 constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
 
+constexpr int MaxNotReadyRetries = 10;
+constexpr DWORD NotReadyRetryDelayMs = 500;
+
 std::uint64_t alignDown(std::uint64_t value, std::uint64_t alignment)
 {
     return alignment == 0 ? value : (value / alignment) * alignment;
@@ -331,6 +334,110 @@ bool RawDisk::setRaw(QString *error)
     return true;
 }
 
+bool RawDisk::replaceLayoutWithEmptyGpt(QString *error)
+{
+    // A RAW or MBR reset keeps the old boot code, and with its jump instruction Windows can take the
+    // disk for a superfloppy again; the GPT's protective MBR replaces it.
+    GUID diskId = {};
+    if (!createGptDisk(&diskId, error)) {
+        return false;
+    }
+
+    QString readError;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        refreshLayout(nullptr);
+        bool hasPartitions = true;
+        readError.clear();
+        if (layoutHasPartitions(&hasPartitions, &readError) && !hasPartitions) {
+            return true;
+        }
+        Sleep(250);
+    }
+    if (error) {
+        const QString reason =
+            readError.isEmpty()
+                ? QStringLiteral("Windows still lists a partition on disk %1 after an empty partition table was "
+                                 "written.")
+                      .arg(m_diskNumber)
+                : readError + QLatin1Char('.');
+        *error = QStringLiteral("%1 Unplug the USB disk, plug it back in and run the restore again.").arg(reason);
+    }
+    return false;
+}
+
+bool RawDisk::createGptDisk(GUID *diskId, QString *error)
+{
+    if (FAILED(CoCreateGuid(diskId))) {
+        if (error) {
+            *error = QStringLiteral("Could not generate an identifier for a partition table on disk %1. Run the "
+                                    "restore again.")
+                         .arg(m_diskNumber);
+        }
+        return false;
+    }
+
+    CREATE_DISK createDisk = {};
+    createDisk.PartitionStyle = PARTITION_STYLE_GPT;
+    createDisk.Gpt.DiskId = *diskId;
+    DWORD unused = 0;
+    if (!DeviceIoControl(
+            m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
+        const DWORD code = GetLastError();
+        if (error) {
+            *error =
+                QStringLiteral("%1. Check that the USB disk is not write-protected, plug it back in and run the "
+                               "restore again.")
+                    .arg(windowsErrorMessage(
+                        QStringLiteral("Could not write a GPT partition table to disk %1").arg(m_diskNumber), code));
+        }
+        return false;
+    }
+    return true;
+}
+
+// Fails rather than guessing when the layout cannot be read.
+bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error) const
+{
+    constexpr int MaxEntries = 128;
+    const int entriesOffset = static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry));
+    QByteArray buffer(entriesOffset + static_cast<int>(sizeof(PARTITION_INFORMATION_EX)) * MaxEntries, '\0');
+    DWORD returned = 0;
+    if (!DeviceIoControl(
+            m_handle,
+            IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+            nullptr,
+            0,
+            buffer.data(),
+            static_cast<DWORD>(buffer.size()),
+            &returned,
+            nullptr)) {
+        const DWORD code = GetLastError();
+        if (error) {
+            *error = windowsErrorMessage(
+                QStringLiteral("Could not read the partition table of disk %1").arg(m_diskNumber), code);
+        }
+        return false;
+    }
+    if (returned < static_cast<DWORD>(entriesOffset)) {
+        if (error) {
+            *error = QStringLiteral("Windows returned an incomplete partition table for disk %1").arg(m_diskNumber);
+        }
+        return false;
+    }
+
+    const auto *layout = reinterpret_cast<const DRIVE_LAYOUT_INFORMATION_EX *>(buffer.constData());
+    const std::uint32_t count =
+        boundedEntryCount(layout->PartitionCount, returned, entriesOffset, sizeof(PARTITION_INFORMATION_EX));
+    *hasPartitions = false;
+    for (std::uint32_t index = 0; index < count; ++index) {
+        if (layout->PartitionEntry[index].PartitionLength.QuadPart > 0) {
+            *hasPartitions = true;
+            break;
+        }
+    }
+    return true;
+}
+
 bool RawDisk::createSinglePartition(PartitionStyle style,
                                     FileSystemType fileSystem,
                                     std::uint64_t diskSize,
@@ -350,26 +457,7 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     }
 
     GUID diskId = {};
-    if (FAILED(CoCreateGuid(&diskId))) {
-        if (error) {
-            *error = QStringLiteral("Could not generate a disk identifier.");
-        }
-        return false;
-    }
-
-    CREATE_DISK createDisk = {};
-    createDisk.PartitionStyle = PARTITION_STYLE_GPT;
-    createDisk.Gpt.DiskId = diskId;
-
-    DWORD unused = 0;
-    if (!DeviceIoControl(
-            m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("Could not create the GPT disk"));
-        }
-        return false;
-    }
-    if (!refreshLayout(error)) {
+    if (!createGptDisk(&diskId, error) || !refreshLayout(error)) {
         return false;
     }
 
@@ -397,6 +485,7 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     }
     wcscpy_s(partition.Gpt.Name, L"USB");
 
+    DWORD unused = 0;
     if (!DeviceIoControl(m_handle,
                          IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
                          &driveLayout,
@@ -531,8 +620,23 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
             static_cast<DWORD>(qMin<std::uint64_t>(remaining, static_cast<std::uint64_t>(buffer.size())));
         DWORD written = 0;
         if (!WriteFile(m_handle, buffer.constData(), toWrite, &written, nullptr)) {
+            const DWORD code = GetLastError();
+            // Until a write lands, NOT_READY can be a volume Windows is still removing after the layout
+            // was replaced; once one has, it is the device, and waiting would only delay the error.
+            if (code == ERROR_NOT_READY && !m_writeAccepted && m_notReadyRetries < MaxNotReadyRetries) {
+                ++m_notReadyRetries;
+                Sleep(NotReadyRetryDelayMs);
+                pointer.QuadPart = static_cast<LONGLONG>(offset + (bytes - remaining));
+                if (!SetFilePointerEx(m_handle, pointer, nullptr, FILE_BEGIN)) {
+                    if (error) {
+                        *error = lastError(QStringLiteral("Could not seek on the disk"));
+                    }
+                    return false;
+                }
+                continue;
+            }
             if (error) {
-                *error = lastError(QStringLiteral("Could not write zeroes to the disk"));
+                *error = windowsErrorMessage(QStringLiteral("Could not write zeroes to the disk"), code);
             }
             return false;
         }
@@ -542,6 +646,7 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
             }
             return false;
         }
+        m_writeAccepted = true;
         remaining -= written;
     }
     return true;

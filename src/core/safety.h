@@ -6,6 +6,7 @@
 #include <QStringList>
 
 #include <cstdint>
+#include <optional>
 
 namespace usbrestore {
 
@@ -71,5 +72,14 @@ bool isSupportedSectorSize(quint32 sectorSize);
 // Shared by both backends' writeZeros(): rounding for the caller would silently
 // leave the tail unzeroed. Empty means the range is writable as-is.
 QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize);
+
+// A partition record at offset 0 overlaps the partition table: Windows invents one for a disk it
+// takes for a "superfloppy", and isohybrid images claim LBA 0. A missing offset is not taken for 0.
+bool isPartitionAtDiskStart(std::optional<std::uint64_t> partitionOffset);
+
+// How many entries of a driver-filled array after a fixed header can be read: the reported count,
+// cut to the whole entries the returned bytes actually hold.
+std::uint32_t boundedEntryCount(
+    std::uint32_t reportedCount, std::uint64_t returnedBytes, std::uint64_t headerBytes, std::uint64_t entryBytes);
 
 } // namespace usbrestore

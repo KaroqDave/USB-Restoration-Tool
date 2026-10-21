@@ -240,13 +240,18 @@ quint32 WmiObject::uintValue(const wchar_t *name, quint32 fallback) const
 
 quint64 WmiObject::uint64Value(const wchar_t *name, quint64 fallback) const
 {
+    return optionalUint64Value(name).value_or(fallback);
+}
+
+std::optional<quint64> WmiObject::optionalUint64Value(const wchar_t *name) const
+{
     const QVariant result = value(name);
     if (!result.isValid()) {
-        return fallback;
+        return std::nullopt;
     }
     bool ok = false;
     const quint64 converted = result.toULongLong(&ok);
-    return ok ? converted : fallback;
+    return ok ? std::optional<quint64>(converted) : std::nullopt;
 }
 
 bool WmiObject::boolValue(const wchar_t *name, bool fallback) const

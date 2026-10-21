@@ -84,7 +84,9 @@ On Windows, drive-letter ownership is decided through
 `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` on a handle opened with no access
 rights. A write handle is only opened for a letter that has already proved to
 sit on the target disk, and the extent check is repeated on that handle before
-it is locked and dismounted.
+it is locked and dismounted. Volumes with no drive letter, found through
+`FindFirstVolumeW`, go through the same checks. A volume that may still have a
+letter is left to the letter pass, so protected letters stay untouched.
 
 ### Elevated-process hardening
 

@@ -441,6 +441,33 @@ class CoreTests : public QObject {
         QVERIFY(!unalignedZeroRangeError(0, 600, 600).isEmpty());
     }
 
+    void treatsOnlyAReportedZeroOffsetAsTheDiskStart()
+    {
+        QVERIFY(isPartitionAtDiskStart(0));
+        QVERIFY(!isPartitionAtDiskStart(512));
+        QVERIFY(!isPartitionAtDiskStart(1024 * 1024));
+
+        // A property WMI did not report must not read as 0, or a real partition skips deletion.
+        QVERIFY(!isPartitionAtDiskStart(std::nullopt));
+    }
+
+    void boundsDriverEntryCountsByTheBytesReturned()
+    {
+        constexpr std::uint64_t header = 48;
+        constexpr std::uint64_t entry = 144;
+        QCOMPARE(boundedEntryCount(1, header + entry, header, entry), 1u);
+        QCOMPARE(boundedEntryCount(0, header + entry * 4, header, entry), 0u);
+
+        // A count beyond the data returned is cut to the whole entries that arrived.
+        QCOMPARE(boundedEntryCount(128, header + entry * 2, header, entry), 2u);
+        QCOMPARE(
+            boundedEntryCount(std::numeric_limits<std::uint32_t>::max(), header + entry * 3 + 100, header, entry), 3u);
+
+        // Fewer bytes than the header, or a zero entry size, leaves nothing to read.
+        QCOMPARE(boundedEntryCount(4, header - 8, header, entry), 0u);
+        QCOMPARE(boundedEntryCount(4, 1000, header, 0), 0u);
+    }
+
     void choosesFat32GeometryAtThe512ByteSectorMinimum()
     {
         constexpr std::uint64_t maximumVolume = 32ull * 1024ull * 1024ull * 1024ull;
