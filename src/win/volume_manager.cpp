@@ -10,7 +10,7 @@
 
 #include <winioctl.h>
 
-#include <limits>
+#include <algorithm>
 
 namespace usbrestore {
 
@@ -21,6 +21,9 @@ constexpr auto StorageNamespace = L"ROOT\\Microsoft\\Windows\\Storage";
 constexpr int RefreshJobTimeoutMs = 60 * 1000;
 constexpr int DeleteJobTimeoutMs = 120 * 1000;
 constexpr int FormatJobTimeoutMs = 15 * 60 * 1000;
+
+// From ntddvol.h, which the user-mode SDK headers leave out.
+constexpr DWORD IoctlVolumeIsOffline = CTL_CODE(IOCTL_VOLUME_BASE, 4, METHOD_BUFFERED, FILE_ANY_ACCESS);
 
 QString withoutTrailingSlash(QString volumeName)
 {
@@ -58,6 +61,54 @@ QString firstDriveRootFromMultiSz(const wchar_t *paths)
     return {};
 }
 
+// Unknown counts as lettered, so the letterless pass only touches a volume that provably has none.
+bool mayHaveDriveLetter(const QString &volumeName)
+{
+    wchar_t paths[512] = {};
+    DWORD required = 0;
+    if (!GetVolumePathNamesForVolumeNameW(reinterpret_cast<LPCWSTR>(volumeName.utf16()), paths, 512, &required)) {
+        return true;
+    }
+    return !firstDriveRootFromMultiSz(paths).isEmpty();
+}
+
+HANDLE openVolumePath(const QString &path, DWORD access)
+{
+    return CreateFileW(
+        reinterpret_cast<LPCWSTR>(path.utf16()),
+        access,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr);
+}
+
+// The handle must already be proven to sit on the target disk.
+bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error)
+{
+    DWORD unused = 0;
+    if (!DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
+        const DWORD code = GetLastError();
+        if (error) {
+            *error = windowsErrorMessage(
+                QStringLiteral("Could not lock volume %1 before restore. Close any window or program using it")
+                    .arg(volumePath),
+                code);
+        }
+        return false;
+    }
+    if (!DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
+        const DWORD code = GetLastError();
+        if (error) {
+            *error = windowsErrorMessage(
+                QStringLiteral("Could not dismount volume %1 before restore").arg(volumePath), code);
+        }
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error) const
@@ -84,10 +135,10 @@ bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error) const
         QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error);
 }
 
-bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *wholeDiskPlaceholder, QString *error) const
+bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *partitionAtDiskStart, QString *error) const
 {
-    if (wholeDiskPlaceholder) {
-        *wholeDiskPlaceholder = false;
+    if (partitionAtDiskStart) {
+        *partitionAtDiskStart = false;
     }
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
@@ -110,11 +161,11 @@ bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *wholeDiskP
     }
 
     for (const WmiObject &partition : partitions) {
-        // No table entry can start at offset 0, where the MBR lives. Windows reports this record for
-        // a "superfloppy" (filesystem on the bare disk) and DeleteObject refuses it as not supported.
-        if (partition.uint64Value(L"Offset", std::numeric_limits<quint64>::max()) == 0) {
-            if (wholeDiskPlaceholder) {
-                *wholeDiskPlaceholder = true;
+        // DeleteObject refuses the partition Windows invents for a "superfloppy"; the empty partition
+        // table the caller writes next replaces it, and an isohybrid entry at LBA 0 too.
+        if (isPartitionAtDiskStart(partition.optionalUint64Value(L"Offset"))) {
+            if (partitionAtDiskStart) {
+                *partitionAtDiskStart = true;
             }
             continue;
         }
@@ -187,25 +238,7 @@ bool VolumeManager::removeMountPointsForDisk(
             continue;
         }
 
-        DWORD unused = 0;
-        bool ok = DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr) != 0;
-        if (!ok) {
-            if (error) {
-                *error = windowsErrorMessage(
-                    QStringLiteral("Could not lock volume %1 before restore. Close any window or program using it")
-                        .arg(devicePath),
-                    GetLastError());
-            }
-            CloseHandle(handle);
-            return false;
-        }
-
-        ok = DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr) != 0;
-        if (!ok) {
-            if (error) {
-                *error = windowsErrorMessage(
-                    QStringLiteral("Could not dismount volume %1 before restore").arg(devicePath), GetLastError());
-            }
+        if (!lockAndDismount(handle, devicePath, error)) {
             CloseHandle(handle);
             return false;
         }
@@ -227,6 +260,110 @@ bool VolumeManager::removeMountPointsForDisk(
         CloseHandle(handle);
     }
 
+    return true;
+}
+
+bool VolumeManager::dismountUnletteredVolumesOnDisk(quint32 diskNumber, QString *error, RestoreReporter *reporter) const
+{
+    wchar_t volumeName[MAX_PATH] = {};
+    const HANDLE finder = FindFirstVolumeW(volumeName, MAX_PATH);
+    if (finder == INVALID_HANDLE_VALUE) {
+        return true;
+    }
+
+    bool ok = true;
+    do {
+        const QString name = QString::fromWCharArray(volumeName);
+        if (mayHaveDriveLetter(name)) {
+            continue;
+        }
+
+        // Query-only first: write access is never requested on a volume not proven to be on the target.
+        const QString openName = withoutTrailingSlash(name);
+        HANDLE handle = openVolumePath(openName, 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        const bool belongs = volumeHasDiskExtent(handle, diskNumber);
+        DWORD unused = 0;
+        // An offline volume has no filesystem mounted to dismount.
+        const bool offline =
+            DeviceIoControl(handle, IoctlVolumeIsOffline, nullptr, 0, nullptr, 0, &unused, nullptr) != 0;
+        CloseHandle(handle);
+        if (!belongs || offline) {
+            continue;
+        }
+
+        handle = openVolumePath(openName, GENERIC_READ | GENERIC_WRITE);
+        if (handle == INVALID_HANDLE_VALUE) {
+            const DWORD code = GetLastError();
+            if (error) {
+                *error = windowsErrorMessage(QStringLiteral("Could not open volume %1 before restore").arg(name), code);
+            }
+            ok = false;
+            break;
+        }
+        if (!volumeHasDiskExtent(handle, diskNumber)) {
+            CloseHandle(handle);
+            continue;
+        }
+        const bool dismounted = lockAndDismount(handle, name, error);
+        CloseHandle(handle);
+        if (!dismounted) {
+            ok = false;
+            break;
+        }
+        if (reporter) {
+            reporter->detail(
+                QStringLiteral("Dismounted %1, a volume on disk %2 with no drive letter").arg(name).arg(diskNumber));
+        }
+    } while (FindNextVolumeW(finder, volumeName, MAX_PATH));
+
+    FindVolumeClose(finder);
+    return ok;
+}
+
+QStringList VolumeManager::partitionVolumeDevices(quint32 diskNumber) const
+{
+    QStringList devices;
+    // Partition numbers can be sparse, so every slot a GPT allows is asked about.
+    for (quint32 partition = 1; partition <= GptEntryCount; ++partition) {
+        const QString link = QStringLiteral("Harddisk%1Partition%2").arg(diskNumber).arg(partition);
+        wchar_t target[MAX_PATH] = {};
+        if (QueryDosDeviceW(reinterpret_cast<LPCWSTR>(link.utf16()), target, MAX_PATH) != 0) {
+            devices.append(QString::fromWCharArray(target));
+        }
+    }
+    return devices;
+}
+
+bool VolumeManager::waitForVolumesToLeaveDisk(
+    const QStringList &devices, quint32 diskNumber, int timeoutMs, RestoreReporter *reporter) const
+{
+    const auto stillOnDisk = [diskNumber](const QString &device) {
+        const HANDLE handle = openVolumePath(QStringLiteral("\\\\?\\GLOBALROOT%1").arg(device), 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+        const bool belongs = volumeHasDiskExtent(handle, diskNumber);
+        CloseHandle(handle);
+        return belongs;
+    };
+
+    QElapsedTimer timer;
+    timer.start();
+    qint64 lastWaitNote = 0;
+    while (std::any_of(devices.cbegin(), devices.cend(), stillOnDisk)) {
+        if (timer.elapsed() >= timeoutMs) {
+            return false;
+        }
+        if (reporter && timer.elapsed() - lastWaitNote >= 5000) {
+            lastWaitNote = timer.elapsed();
+            reporter->detail(
+                QStringLiteral("Still waiting for Windows to remove the old volume (%1 s)").arg(lastWaitNote / 1000));
+        }
+        QThread::msleep(250);
+    }
     return true;
 }
 
