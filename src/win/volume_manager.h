@@ -14,7 +14,9 @@ class VolumeManager {
   public:
     bool refreshDisk(quint32 diskNumber, QString *error = nullptr) const;
 
-    bool deletePartitionsForDisk(quint32 diskNumber, QString *error = nullptr) const;
+    // Skips the record Windows invents for a disk with no partition table, which DeleteObject refuses,
+    // and reports it through wholeDiskPlaceholder so the caller can reset the layout instead.
+    bool deletePartitionsForDisk(quint32 diskNumber, bool *wholeDiskPlaceholder, QString *error = nullptr) const;
 
     // Protected letters (and C:) are never touched, even if Windows claims they live on the target.
     bool

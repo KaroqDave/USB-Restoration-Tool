@@ -10,6 +10,8 @@
 
 #include <winioctl.h>
 
+#include <limits>
+
 namespace usbrestore {
 
 namespace {
@@ -82,8 +84,11 @@ bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error) const
         QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error);
 }
 
-bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, QString *error) const
+bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *wholeDiskPlaceholder, QString *error) const
 {
+    if (wholeDiskPlaceholder) {
+        *wholeDiskPlaceholder = false;
+    }
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
         if (error) {
@@ -105,6 +110,14 @@ bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, QString *error) 
     }
 
     for (const WmiObject &partition : partitions) {
+        // No table entry can start at offset 0, where the MBR lives. Windows reports this record for
+        // a "superfloppy" (filesystem on the bare disk) and DeleteObject refuses it as not supported.
+        if (partition.uint64Value(L"Offset", std::numeric_limits<quint64>::max()) == 0) {
+            if (wholeDiskPlaceholder) {
+                *wholeDiskPlaceholder = true;
+            }
+            continue;
+        }
         if (!storage.callMethodAndWait(
                 QStringLiteral("MSFT_Partition"),
                 partition.objectPath(),

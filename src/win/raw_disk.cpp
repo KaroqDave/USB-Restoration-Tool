@@ -331,6 +331,74 @@ bool RawDisk::setRaw(QString *error)
     return true;
 }
 
+bool RawDisk::replaceWholeDiskPlaceholder(QString *error)
+{
+    // A RAW or MBR reset keeps the old boot code, and with its jump instruction Windows guesses again.
+    CREATE_DISK createDisk = {};
+    createDisk.PartitionStyle = PARTITION_STYLE_GPT;
+    if (FAILED(CoCreateGuid(&createDisk.Gpt.DiskId))) {
+        if (error) {
+            *error = QStringLiteral("Could not generate a disk identifier.");
+        }
+        return false;
+    }
+
+    DWORD unused = 0;
+    if (!DeviceIoControl(
+            m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
+        if (error) {
+            *error = lastError(QStringLiteral("Could not write a new partition table over disk %1").arg(m_diskNumber));
+        }
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        refreshLayout(nullptr);
+        if (!reportsWholeDiskPartition()) {
+            return true;
+        }
+        Sleep(250);
+    }
+    if (error) {
+        *error = QStringLiteral("Windows still treats disk %1 as one whole-disk partition after a new partition "
+                                "table was written. Unplug the USB disk, plug it back in and run the restore again.")
+                     .arg(m_diskNumber);
+    }
+    return false;
+}
+
+// PartitionCount is driver-supplied, so it is bounded by the bytes actually returned.
+bool RawDisk::reportsWholeDiskPartition() const
+{
+    constexpr int MaxEntries = 128;
+    const int entriesOffset = static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry));
+    QByteArray buffer(entriesOffset + static_cast<int>(sizeof(PARTITION_INFORMATION_EX)) * MaxEntries, '\0');
+    DWORD returned = 0;
+    if (!DeviceIoControl(
+            m_handle,
+            IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+            nullptr,
+            0,
+            buffer.data(),
+            static_cast<DWORD>(buffer.size()),
+            &returned,
+            nullptr) ||
+        returned < static_cast<DWORD>(entriesOffset)) {
+        return false;
+    }
+
+    const auto *layout = reinterpret_cast<const DRIVE_LAYOUT_INFORMATION_EX *>(buffer.constData());
+    const DWORD available = (returned - entriesOffset) / sizeof(PARTITION_INFORMATION_EX);
+    const DWORD count = qMin<DWORD>(layout->PartitionCount, available);
+    for (DWORD index = 0; index < count; ++index) {
+        const PARTITION_INFORMATION_EX &partition = layout->PartitionEntry[index];
+        if (partition.StartingOffset.QuadPart == 0 && partition.PartitionLength.QuadPart > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool RawDisk::createSinglePartition(PartitionStyle style,
                                     FileSystemType fileSystem,
                                     std::uint64_t diskSize,
@@ -526,13 +594,24 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
     QByteArray buffer(bufferSize > 0 ? bufferSize : static_cast<int>(sector), '\0');
 
     std::uint64_t remaining = bytes;
+    int notReadyRetries = 0;
     while (remaining > 0) {
         const auto toWrite =
             static_cast<DWORD>(qMin<std::uint64_t>(remaining, static_cast<std::uint64_t>(buffer.size())));
         DWORD written = 0;
         if (!WriteFile(m_handle, buffer.constData(), toWrite, &written, nullptr)) {
+            const DWORD code = GetLastError();
+            // A volume Windows is still tearing down after a layout reset refuses writes for a moment.
+            if (code == ERROR_NOT_READY && notReadyRetries < 10) {
+                ++notReadyRetries;
+                Sleep(500);
+                pointer.QuadPart = static_cast<LONGLONG>(offset + (bytes - remaining));
+                if (SetFilePointerEx(m_handle, pointer, nullptr, FILE_BEGIN)) {
+                    continue;
+                }
+            }
             if (error) {
-                *error = lastError(QStringLiteral("Could not write zeroes to the disk"));
+                *error = windowsErrorMessage(QStringLiteral("Could not write zeroes to the disk"), code);
             }
             return false;
         }

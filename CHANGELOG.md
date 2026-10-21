@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- On Windows, a USB stick with no partition table (a "superfloppy", such as a
+  stick that only holds a bootloader written straight to the disk) can be
+  restored. It used to stop with `MSFT_Partition.DeleteObject failed with return
+  value 1`. Windows invents a whole-disk partition for such a stick and holds
+  an offline volume on it, which also refused the raw writes with "device not
+  ready". The restore now writes an empty GPT over it through the verified disk
+  handle first, whose protective MBR replaces the boot code Windows based that
+  guess on, and retries a write briefly while Windows removes the old volume.
+
 ## 1.6.2 - 2026-10-21
 
 Stricter checks on what passes between the Linux app and its restore helper,

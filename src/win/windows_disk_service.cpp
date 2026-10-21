@@ -209,8 +209,19 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(steps, reporter, RestoreStep::DeletePartitions,
                       QStringLiteral("Deleting existing partition records"));
-    if (!volumes.deletePartitionsForDisk(disk.number, error)) {
+    bool wholeDiskPlaceholder = false;
+    if (!volumes.deletePartitionsForDisk(disk.number, &wholeDiskPlaceholder, error)) {
         return false;
+    }
+    // Windows keeps an offline volume over that record and fails raw writes inside it as "device not
+    // ready", so the record is replaced through the verified handle before any sector is cleared.
+    if (wholeDiskPlaceholder) {
+        reporter.detail(QStringLiteral("Disk %1 has no partition table; writing an empty one so Windows stops "
+                                       "treating the whole disk as one partition.")
+                            .arg(disk.number));
+        if (!rawDisk.replaceWholeDiskPlaceholder(error)) {
+            return false;
+        }
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::LockDrive, QStringLiteral("Locking the physical drive"));
