@@ -2,9 +2,14 @@
 
 ## Next
 
-Nothing open.
+- Confirm the v1.6.3 release workflow publishes all packages.
 
 ## Recently completed
+
+- 2026-10-22: Prepared 1.6.3: bumped the project version, updated the README
+  release notes and changelog. Windows Release build, core tests, fuzz-corpus
+  replay and release preflight pass. Built the Windows portable ZIP and
+  verified its executable version and every bundled file against the checksums.
 
 - 2026-10-21: Windows restores a "superfloppy" stick (bootloader on the bare
   disk, no partition table), which failed with `DeleteObject` return value 1
@@ -16,7 +21,7 @@ Nothing open.
   GPT exFAT: the affected stick returned to its original sector 0 with the
   volume offline, the same superfloppy with its volume online at a drive
   letter, and an ordinary stick with a mounted partition. Release build, core
-  tests and CI pass.
+  tests and CI pass. Ships in 1.6.3.
 
 - 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
   digits only, a repeated version detail or second announcement is refused, and

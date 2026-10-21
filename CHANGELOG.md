@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.6.3 - 2026-10-22
+
+Windows restores USB sticks without a partition table and dismounts volumes
+that have no drive letter.
+
+### Added
+
+- The Activity log reports how often Windows refused the first write as
+  "device not ready" while removing the old volume, if any retries were needed.
+
 ### Fixed
 
 - On Windows, a USB stick with no partition table (a "superfloppy", such as a

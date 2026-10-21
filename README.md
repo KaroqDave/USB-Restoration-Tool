@@ -96,7 +96,15 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.6.2
+## What's New in 1.6.3
+
+- On Windows, USB sticks with a bootloader written directly to the disk and no
+  partition table ("superfloppies") can now be restored. This also fixes sticks
+  that Windows treats as superfloppies after their partitions are removed.
+- Windows now dismounts volumes mounted at a folder or without a drive letter
+  before restoring, as it already did for volumes with a drive letter.
+
+### Previously, in 1.6.2
 
 - The Linux restore helper is stricter about what the app tells it: disk and
   sector sizes must be plain numbers, and a helper that announces itself twice
@@ -105,14 +113,6 @@ application data when that directory is not writable.
   broken character at the end.
 - The parsers on the helper boundary and the partition tables are fuzzed, and
   the core tests run under memory and undefined-behaviour checkers in CI.
-
-### Previously, in 1.6.1
-
-- On Linux, the app checks that its restore helper comes from a matching build
-  before asking for your password, and names both versions if it does not.
-  Install the 1.6.1 `.deb` to upgrade both together; a 1.6.0 helper is refused.
-- The point up to which unplugging is reported as safe is now taken from one
-  list of restore steps per platform, checked by tests.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
