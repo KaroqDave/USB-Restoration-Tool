@@ -2,16 +2,20 @@
 
 ## Next
 
-Nothing open.
+- Re-test the Windows restore after the review fixes in PR #7: one ordinary
+  stick, which now also gets the empty GPT and the letterless-volume pass, and
+  if possible a superfloppy again. Only the earlier version, which wrote the
+  GPT when it found the placeholder, has been run on hardware.
 
 ## Recently completed
 
 - 2026-10-21: Windows restores a "superfloppy" stick (bootloader on the bare
   disk, no partition table), which failed with `DeleteObject` return value 1
   and then error 21 on the first write. Windows fakes a whole-disk partition
-  with an offline volume that blocks `WriteFile`; the delete step now writes an
-  empty GPT over it through the raw handle first. A RAW reset was not enough,
-  since it keeps the boot code's jump instruction. Restored an affected stick
+  with an offline volume that blocks `WriteFile`. Every restore now writes an
+  empty GPT through the raw handle after the WMI deletes and waits for the old
+  volumes to leave the disk. A RAW reset was not enough, since it keeps the
+  boot code's jump instruction. The earlier version restored an affected stick
   to GPT exFAT; Release build and core tests pass.
 
 - 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
