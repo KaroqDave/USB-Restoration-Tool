@@ -9,6 +9,8 @@
 #include <Wbemidl.h>
 #include <comdef.h>
 
+#include <optional>
+
 namespace usbrestore {
 
 // MSFT_Storage "accepted, running as a job": not a completion, the job must be waited for.
@@ -34,6 +36,8 @@ class WmiObject {
     QString stringValue(const wchar_t *name) const;
     quint32 uintValue(const wchar_t *name, quint32 fallback = 0) const;
     quint64 uint64Value(const wchar_t *name, quint64 fallback = 0) const;
+    // Empty when the property is missing or not a number, so it cannot be mistaken for a real 0.
+    std::optional<quint64> optionalUint64Value(const wchar_t *name) const;
     bool boolValue(const wchar_t *name, bool fallback = false) const;
     QString objectPath() const;
 
