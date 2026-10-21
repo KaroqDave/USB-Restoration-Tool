@@ -39,6 +39,9 @@ class RawDisk {
     // Windows invents for a "superfloppy", and confirms Windows then lists no partition at all.
     bool replaceLayoutWithEmptyGpt(QString *error = nullptr);
 
+    // Writes refused as NOT_READY and retried before the first one landed, so the log can say so.
+    int notReadyRetries() const { return m_notReadyRetries; }
+
     // Windows writes the table itself, so unlike on Linux no table bytes are built here.
     bool createSinglePartition(PartitionStyle style,
                                FileSystemType fileSystem,
@@ -58,6 +61,7 @@ class RawDisk {
     HANDLE m_handle = INVALID_HANDLE_VALUE;
     bool m_locked = false;
     bool m_writeAccepted = false;
+    int m_notReadyRetries = 0;
 };
 
 } // namespace usbrestore

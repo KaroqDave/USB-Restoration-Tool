@@ -26,6 +26,9 @@ constexpr GUID BasicDataPartitionGuid = {0xebd0a0a2,
 // signatures in the first megabyte, with room to spare.
 constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
 
+constexpr int MaxNotReadyRetries = 10;
+constexpr DWORD NotReadyRetryDelayMs = 500;
+
 std::uint64_t alignDown(std::uint64_t value, std::uint64_t alignment)
 {
     return alignment == 0 ? value : (value / alignment) * alignment;
@@ -612,7 +615,6 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
     QByteArray buffer(bufferSize > 0 ? bufferSize : static_cast<int>(sector), '\0');
 
     std::uint64_t remaining = bytes;
-    int notReadyRetries = 0;
     while (remaining > 0) {
         const auto toWrite =
             static_cast<DWORD>(qMin<std::uint64_t>(remaining, static_cast<std::uint64_t>(buffer.size())));
@@ -621,9 +623,9 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
             const DWORD code = GetLastError();
             // Until a write lands, NOT_READY can be a volume Windows is still removing after the layout
             // was replaced; once one has, it is the device, and waiting would only delay the error.
-            if (code == ERROR_NOT_READY && !m_writeAccepted && notReadyRetries < 10) {
-                ++notReadyRetries;
-                Sleep(500);
+            if (code == ERROR_NOT_READY && !m_writeAccepted && m_notReadyRetries < MaxNotReadyRetries) {
+                ++m_notReadyRetries;
+                Sleep(NotReadyRetryDelayMs);
                 pointer.QuadPart = static_cast<LONGLONG>(offset + (bytes - remaining));
                 if (!SetFilePointerEx(m_handle, pointer, nullptr, FILE_BEGIN)) {
                     if (error) {
