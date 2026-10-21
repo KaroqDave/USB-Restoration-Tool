@@ -2,9 +2,13 @@
 
 ## Next
 
-- Confirm the v1.6.3 release workflow publishes all packages.
+Nothing open.
 
 ## Recently completed
+
+- 2026-10-22: Confirmed the 1.6.3 release: all five workflow jobs passed, and
+  GitHub lists it as the latest stable release with the Windows ZIP, Linux
+  AppImage and Debian package, plus both Linux checksum files.
 
 - 2026-10-22: Prepared 1.6.3: bumped the project version, updated the README
   release notes and changelog. Windows Release build, core tests, fuzz-corpus
