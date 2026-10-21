@@ -6,6 +6,14 @@ Nothing open.
 
 ## Recently completed
 
+- 2026-10-21: Windows restores a "superfloppy" stick (bootloader on the bare
+  disk, no partition table), which failed with `DeleteObject` return value 1
+  and then error 21 on the first write. Windows fakes a whole-disk partition
+  with an offline volume that blocks `WriteFile`; the delete step now writes an
+  empty GPT over it through the raw handle first. A RAW reset was not enough,
+  since it keeps the boot code's jump instruction. Restored an affected stick
+  to GPT exFAT; Release build and core tests pass.
+
 - 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
   digits only, a repeated version detail or second announcement is refused, and
   protocol text stays within its limit without splitting a surrogate pair.
