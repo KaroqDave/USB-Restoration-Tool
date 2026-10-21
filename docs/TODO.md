@@ -2,10 +2,7 @@
 
 ## Next
 
-- Re-test the Windows restore after the review fixes in PR #7: one ordinary
-  stick, which now also gets the empty GPT and the letterless-volume pass, and
-  if possible a superfloppy again. Only the earlier version, which wrote the
-  GPT when it found the placeholder, has been run on hardware.
+Nothing open.
 
 ## Recently completed
 
@@ -15,8 +12,11 @@
   with an offline volume that blocks `WriteFile`. Every restore now writes an
   empty GPT through the raw handle after the WMI deletes and waits for the old
   volumes to leave the disk. A RAW reset was not enough, since it keeps the
-  boot code's jump instruction. The earlier version restored an affected stick
-  to GPT exFAT; Release build and core tests pass.
+  boot code's jump instruction. With the final code, the affected stick,
+  returned to its original sector 0 with the volume offline, and an ordinary
+  stick with a mounted partition both restored to GPT exFAT. A superfloppy
+  whose volume comes up online with a drive letter was not run. Release build,
+  core tests and CI pass.
 
 - 2026-10-21: Hardened the helper's trust boundary. Argument sizes accept plain
   digits only, a repeated version detail or second announcement is refused, and
