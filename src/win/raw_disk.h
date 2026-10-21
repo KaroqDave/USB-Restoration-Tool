@@ -35,9 +35,9 @@ class RawDisk {
 
     bool setRaw(QString *error = nullptr);
 
-    // For a disk Windows took for a "superfloppy": an empty GPT's protective MBR overwrites the
-    // boot code that guess rests on, so Windows drops the whole-disk partition and its volume.
-    bool replaceWholeDiskPlaceholder(QString *error = nullptr);
+    // Removes whatever partition deletion through WMI could not, such as the whole-disk partition
+    // Windows invents for a "superfloppy", and confirms Windows then lists no partition at all.
+    bool replaceLayoutWithEmptyGpt(QString *error = nullptr);
 
     // Windows writes the table itself, so unlike on Linux no table bytes are built here.
     bool createSinglePartition(PartitionStyle style,
@@ -49,13 +49,15 @@ class RawDisk {
   private:
     bool createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
                                   QString *error);
+    bool createGptDisk(GUID *diskId, QString *error);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
-    bool reportsWholeDiskPartition() const;
+    bool layoutHasPartitions(bool *hasPartitions, QString *error) const;
     QString lastError(const QString &context) const;
 
     quint32 m_diskNumber = 0;
     HANDLE m_handle = INVALID_HANDLE_VALUE;
     bool m_locked = false;
+    bool m_writeAccepted = false;
 };
 
 } // namespace usbrestore
