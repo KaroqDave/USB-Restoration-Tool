@@ -18,6 +18,8 @@ QString wbemStatusText(HRESULT result)
         return QStringLiteral("WMI object not found");
     case 0x80041003:
         return QStringLiteral("Access denied by WMI");
+    case 0x80041005:
+        return QStringLiteral("WMI parameter type mismatch");
     case 0x80041008:
         return QStringLiteral("Invalid parameter passed to WMI");
     case 0x8004100E:
@@ -99,17 +101,19 @@ HRESULT putInputValue(IWbemClassObject *input, const QString &name, const QVaria
         break;
     case QMetaType::UInt:
     case QMetaType::ULong:
-        variant = _variant_t(static_cast<unsigned long>(value.toUInt()));
+        // CIM uint32 uses VT_I4, including the unsigned value's high bit; VT_UI4 is rejected.
+        variant = _variant_t(static_cast<long>(value.toUInt()));
         break;
     case QMetaType::Int:
     case QMetaType::Long:
         variant = _variant_t(static_cast<long>(value.toInt()));
         break;
     case QMetaType::ULongLong:
-        variant = _variant_t(static_cast<ULONGLONG>(value.toULongLong()));
+        // WMI represents 64-bit integers as decimal BSTRs rather than VT_I8/VT_UI8.
+        variant = _variant_t(QString::number(value.toULongLong()).toStdWString().c_str());
         break;
     case QMetaType::LongLong:
-        variant = _variant_t(static_cast<LONGLONG>(value.toLongLong()));
+        variant = _variant_t(QString::number(value.toLongLong()).toStdWString().c_str());
         break;
     default:
         return E_INVALIDARG;
@@ -265,6 +269,18 @@ QString WmiObject::objectPath() const
     return stringValue(L"__PATH");
 }
 
+bool WmiObject::setValue(const QString &name, const QVariant &value, QString *error)
+{
+    const HRESULT result = m_object ? putInputValue(m_object, name, value) : E_POINTER;
+    if (FAILED(result)) {
+        if (error) {
+            *error = QStringLiteral("WMI input parameter failed: %1: %2").arg(name, hresultMessage(result));
+        }
+        return false;
+    }
+    return true;
+}
+
 WmiConnection::WmiConnection(const wchar_t *namespacePath)
 {
     // MTA: a marshalled call from an STA only returns while it pumps messages, which the worker
@@ -396,7 +412,7 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
 
     IWbemClassObject *classObject = nullptr;
     IWbemClassObject *inSignature = nullptr;
-    IWbemClassObject *inInstance = nullptr;
+    WmiObject inInstance;
     IWbemClassObject *outParams = nullptr;
 
     HRESULT result =
@@ -413,8 +429,10 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
     }
 
     if (SUCCEEDED(result) && inSignature) {
-        result = inSignature->SpawnInstance(0, &inInstance);
-        if (FAILED(result) || !inInstance) {
+        IWbemClassObject *instance = nullptr;
+        result = inSignature->SpawnInstance(0, &instance);
+        inInstance = WmiObject(instance);
+        if (FAILED(result) || !inInstance.isValid()) {
             result = FAILED(result) ? result : E_FAIL;
             setError(result, QStringLiteral("WMI input parameter object creation failed"));
         }
@@ -425,11 +443,10 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
                      .arg(QString::fromWCharArray(methodName)));
     }
 
-    if (SUCCEEDED(result) && inInstance) {
+    if (SUCCEEDED(result) && inInstance.isValid()) {
         for (const auto &input : inputs) {
-            result = putInputValue(inInstance, input.first, input.second);
-            if (FAILED(result)) {
-                setError(result, QStringLiteral("WMI input parameter failed: %1").arg(input.first));
+            if (!inInstance.setValue(input.first, input.second, &m_lastError)) {
+                result = E_FAIL;
                 break;
             }
         }
@@ -440,7 +457,7 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
                                         _bstr_t(methodName),
                                         0,
                                         nullptr,
-                                        inInstance,
+                                        inInstance.get(),
                                         &outParams,
                                         nullptr);
         if (FAILED(result)) {
@@ -462,9 +479,6 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
         }
     }
 
-    if (inInstance) {
-        inInstance->Release();
-    }
     if (inSignature) {
         inSignature->Release();
     }

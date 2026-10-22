@@ -40,6 +40,10 @@ Core tests cover safety refusals, device identity, layout arithmetic, partition
 table bytes and the helper protocol. Every safety-rule change needs a regression
 test for a case it now refuses.
 
+On Windows, `usb-wmi-tests` also checks numeric method parameters against
+in-memory WMI objects. These tests use no storage provider and access no disks;
+they run with the core tests through ctest.
+
 Linux also checks partition tables with `sgdisk` and `fdisk`:
 
 ```bash

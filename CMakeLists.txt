@@ -575,6 +575,18 @@ if(USBRESTORE_BUILD_TESTS)
     if(WIN32)
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+
+        add_executable(usb-wmi-tests tests/test_wmi.cpp src/win/wmi.cpp src/win/wmi.h)
+        target_include_directories(usb-wmi-tests PRIVATE src)
+        target_link_libraries(usb-wmi-tests PRIVATE Qt6::Core Qt6::Test ole32 oleaut32 wbemuuid)
+        target_compile_definitions(usb-wmi-tests PRIVATE UNICODE _UNICODE NOMINMAX)
+        if(MSVC)
+            target_compile_options(usb-wmi-tests PRIVATE /utf-8)
+        endif()
+        add_dependencies(usb-restoration-tool-tests usb-wmi-tests)
+        add_test(NAME usb-wmi-tests COMMAND usb-wmi-tests)
+        set_tests_properties(usb-wmi-tests PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
     endif()
 
     # Writes a partition table into a sparse image so sgdisk and fdisk can be

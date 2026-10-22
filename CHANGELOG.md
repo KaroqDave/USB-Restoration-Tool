@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- Windows FAT32 restores no longer fail while setting `AllocationUnitSize` with
+  WMI error `0x80041005`. Numeric method parameters now use WMI's required COM
+  types, covered by in-memory regression tests.
+
 ## 1.6.3 - 2026-10-22
 
 Windows restores USB sticks without a partition table and dismounts volumes

@@ -41,6 +41,9 @@ class WmiObject {
     bool boolValue(const wchar_t *name, bool fallback = false) const;
     QString objectPath() const;
 
+    // Changes this local object; method execution is a separate operation.
+    bool setValue(const QString &name, const QVariant &value, QString *error = nullptr);
+
   private:
     QVariant value(const wchar_t *name) const;
 

@@ -6,6 +6,12 @@ Nothing open.
 
 ## Recently completed
 
+- 2026-10-22: Reproduced the FAT32 `AllocationUnitSize` type mismatch in an
+  in-memory WMI object and corrected the numeric COM encoding. Added Windows
+  regression tests that run without a storage provider or disk access. Release
+  build, core tests, WMI tests and fuzz-corpus replay pass. GPT/FAT32 restore
+  confirmed working by the user.
+
 - 2026-10-22: Confirmed the 1.6.3 release: all five workflow jobs passed, and
   GitHub lists it as the latest stable release with the Windows ZIP, Linux
   AppImage and Debian package, plus both Linux checksum files.
