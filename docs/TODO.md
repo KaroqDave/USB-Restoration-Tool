@@ -2,12 +2,7 @@
 
 ## Next
 
-- Rerun the core tests after Windows Application Control permits the rebuilt
-  `usb-restoration-tool-tests.exe`; the final run was blocked before launch.
-- Run Linux build, partition-table verification and the new image-only loop
-  integration tests on Linux before releasing the review fixes. Local validation
-  is blocked: this Windows host has neither WSL nor Docker. Include all four
-  formatters at 512-byte and 4096-byte sectors; no physical-drive restore is needed.
+No open tasks.
 
 ## Recently completed
 
@@ -16,8 +11,11 @@
   by the verified exclusive disk handle, and fail-closed WMI job monitoring.
   Added core, Windows preflight/WMI and Linux image regression tests; updated
   helper protocol to 4 and documented the Linux 5.15+/loop-driver requirement.
-  Windows Release build, WMI regressions and fuzz-corpus replay pass. An earlier
-  core run passed; the final core rerun and Linux runtime validation remain above.
+  PR #8 CI passes on commit `2785cc0`: Windows tests, Linux build and partition-table
+  verification, Debian packaging, and sanitizer tests/fuzzing. All 16 image-only
+  formatter cases pass across four filesystems, two sector sizes and both file
+  and exclusive block-device backing. CI resolves the local validation gaps;
+  no physical-drive restore was performed.
 
 - 2026-10-22: Published 1.7.0 as the latest stable release after all four CI
   jobs and all five release jobs passed. Verified the downloaded Windows ZIP,
