@@ -9,8 +9,11 @@
 
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <linux/loop.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+
+#include <cerrno>
 
 using namespace usbrestore;
 
@@ -21,6 +24,16 @@ struct Reporter : RestoreReporter {
     void detail(const QString &) override {}
     bool cancelRequested() const override { return false; }
 };
+
+bool loopIsDetached(const QString &path)
+{
+    BlockDevice device(path);
+    if (!device.open(BlockDevice::Access::Inspect)) {
+        return false;
+    }
+    struct loop_info64 info = {};
+    return ::ioctl(device.descriptor(), LOOP_GET_STATUS64, &info) < 0 && errno == ENXIO;
+}
 } // namespace
 
 class LinuxTests : public QObject {
@@ -39,6 +52,88 @@ class LinuxTests : public QObject {
         QVERIFY(file.resize(MiB));
         QVERIFY(!loop.configure(file.handle(), MiB, MiB, 512, &error));
         QVERIFY(error.contains(QStringLiteral("outside")));
+    }
+
+    void releasesMappingsOnEarlyExit_data()
+    {
+        QTest::addColumn<int>("stage");
+        QTest::addColumn<int>("sectorSize");
+        const QStringList stages = {
+            QStringLiteral("cancel-before-erasure"),
+            QStringLiteral("formatter-failed"),
+            QStringLiteral("formatter-not-started"),
+        };
+        for (int stage = 0; stage < stages.size(); ++stage) {
+            for (int sector : {512, 4096}) {
+                QTest::newRow(qPrintable(stages[stage] + QString::number(sector))) << stage << sector;
+            }
+        }
+    }
+
+    void releasesMappingsOnEarlyExit()
+    {
+        if (!qEnvironmentVariableIsSet("USBRESTORE_TEST_LOOP")) {
+            QSKIP("Set USBRESTORE_TEST_LOOP=1 and run as root for disposable-image loop tests.");
+        }
+        QVERIFY(::geteuid() == 0);
+        QFETCH(int, stage);
+        QFETCH(int, sectorSize);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile image(dir.filePath(QStringLiteral("image")));
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        const QByteArray contents(8 * MiB, 'X');
+        QCOMPARE(image.write(contents), contents.size());
+        QVERIFY(image.flush());
+
+        QString error;
+        LoopDevice backing;
+        QVERIFY2(backing.configure(image.handle(), 0, contents.size(), sectorSize, &error), qPrintable(error));
+        QVERIFY2(backing.prepareForFormatting(&error), qPrintable(error));
+        QString formatterPath;
+        const auto leaveRestoreScope = [&]() {
+            BlockDevice disk(backing.path());
+            if (!disk.open(BlockDevice::Access::Exclusive, &error)) {
+                return false;
+            }
+            LoopDevice formatter;
+            if (!formatter.configure(disk.descriptor(), MiB, 6 * MiB, sectorSize, &error)) {
+                return false;
+            }
+            formatterPath = formatter.path();
+            // Cancellation exits with the old contents intact and the formatter claim still held.
+            if (stage == 0) {
+                return true;
+            }
+            if (!formatter.prepareForFormatting(&error)) {
+                return false;
+            }
+            Reporter reporter;
+            const QString tool =
+                stage == 1 ? QStringLiteral("/bin/false") : dir.filePath(QStringLiteral("missing-mkfs"));
+            QString formatError;
+            const bool formatted = formatLinuxPartition(
+                FileSystemType::ExFat,
+                tool,
+                formatter.path(),
+                QStringLiteral("USB"),
+                MiB / sectorSize,
+                reporter,
+                &formatError);
+            error = formatError;
+            return !formatted &&
+                   formatError.contains(stage == 1 ? QStringLiteral("failed") : QStringLiteral("Could not run"));
+        };
+        QVERIFY2(leaveRestoreScope(), qPrintable(error));
+
+        QTRY_VERIFY_WITH_TIMEOUT(loopIsDetached(formatterPath), 3000);
+        for (const QString &path : {formatterPath, backing.path()}) {
+            BlockDevice reclaimed(path);
+            QTRY_VERIFY_WITH_TIMEOUT(reclaimed.open(BlockDevice::Access::Exclusive, &error), 3000);
+        }
+        QVERIFY2(backing.detach(&error), qPrintable(error));
+        QVERIFY(image.seek(0));
+        QCOMPARE(image.readAll(), contents);
     }
 
     void formatsPinnedImageDespitePathReplacement_data()

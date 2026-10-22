@@ -670,7 +670,8 @@ void MainWindow::updateRestoreState()
     if (!canCreatePartitionLayout(selectedPartitionStyle(), *disk, &reason) ||
         !m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
         m_restoreButton->setEnabled(false);
-        setStatus(StatusKind::Blocked, QStringLiteral("This filesystem cannot be used on this disk."), reason);
+        setStatus(
+            StatusKind::Blocked, QStringLiteral("This restore configuration cannot be used on this disk."), reason);
         return;
     }
 

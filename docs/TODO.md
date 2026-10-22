@@ -2,9 +2,17 @@
 
 ## Next
 
-No open tasks.
+- Validate the PR #8 follow-up in CI: sanitizer instrumentation for Linux tests,
+  cleanup regressions and the corrected restore-configuration refusal message.
 
 ## Recently completed
+
+- 2026-10-22: Added Linux mapping cleanup regressions for cancellation before
+  erasure, formatter failure and launch failure at both sector sizes. Enabled
+  ASan/UBSan for the Linux test target and its privileged image tests in CI;
+  corrected the GUI refusal message for unsupported partition layouts.
+  Windows Release build, all three local test suites, formatting and diff checks
+  pass. Linux image and sanitizer validation is pending CI.
 
 - 2026-10-22: Implemented the four full-review fixes: shared layout preflight
   before erasure, Linux disk-sequence identity checks, formatter mappings backed
