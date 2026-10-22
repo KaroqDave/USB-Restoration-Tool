@@ -2,8 +2,7 @@
 
 ## Next
 
-- Validate the PR #8 follow-up in CI: sanitizer instrumentation for Linux tests,
-  cleanup regressions and the corrected restore-configuration refusal message.
+No open tasks.
 
 ## Recently completed
 
@@ -12,7 +11,9 @@
   ASan/UBSan for the Linux test target and its privileged image tests in CI;
   corrected the GUI refusal message for unsupported partition layouts.
   Windows Release build, all three local test suites, formatting and diff checks
-  pass. Linux image and sanitizer validation is pending CI.
+  pass. Debian image tests pass with 25 tests and no skips, including all six
+  cleanup cases; the image suite also passes under ASan/UBSan in CI. No
+  physical-drive restore was performed.
 
 - 2026-10-22: Implemented the four full-review fixes: shared layout preflight
   before erasure, Linux disk-sequence identity checks, formatter mappings backed
