@@ -2,9 +2,16 @@
 
 ## Next
 
-- Publish v1.7.1 through the release workflow and verify its published assets.
+No open tasks.
 
 ## Recently completed
+
+- 2026-10-23: Published 1.7.1 as the latest stable release after all five release
+  jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
+  both checksum files against GitHub's asset digests, both Linux checksums, all
+  20 published Windows bundle files and the executable's 1.7.1 version. Confirmed
+  the ZIP instructions and release notes match the release preparation. The
+  obsolete review branch has been removed locally and on GitHub.
 
 - 2026-10-23: Prepared 1.7.1 with restore-safety release notes and the Linux
   kernel/loop-driver requirement. Updated the Windows ZIP instructions to match
