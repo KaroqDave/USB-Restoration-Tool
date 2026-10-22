@@ -41,9 +41,9 @@ const QVector<RestoreStep> &linuxRestorePlan()
         RestoreStep::OpenExclusive,
         RestoreStep::ClearSignatures,
         RestoreStep::WritePartitionTable,
+        RestoreStep::Format,
         RestoreStep::RereadPartitionTable,
         RestoreStep::WaitForPartition,
-        RestoreStep::Format,
         RestoreStep::Complete,
     };
     return plan;

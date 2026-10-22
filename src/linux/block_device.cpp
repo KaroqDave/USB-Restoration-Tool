@@ -2,6 +2,7 @@
 
 #include "core/safety.h"
 #include "linux/sysfs.h"
+#include "linux/linux_enumerate.h"
 
 #include <QFileInfo>
 #include <QtGlobal>
@@ -56,8 +57,7 @@ bool BlockDevice::open(Access access, QString *error)
 {
     close();
 
-    const int flags = access == Access::Exclusive ? (O_RDWR | O_EXCL | O_CLOEXEC | O_SYNC)
-                                                  : (O_RDONLY | O_CLOEXEC);
+    const int flags = access == Access::Exclusive ? (O_RDWR | O_EXCL | O_CLOEXEC | O_SYNC) : (O_RDONLY | O_CLOEXEC);
     m_fd = ::open(m_devicePath.toLocal8Bit().constData(), flags);
     if (m_fd < 0) {
         const int errorNumber = errno;
@@ -120,6 +120,16 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
         return refuse(QStringLiteral("%1 is not a block device.").arg(m_devicePath));
     }
 
+    std::uint64_t sequence = 0;
+    if (!expected.deviceSequence || !diskSequence(&sequence)) {
+        return refuse(QStringLiteral("Cannot confirm the instance of %1. Linux restores require kernel 5.15 or "
+                                     "later with disk sequence support.")
+                          .arg(m_devicePath));
+    }
+    if (!isSameDeviceSequence(expected.deviceSequence, sequence, error)) {
+        return false;
+    }
+
     // Only whole disks appear directly under /sys/block, so a missing entry
     // means the path is a partition, which must never get a partition table.
     const QString diskName = QFileInfo(m_devicePath).fileName();
@@ -145,7 +155,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
     }
 
     const quint32 reportedSector = logicalSectorSize();
-    if (reportedSector != 0 && expected.sectorSize != 0 && reportedSector != expected.sectorSize) {
+    if (reportedSector == 0 || reportedSector != expected.sectorSize) {
         return refuse(QStringLiteral("%1 reports %2-byte sectors instead of the %3-byte sectors that were selected.")
                           .arg(m_devicePath)
                           .arg(reportedSector)
@@ -159,6 +169,12 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
     // Re-read rather than trusting the scan, which a swapped device would have passed.
     if (!isUsbBlockDevice(diskName)) {
         return refuse(QStringLiteral("%1 is not on the USB bus.").arg(m_devicePath));
+    }
+
+    const DiskInfo current = diskInfoFor(diskName);
+    if (!isSameDeviceSequence(sequence, current.deviceSequence, error) ||
+        !isSameRestoreTarget(expected, current, error)) {
+        return false;
     }
 
     return true;
@@ -179,9 +195,8 @@ bool BlockDevice::diskSequence(std::uint64_t *sequence) const
     return true;
 }
 
-bool BlockDevice::verifyPartitionOf(const QString &diskName,
-                                    const std::optional<std::uint64_t> &expectedSequence,
-                                    QString *error) const
+bool BlockDevice::verifyPartitionOf(
+    const QString &diskName, const std::optional<std::uint64_t> &expectedSequence, QString *error) const
 {
     const auto refuse = [error](const QString &text) {
         if (error) {
@@ -235,9 +250,11 @@ bool BlockDevice::writeAt(std::uint64_t offset, const QByteArray &data, QString 
 
     qint64 written = 0;
     while (written < data.size()) {
-        const ssize_t result =
-            ::pwrite(m_fd, data.constData() + written, static_cast<size_t>(data.size() - written),
-                     static_cast<off_t>(offset + static_cast<std::uint64_t>(written)));
+        const ssize_t result = ::pwrite(
+            m_fd,
+            data.constData() + written,
+            static_cast<size_t>(data.size() - written),
+            static_cast<off_t>(offset + static_cast<std::uint64_t>(written)));
         if (result < 0) {
             if (errno == EINTR) {
                 continue;
@@ -317,9 +334,8 @@ bool BlockDevice::rereadPartitionTable(QString *error)
 
     if (::ioctl(m_fd, BLKRRPART, 0) != 0) {
         if (error) {
-            *error = errorText(QStringLiteral("Could not make the kernel re-read the partition table on %1")
-                                   .arg(m_devicePath),
-                               errno);
+            *error = errorText(
+                QStringLiteral("Could not make the kernel re-read the partition table on %1").arg(m_devicePath), errno);
         }
         return false;
     }

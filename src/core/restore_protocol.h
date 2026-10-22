@@ -12,7 +12,7 @@ namespace usbrestore {
 // the helper checks against its own enumeration, never grants (docs/polkit-helper.md).
 
 // Bump whenever the meaning of any argument or output line changes.
-inline constexpr int RestoreProtocolVersion = 3;
+inline constexpr int RestoreProtocolVersion = 4;
 
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
 
@@ -69,12 +69,11 @@ bool isPlausibleDeviceNodePath(const QString &path);
 bool isValidVolumeLabel(const QString &label);
 
 // Excludes the program name.
-QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem,
-                                  const QString &volumeLabel);
+QStringList buildRestoreArguments(
+    const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel);
 
 // Refuses anything unrecognised, repeated or missing rather than guessing.
-bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parsed = nullptr,
-                           QString *error = nullptr);
+bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parsed = nullptr, QString *error = nullptr);
 
 enum class ProtocolLineKind {
     Unknown,
@@ -109,8 +108,11 @@ ProtocolLine parseProtocolLine(const QString &line);
 
 // The GUI numbers the helper's steps and places "safe to unplug" by its own plan,
 // so a helper announcing another protocol or plan is refused.
-bool acceptHelperAnnouncement(const ProtocolLine &announcement, const QString &ourAppVersion,
-                              const QVector<RestoreStep> &plan, QString *error = nullptr);
+bool acceptHelperAnnouncement(
+    const ProtocolLine &announcement,
+    const QString &ourAppVersion,
+    const QVector<RestoreStep> &plan,
+    QString *error = nullptr);
 
 // Written to the helper's stdin; honoured only while the restore is still reversible.
 inline constexpr char CancelRequestToken[] = "cancel";

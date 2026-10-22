@@ -132,15 +132,16 @@ constexpr quint32 JobStateException = 10;
 
 bool initializeComSecurity(QString *error)
 {
-    const HRESULT result = CoInitializeSecurity(nullptr,
-                                                -1,
-                                                nullptr,
-                                                nullptr,
-                                                RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
-                                                RPC_C_IMP_LEVEL_IMPERSONATE,
-                                                nullptr,
-                                                EOAC_NONE,
-                                                nullptr);
+    const HRESULT result = CoInitializeSecurity(
+        nullptr,
+        -1,
+        nullptr,
+        nullptr,
+        RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
+        RPC_C_IMP_LEVEL_IMPERSONATE,
+        nullptr,
+        EOAC_NONE,
+        nullptr);
     // RPC_E_TOO_LATE: process security was already set, which is fine to run with.
     if (FAILED(result) && result != RPC_E_TOO_LATE) {
         if (error) {
@@ -307,14 +308,15 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
         return;
     }
 
-    result = CoSetProxyBlanket(m_services,
-                               RPC_C_AUTHN_WINNT,
-                               RPC_C_AUTHZ_NONE,
-                               nullptr,
-                               RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
-                               RPC_C_IMP_LEVEL_IMPERSONATE,
-                               nullptr,
-                               EOAC_NONE);
+    result = CoSetProxyBlanket(
+        m_services,
+        RPC_C_AUTHN_WINNT,
+        RPC_C_AUTHZ_NONE,
+        nullptr,
+        RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
+        RPC_C_IMP_LEVEL_IMPERSONATE,
+        nullptr,
+        EOAC_NONE);
     if (FAILED(result)) {
         setError(result, QStringLiteral("CoSetProxyBlanket failed"));
         m_services->Release();
@@ -354,11 +356,12 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
     m_lastError.clear();
 
     IEnumWbemClassObject *enumerator = nullptr;
-    HRESULT result = m_services->ExecQuery(_bstr_t(L"WQL"),
-                                           _bstr_t(wql.toStdWString().c_str()),
-                                           WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-                                           nullptr,
-                                           &enumerator);
+    HRESULT result = m_services->ExecQuery(
+        _bstr_t(L"WQL"),
+        _bstr_t(wql.toStdWString().c_str()),
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr,
+        &enumerator);
     if (FAILED(result) || !enumerator) {
         setError(FAILED(result) ? result : E_FAIL, QStringLiteral("WMI query failed: %1").arg(wql));
         return objects;
@@ -399,10 +402,11 @@ WmiObject WmiConnection::getObject(const QString &objectPath) const
     return WmiObject(object);
 }
 
-WmiCallResult WmiConnection::callMethod(const QString &className,
-                                        const QString &objectPath,
-                                        const wchar_t *methodName,
-                                        const QVector<QPair<QString, QVariant>> &inputs) const
+WmiCallResult WmiConnection::callMethod(
+    const QString &className,
+    const QString &objectPath,
+    const wchar_t *methodName,
+    const QVector<QPair<QString, QVariant>> &inputs) const
 {
     WmiCallResult callResult;
     if (!m_services) {
@@ -422,9 +426,9 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
     } else {
         result = classObject->GetMethod(methodName, 0, &inSignature, nullptr);
         if (FAILED(result)) {
-            setError(result,
-                     QStringLiteral("WMI GetMethod failed for %1.%2")
-                         .arg(className, QString::fromWCharArray(methodName)));
+            setError(
+                result,
+                QStringLiteral("WMI GetMethod failed for %1.%2").arg(className, QString::fromWCharArray(methodName)));
         }
     }
 
@@ -438,9 +442,9 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
         }
     } else if (SUCCEEDED(result) && !inputs.isEmpty()) {
         result = E_INVALIDARG;
-        setError(result,
-                 QStringLiteral("WMI method has no input parameter signature: %1")
-                     .arg(QString::fromWCharArray(methodName)));
+        setError(
+            result,
+            QStringLiteral("WMI method has no input parameter signature: %1").arg(QString::fromWCharArray(methodName)));
     }
 
     if (SUCCEEDED(result) && inInstance.isValid()) {
@@ -453,17 +457,18 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
     }
 
     if (SUCCEEDED(result)) {
-        result = m_services->ExecMethod(_bstr_t(objectPath.toStdWString().c_str()),
-                                        _bstr_t(methodName),
-                                        0,
-                                        nullptr,
-                                        inInstance.get(),
-                                        &outParams,
-                                        nullptr);
+        result = m_services->ExecMethod(
+            _bstr_t(objectPath.toStdWString().c_str()),
+            _bstr_t(methodName),
+            0,
+            nullptr,
+            inInstance.get(),
+            &outParams,
+            nullptr);
         if (FAILED(result)) {
-            setError(result,
-                     QStringLiteral("WMI ExecMethod failed for %1.%2")
-                         .arg(className, QString::fromWCharArray(methodName)));
+            setError(
+                result,
+                QStringLiteral("WMI ExecMethod failed for %1.%2").arg(className, QString::fromWCharArray(methodName)));
         }
     }
 
@@ -493,36 +498,77 @@ WmiCallResult WmiConnection::callMethod(const QString &className,
 
 bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *error) const
 {
+    return waitForStorageJob(
+        jobPath,
+        [this, &jobPath](QString *readError) {
+            WmiObject job = getObject(jobPath);
+            if (!job.isValid() && readError) {
+                *readError = lastError();
+            }
+            return job;
+        },
+        timeoutMs,
+        error);
+}
+
+bool waitForStorageJob(
+    const QString &jobPath, const std::function<WmiObject(QString *)> &readJob, int timeoutMs, QString *error)
+{
     if (jobPath.isEmpty()) {
-        return true;
+        if (error) {
+            *error = QStringLiteral("Windows queued a storage operation without a job to monitor. Restore stopped.");
+        }
+        return false;
     }
 
     QElapsedTimer timer;
     timer.start();
     for (;;) {
-        const WmiObject job = getObject(jobPath);
+        QString readError;
+        const WmiObject job = readJob(&readError);
         if (!job.isValid()) {
-            // Windows only removes the job object after the job has run.
-            return true;
+            if (error) {
+                *error = QStringLiteral("Could not confirm that the Windows storage job completed. Restore stopped.%1")
+                             .arg(readError.isEmpty() ? QString() : QStringLiteral(" %1").arg(readError));
+            }
+            return false;
         }
 
-        const quint32 state = job.uintValue(L"JobState", JobStateCompleted);
+        const auto stateValue = job.optionalUint64Value(L"JobState");
+        if (!stateValue || *stateValue < 2 || *stateValue > 12) {
+            if (error) {
+                *error = QStringLiteral("The Windows storage job reported no usable state. Restore stopped.");
+            }
+            return false;
+        }
+        const auto state = *stateValue;
         if (state == JobStateCompleted) {
-            return true;
+            const auto code = job.optionalUint64Value(L"ErrorCode");
+            if (code && *code == 0) {
+                return true;
+            }
+            if (error) {
+                *error = QStringLiteral("The Windows storage job did not confirm success (error code %1). %2")
+                             .arg(
+                                 code ? QString::number(*code) : QStringLiteral("unavailable"),
+                                 job.stringValue(L"ErrorDescription"))
+                             .trimmed();
+            }
+            return false;
         }
         if (state == JobStateTerminated || state == JobStateKilled || state == JobStateException) {
             if (error) {
                 const QString detail = job.stringValue(L"ErrorDescription").trimmed();
-                *error = detail.isEmpty()
-                             ? QStringLiteral("A Windows storage job failed with state %1.").arg(state)
-                             : QStringLiteral("A Windows storage job failed: %1").arg(detail);
+                *error = detail.isEmpty() ? QStringLiteral("A Windows storage job failed with state %1.").arg(state)
+                                          : QStringLiteral("A Windows storage job failed: %1").arg(detail);
             }
             return false;
         }
 
         if (timer.elapsed() >= timeoutMs) {
             if (error) {
-                *error = QStringLiteral("A Windows storage job did not finish within %1 seconds.").arg(timeoutMs / 1000);
+                *error =
+                    QStringLiteral("A Windows storage job did not finish within %1 seconds.").arg(timeoutMs / 1000);
             }
             return false;
         }
@@ -530,12 +576,13 @@ bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *e
     }
 }
 
-bool WmiConnection::callMethodAndWait(const QString &className,
-                                      const QString &objectPath,
-                                      const wchar_t *methodName,
-                                      const QVector<QPair<QString, QVariant>> &inputs,
-                                      int timeoutMs,
-                                      QString *error) const
+bool WmiConnection::callMethodAndWait(
+    const QString &className,
+    const QString &objectPath,
+    const wchar_t *methodName,
+    const QVector<QPair<QString, QVariant>> &inputs,
+    int timeoutMs,
+    QString *error) const
 {
     const WmiCallResult result = callMethod(className, objectPath, methodName, inputs);
     if (!result.accepted()) {
@@ -555,7 +602,7 @@ bool WmiConnection::callMethodAndWait(const QString &className,
         return false;
     }
 
-    return waitForJob(result.jobPath, timeoutMs, error);
+    return result.returnValue == 0 || waitForJob(result.jobPath, timeoutMs, error);
 }
 
 void WmiConnection::setError(HRESULT result, const QString &context) const

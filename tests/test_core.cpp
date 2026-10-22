@@ -91,6 +91,74 @@ PartitionTableRequest tableRequestFor(std::uint64_t diskSize, quint32 sectorSize
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void refusesImpossibleLayoutsBeforeRestore()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        QString error;
+        QVERIFY(canCreatePartitionLayout(PartitionStyle::Mbr, disk, &error));
+        disk.size = 4ull * 1024 * 1024 * 1024 * 1024;
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Mbr, disk, &error));
+        QVERIFY(error.contains(QStringLiteral("GPT")));
+        QVERIFY(canCreatePartitionLayout(PartitionStyle::Gpt, disk));
+        disk.sectorSize = 4096;
+        QVERIFY(canCreatePartitionLayout(PartitionStyle::Mbr, disk));
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Unknown, disk));
+        disk.size = 1024;
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Gpt, disk));
+        disk.sectorSize = 0;
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Mbr, disk));
+    }
+
+    void refusesReplacedOrUnverifiableDeviceInstances()
+    {
+        QVERIFY(isSameDeviceSequence(12, 12));
+        QVERIFY(!isSameDeviceSequence(12, 13));
+        QVERIFY(!isSameDeviceSequence(12, std::nullopt));
+        QVERIFY(!isSameDeviceSequence(std::nullopt, 12));
+        QVERIFY(!isSameDeviceSequence(std::nullopt, std::nullopt));
+        QVERIFY(!isSameDeviceSequence(0, 0));
+        DiskInfo selected = healthyUsbDisk();
+        selected.deviceSequence = 12;
+        DiskInfo current = selected;
+        QVERIFY(isSameRestoreTarget(selected, current));
+        current.deviceSequence = 13;
+        QVERIFY(!isSameRestoreTarget(selected, current));
+        current.deviceSequence.reset();
+        QVERIFY(!isSameRestoreTarget(selected, current));
+    }
+
+    void boundsFormatterMappingWithoutOverflow()
+    {
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        QVERIFY(isValidDeviceRange(4096, 512, 3584, 512));
+        QVERIFY(!isValidDeviceRange(4096, 512, 4096, 512));
+        QVERIFY(!isValidDeviceRange(maximum, maximum - 511, 1024, 512));
+        QVERIFY(!isValidDeviceRange(4096, 1, 512, 512));
+        QVERIFY(!isValidDeviceRange(4096, 0, 513, 512));
+        QVERIFY(!isValidDeviceRange(4096, 0, 0, 512));
+        QVERIFY(!isValidDeviceRange(4096, 0, 512, 0));
+    }
+
+    void preservesDeviceSequenceAcrossHelperArguments()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        disk.deviceSequence = std::numeric_limits<std::uint64_t>::max();
+        auto arguments = buildRestoreArguments(disk, PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"));
+        RestoreArguments parsed;
+        QVERIFY(parseRestoreArguments(arguments, &parsed));
+        QCOMPARE(parsed.expected.deviceSequence, disk.deviceSequence);
+        const int value = arguments.indexOf(QStringLiteral("--expect-sequence")) + 1;
+        for (const QString &invalid :
+             {QStringLiteral("0"),
+              QStringLiteral("-1"),
+              QStringLiteral("+1"),
+              QStringLiteral(" 12"),
+              QStringLiteral("18446744073709551616")}) {
+            arguments[value] = invalid;
+            QVERIFY(!parseRestoreArguments(arguments, &parsed));
+        }
+    }
+
     void formatsByteSizes()
     {
         QCOMPARE(formatByteSize(0), QStringLiteral("0 B"));
@@ -389,15 +457,14 @@ class CoreTests : public QObject {
 
                 QString reason;
                 if (!isWritablePartitionRequest(request, &reason)) {
-                    QFAIL(qPrintable(QStringLiteral("%1-byte sectors, %2 bytes: %3")
-                                         .arg(sectorSize)
-                                         .arg(diskSize)
-                                         .arg(reason)));
+                    QFAIL(qPrintable(
+                        QStringLiteral("%1-byte sectors, %2 bytes: %3").arg(sectorSize).arg(diskSize).arg(reason)));
                 }
 
                 // The backup image ends on the last whole sector, not past it.
-                QCOMPARE(gptBackupOffset(request) + static_cast<std::uint64_t>(buildGptBackup(request).size()),
-                         (diskSize / sectorSize) * static_cast<std::uint64_t>(sectorSize));
+                QCOMPARE(
+                    gptBackupOffset(request) + static_cast<std::uint64_t>(buildGptBackup(request).size()),
+                    (diskSize / sectorSize) * static_cast<std::uint64_t>(sectorSize));
             }
         }
     }
@@ -1023,10 +1090,10 @@ class CoreTests : public QObject {
 
         QString reason;
         QVERIFY(!parseRestoreArguments(
-            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat,
-                                  QStringLiteral("USB")) +
+            buildRestoreArguments(healthyUsbDisk(), PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB")) +
                 extra,
-            nullptr, &reason));
+            nullptr,
+            &reason));
         QVERIFY2(reason.contains(QStringLiteral("not a recognised option")), qPrintable(reason));
     }
 
@@ -1091,8 +1158,12 @@ class CoreTests : public QObject {
     // were once reported wrongly.
     void judgesHelperRunOutcomes()
     {
-        const auto observe = [](bool crashed, int exitCode, bool sawVersion, bool versionAccepted,
-                                bool killRequested, const QString &location) {
+        const auto observe = [](bool crashed,
+                                int exitCode,
+                                bool sawVersion,
+                                bool versionAccepted,
+                                bool killRequested,
+                                const QString &location) {
             HelperRunObservation run;
             run.crashed = crashed;
             run.exitCode = exitCode;
@@ -1106,67 +1177,68 @@ class CoreTests : public QObject {
         QString error;
 
         // Ordinary endings: success, and a cancel honoured at a checkpoint.
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QStringLiteral("/dev/sdb1")),
-                                &error),
-                 HelperRunVerdict::Succeeded);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QStringLiteral("/dev/sdb1")), &error),
+            HelperRunVerdict::Succeeded);
         error.clear();
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, true, false, QString()), &error),
-                 HelperRunVerdict::Cancelled);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitCancelled, true, true, false, QString()), &error),
+            HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
 
         // A kill before the version line is believed only if the process died silently
         // (SIGKILL hit pkexec) or pkexec reported auth dismissed: the helper never ran.
-        QCOMPARE(judgeHelperRun(observe(true, 0, false, false, true, QString()), &error),
-                 HelperRunVerdict::Cancelled);
+        QCOMPARE(judgeHelperRun(observe(true, 0, false, false, true, QString()), &error), HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
-        QCOMPARE(judgeHelperRun(observe(false, 126, false, false, true, QString()), &error),
-                 HelperRunVerdict::Cancelled);
+        QCOMPARE(
+            judgeHelperRun(observe(false, 126, false, false, true, QString()), &error), HelperRunVerdict::Cancelled);
         QVERIFY(error.isEmpty());
 
         // pkexec had already exec'd the helper, so the kill missed and the restore
         // completed. This used to be reported as "cancelled — the disk was not changed".
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, true, QStringLiteral("/dev/sdb1")),
-                                &error),
-                 HelperRunVerdict::Succeeded);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitSuccess, true, true, true, QStringLiteral("/dev/sdb1")), &error),
+            HelperRunVerdict::Succeeded);
         // A late cancel token that landed at a checkpoint is a truthful cancellation.
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, true, true, QString()), &error),
-                 HelperRunVerdict::Cancelled);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitCancelled, true, true, true, QString()), &error),
+            HelperRunVerdict::Cancelled);
 
         // A rejected version outranks the exit code: its "cancelled" and "success"
         // used to be taken at face value.
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, true, false, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitCancelled, true, false, false, QString()), &error),
+            HelperRunVerdict::Failed);
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, false, false, QStringLiteral("/dev/sdb1")),
-                                &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitSuccess, true, false, false, QStringLiteral("/dev/sdb1")), &error),
+            HelperRunVerdict::Failed);
 
         // No version line: pkexec's codes keep their meaning, and a claimed success
         // or cancellation is a protocol failure.
-        QCOMPARE(judgeHelperRun(observe(false, 126, false, false, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(judgeHelperRun(observe(false, 126, false, false, false, QString()), &error), HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("Authentication")));
-        QCOMPARE(judgeHelperRun(observe(false, 127, false, false, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(judgeHelperRun(observe(false, 127, false, false, false, QString()), &error), HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("installed")));
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, false, false, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitSuccess, false, false, false, QString()), &error),
+            HelperRunVerdict::Failed);
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitCancelled, false, false, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitCancelled, false, false, false, QString()), &error),
+            HelperRunVerdict::Failed);
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
 
         // An unrequested crash is a failure: the drive may hold a half-written table.
-        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, false, QString()), &error), HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("unexpectedly")));
         // A version line means the helper ran, so this is not the pre-auth cancel.
-        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, true, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(judgeHelperRun(observe(true, 0, true, true, true, QString()), &error), HelperRunVerdict::Failed);
 
         // Success without a location is refused rather than trusted.
-        QCOMPARE(judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QString()), &error),
-                 HelperRunVerdict::Failed);
+        QCOMPARE(
+            judgeHelperRun(observe(false, RestoreExitSuccess, true, true, false, QString()), &error),
+            HelperRunVerdict::Failed);
         QVERIFY(error.contains(QStringLiteral("without reporting")));
 
         // The reason the announcement was refused is reported in place of the generic text.
@@ -1236,7 +1308,9 @@ class CoreTests : public QObject {
         add("no step total", QStringLiteral("step 1/ x"), ProtocolLineKind::Unknown, QString());
         add("bare step", QStringLiteral("step"), ProtocolLineKind::Unknown, QString());
         add("leading tab", QStringLiteral("\tdetail x"), ProtocolLineKind::Detail, QStringLiteral("x"));
-        add("carriage return", QStringLiteral("result /dev/sdb1\r"), ProtocolLineKind::Result,
+        add("carriage return",
+            QStringLiteral("result /dev/sdb1\r"),
+            ProtocolLineKind::Result,
             QStringLiteral("/dev/sdb1"));
 
         // What the encoders write for an empty message, trimmed by the reader.
@@ -1336,13 +1410,16 @@ class CoreTests : public QObject {
         QCOMPARE(QString::fromUtf8(fits.toUtf8()), fits);
 
         // Found by usb-core-fuzz: the space before the last word went in unchecked.
-        QCOMPARE(sanitizeProtocolText(QString(1999, QLatin1Char('x')) + QStringLiteral(" y")),
-                 QString(1999, QLatin1Char('x')));
-        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QStringLiteral(" y")),
-                 QString(1998, QLatin1Char('x')) + QStringLiteral(" y"));
+        QCOMPARE(
+            sanitizeProtocolText(QString(1999, QLatin1Char('x')) + QStringLiteral(" y")),
+            QString(1999, QLatin1Char('x')));
+        QCOMPARE(
+            sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QStringLiteral(" y")),
+            QString(1998, QLatin1Char('x')) + QStringLiteral(" y"));
         // A space and a high surrogate fit, its low half does not: neither is kept.
-        QCOMPARE(sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QLatin1Char(' ') + floppy),
-                 QString(1998, QLatin1Char('x')));
+        QCOMPARE(
+            sanitizeProtocolText(QString(1998, QLatin1Char('x')) + QLatin1Char(' ') + floppy),
+            QString(1998, QLatin1Char('x')));
     }
 
     // The GUI tells the user unplugging is safe before firstDestructiveStep, so these
@@ -1350,6 +1427,7 @@ class CoreTests : public QObject {
     void pinsTheLinuxRestorePlan()
     {
         const QVector<RestoreStep> &plan = linuxRestorePlan();
+        QVERIFY(plan.indexOf(RestoreStep::Format) < plan.indexOf(RestoreStep::RereadPartitionTable));
         QCOMPARE(plan.size(), 10);
         QCOMPARE(firstDestructiveStepOf(plan), 5);
         QCOMPARE(plan.at(4), RestoreStep::ClearSignatures);
@@ -1372,14 +1450,22 @@ class CoreTests : public QObject {
 
     void classifiesEveryStepThatWritesTheDisk()
     {
-        for (const RestoreStep step : {RestoreStep::DeletePartitions, RestoreStep::ClearSignatures,
-                                       RestoreStep::ResetToRaw, RestoreStep::WritePartitionTable,
-                                       RestoreStep::CreatePartition, RestoreStep::Format}) {
+        for (const RestoreStep step :
+             {RestoreStep::DeletePartitions,
+              RestoreStep::ClearSignatures,
+              RestoreStep::ResetToRaw,
+              RestoreStep::WritePartitionTable,
+              RestoreStep::CreatePartition,
+              RestoreStep::Format}) {
             QVERIFY(changesDiskContents(step));
         }
-        for (const RestoreStep step : {RestoreStep::VerifyDisk, RestoreStep::IdentifyDevice, RestoreStep::Unmount,
-                                       RestoreStep::OpenExclusive, RestoreStep::OpenDrive,
-                                       RestoreStep::RefreshMetadata}) {
+        for (const RestoreStep step :
+             {RestoreStep::VerifyDisk,
+              RestoreStep::IdentifyDevice,
+              RestoreStep::Unmount,
+              RestoreStep::OpenExclusive,
+              RestoreStep::OpenDrive,
+              RestoreStep::RefreshMetadata}) {
             QVERIFY(!changesDiskContents(step));
         }
         QCOMPARE(firstDestructiveStepOf({RestoreStep::VerifyDisk, RestoreStep::Complete}), 3);
@@ -1413,7 +1499,9 @@ class CoreTests : public QObject {
 
         // Another release with an unchanged plan still works together.
         QVERIFY(acceptHelperAnnouncement(
-            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.5.2"), plan)), ours, plan,
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.5.2"), plan)),
+            ours,
+            plan,
             &error));
 
         // An installed helper from before the announcement carried the plan.
@@ -1425,7 +1513,9 @@ class CoreTests : public QObject {
         QVector<RestoreStep> longer = plan;
         longer.insert(1, RestoreStep::RefreshMetadata);
         QVERIFY(!acceptHelperAnnouncement(
-            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.6.0"), longer)), ours, plan,
+            parseProtocolLine(encodeVersionLine(RestoreProtocolVersion, QStringLiteral("1.6.0"), longer)),
+            ours,
+            plan,
             &error));
         QVERIFY(error.contains(QStringLiteral("version 1.6.0")));
         QVERIFY(error.contains(QStringLiteral("Reinstall")));
@@ -1444,8 +1534,8 @@ class CoreTests : public QObject {
             parseProtocolLine(QStringLiteral("version %1 steps 10").arg(RestoreProtocolVersion)), ours, plan, &error));
 
         // No announcement at all.
-        QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(QStringLiteral("step 1/10 Verifying")), ours, plan,
-                                          &error));
+        QVERIFY(
+            !acceptHelperAnnouncement(parseProtocolLine(QStringLiteral("step 1/10 Verifying")), ours, plan, &error));
         QCOMPARE(error, describeRestoreExit(RestoreExitUsage, QString()));
         QVERIFY(!acceptHelperAnnouncement(parseProtocolLine(QString()), ours, plan, &error));
     }

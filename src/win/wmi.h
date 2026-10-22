@@ -10,6 +10,7 @@
 #include <comdef.h>
 
 #include <optional>
+#include <functional>
 
 namespace usbrestore {
 
@@ -59,6 +60,9 @@ struct WmiCallResult {
     bool accepted() const { return returnValue == 0 || returnValue == WmiMethodStartedJob; }
 };
 
+bool waitForStorageJob(
+    const QString &jobPath, const std::function<WmiObject(QString *)> &readJob, int timeoutMs, QString *error);
+
 class WmiConnection {
   public:
     explicit WmiConnection(const wchar_t *namespacePath = L"ROOT\\Microsoft\\Windows\\Storage");
@@ -73,18 +77,20 @@ class WmiConnection {
     QVector<WmiObject> query(const QString &wql) const;
     WmiObject getObject(const QString &objectPath) const;
 
-    WmiCallResult callMethod(const QString &className,
-                             const QString &objectPath,
-                             const wchar_t *methodName,
-                             const QVector<QPair<QString, QVariant>> &inputs = {}) const;
+    WmiCallResult callMethod(
+        const QString &className,
+        const QString &objectPath,
+        const wchar_t *methodName,
+        const QVector<QPair<QString, QVariant>> &inputs = {}) const;
 
     // Also waits for the storage job when Windows only queued the work.
-    bool callMethodAndWait(const QString &className,
-                           const QString &objectPath,
-                           const wchar_t *methodName,
-                           const QVector<QPair<QString, QVariant>> &inputs,
-                           int timeoutMs,
-                           QString *error) const;
+    bool callMethodAndWait(
+        const QString &className,
+        const QString &objectPath,
+        const wchar_t *methodName,
+        const QVector<QPair<QString, QVariant>> &inputs,
+        int timeoutMs,
+        QString *error) const;
 
     bool waitForJob(const QString &jobPath, int timeoutMs, QString *error) const;
 

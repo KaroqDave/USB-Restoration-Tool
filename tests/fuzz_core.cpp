@@ -32,7 +32,7 @@ namespace {
     std::abort();
 }
 
-#define FUZZ_REQUIRE(condition)                                                                                       \
+#define FUZZ_REQUIRE(condition)                                                                                        \
     do {                                                                                                               \
         if (!(condition)) {                                                                                            \
             violated(#condition, __LINE__);                                                                            \
@@ -167,6 +167,7 @@ void fuzzRestoreArguments(Input &input)
     FUZZ_REQUIRE(parseRestoreArguments(
         buildRestoreArguments(claimed, parsed.style, parsed.fileSystem, parsed.volumeLabel), &again));
     FUZZ_REQUIRE(again.expected.deviceId == claimed.deviceId);
+    FUZZ_REQUIRE(again.expected.deviceSequence == claimed.deviceSequence);
     FUZZ_REQUIRE(again.expected.size == claimed.size && again.expected.sectorSize == claimed.sectorSize);
     FUZZ_REQUIRE(again.style == parsed.style && again.fileSystem == parsed.fileSystem);
     FUZZ_REQUIRE(again.volumeLabel == parsed.volumeLabel);
@@ -205,8 +206,8 @@ void fuzzPartitionTable(Input &input)
     request.sectorSize = (sectorChoice & 0x80000000u) ? sectorChoice : commonSectorSizes[sectorChoice % 4];
     const std::uint8_t flags = input.take<std::uint8_t>();
     request.style = (flags & 1) ? PartitionStyle::Mbr : PartitionStyle::Gpt;
-    static constexpr FileSystemType fileSystems[] = {FileSystemType::ExFat, FileSystemType::Fat32,
-                                                     FileSystemType::Ntfs, FileSystemType::Ext4};
+    static constexpr FileSystemType fileSystems[] = {
+        FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs, FileSystemType::Ext4};
     request.fileSystem = fileSystems[(flags >> 1) % 4];
     request.diskGuid = QByteArray(16, '\x11');
     request.partitionGuid = QByteArray(16, '\x22');

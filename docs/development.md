@@ -71,6 +71,21 @@ mkdir -p fuzz-work && cp tests/fuzz-corpus/* fuzz-work/ && ./build-sanitize/usb-
 `USBRESTORE_SANITIZE` also works on its own with GCC. Once a crash it finds is
 fixed, add the input to `tests/fuzz-corpus` so every build replays it.
 
+Linux's `usb-linux-tests` also exercises formatter mappings on disposable sparse
+image files. Ordinary `ctest` runs the nonprivileged checks and skips loop tests;
+the Debian CI job runs all four formatters with 512-byte and 4096-byte sectors:
+
+```bash
+sudo apt install exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
+sudo env USBRESTORE_TEST_LOOP=1 ./build-linux/usb-linux-tests
+```
+
+These tests require root, kernel 5.15+ and `/dev/loop-control`. They cover both
+regular-file backing and an image-backed block device held exclusively. They
+replace the backing image pathname after mapping, verify that only the original file's
+partition range changes, check filesystem recognition and confirm geometry.
+They never enumerate or restore physical disks.
+
 The platform restore sequences have no automated hardware coverage. Use only
 disposable media for manual restore checks. A per-device test log is not required.
 

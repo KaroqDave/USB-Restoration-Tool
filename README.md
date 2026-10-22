@@ -41,6 +41,9 @@ If runtime DLLs are missing, install the
 
 ### Linux
 
+Restores require Linux 5.15 or later with disk-sequence support and the loop
+driver available (`/dev/loop-control`).
+
 On Ubuntu 24.04 or later and Debian 13 or later, install the `.deb`. It pulls
 in the formatters and pkexec:
 

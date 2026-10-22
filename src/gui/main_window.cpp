@@ -471,9 +471,8 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    auto *caption = new QLabel(QStringLiteral(
-        "Every step of this session. The same lines are written to the log "
-        "file, which survives a restart."));
+    auto *caption = new QLabel(QStringLiteral("Every step of this session. The same lines are written to the log "
+                                              "file, which survives a restart."));
     caption->setObjectName(QStringLiteral("footnote"));
     caption->setWordWrap(true);
     layout->addWidget(caption);
@@ -625,16 +624,14 @@ void MainWindow::renderSelectedDisk()
     }
 
     m_detailTitle->setText(describeDisk(*disk));
-    m_detailValues->setText(QStringLiteral(
-                                "Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
-                                "Filesystems: %4\n"
-                                "Mounted at: %5\n"
-                                "Volume labels: %6")
-                                .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
-                                .arg(disk->sectorSize)
-                                .arg(joinOrDash(disk->fileSystems),
-                                     joinOrDash(disk->mountPoints),
-                                     joinOrDash(disk->labels)));
+    m_detailValues->setText(
+        QStringLiteral("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
+                       "Filesystems: %4\n"
+                       "Mounted at: %5\n"
+                       "Volume labels: %6")
+            .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
+            .arg(disk->sectorSize)
+            .arg(joinOrDash(disk->fileSystems), joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
 }
 
 void MainWindow::updateRestoreState()
@@ -670,7 +667,8 @@ void MainWindow::updateRestoreState()
         return;
     }
 
-    if (!m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
+    if (!canCreatePartitionLayout(selectedPartitionStyle(), *disk, &reason) ||
+        !m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
         m_restoreButton->setEnabled(false);
         setStatus(StatusKind::Blocked, QStringLiteral("This filesystem cannot be used on this disk."), reason);
         return;
@@ -745,7 +743,7 @@ void MainWindow::startRestore()
     const DiskInfo disk = *selected;
     const PartitionStyle style = selectedPartitionStyle();
     const FileSystemType fileSystem = selectedFileSystem();
-    if (!m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
+    if (!canCreatePartitionLayout(style, disk, &reason) || !m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
         QMessageBox::critical(this, QStringLiteral("Restore refused"), reason);
         updateRestoreState();
         return;
@@ -756,9 +754,8 @@ void MainWindow::startRestore()
 
     m_logger.log(QStringLiteral("Restore requested for %1 as %2 %3")
                      .arg(describeDisk(disk), partitionStyleLabel(style), fileSystemTypeName(fileSystem)));
-    m_logger.logFileOnly(QStringLiteral(
-                             "Target details — device %1, bus %2, sector size %3, mounted at [%4], "
-                             "labels [%5]")
+    m_logger.logFileOnly(QStringLiteral("Target details — device %1, bus %2, sector size %3, mounted at [%4], "
+                                        "labels [%5]")
                              .arg(disk.deviceId, busTypeName(disk.busType))
                              .arg(disk.sectorSize)
                              .arg(disk.mountPoints.join(QStringLiteral(", ")), disk.labels.join(QStringLiteral(", "))));
@@ -809,9 +806,8 @@ void MainWindow::cancelRestore()
     setStatus(
         StatusKind::Running,
         QStringLiteral("Stopping..."),
-        QStringLiteral(
-            "The restore stops at the next checkpoint. Once the disk has been written to there is "
-            "nothing left to stop, and it runs to completion."));
+        QStringLiteral("The restore stops at the next checkpoint. Once the disk has been written to there is "
+                       "nothing left to stop, and it runs to completion."));
 }
 
 void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &message)
@@ -842,10 +838,8 @@ void MainWindow::onStallTick()
         return;
     }
 
-    const QString base = QStringLiteral("%1 / %2 — %3")
-                             .arg(m_restoreStep)
-                             .arg(m_progress->maximum())
-                             .arg(m_restoreStepText);
+    const QString base =
+        QStringLiteral("%1 / %2 — %3").arg(m_restoreStep).arg(m_progress->maximum()).arg(m_restoreStepText);
 
     const qint64 seconds = m_restoreActivity.elapsed() / 1000;
     if (seconds < StallCountSeconds) {
@@ -856,16 +850,14 @@ void MainWindow::onStallTick()
             m_progress->setFormat(base);
             if (m_stallExplained) {
                 m_stallExplained = false;
-                m_detailLabel->setText(
-                    QStringLiteral("Step %1 of %2.").arg(m_restoreStep).arg(m_progress->maximum()));
+                m_detailLabel->setText(QStringLiteral("Step %1 of %2.").arg(m_restoreStep).arg(m_progress->maximum()));
             }
         }
         return;
     }
 
     m_stallNoticeShown = true;
-    const QString silence =
-        QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+    const QString silence = QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
     m_progress->setFormat(QStringLiteral("%1 — no response for %2").arg(base, silence));
 
     if (seconds < StallExplainSeconds) {
@@ -876,17 +868,17 @@ void MainWindow::onStallTick()
     // flushing to it (a likely place to stall), so unplugging is never called "safe".
     m_stallExplained = true;
     if (m_restoreStep < m_service.firstDestructiveStep()) {
-        m_detailLabel->setText(QStringLiteral(
-            "The device has not responded for %1. Some sticks stall for minutes and then recover on "
-            "their own. The restore has not changed the disk, but the system may still be flushing "
-            "its own writes to it — unplug only if it never recovers, and expect to run the restore "
-            "again afterwards.")
-                                   .arg(silence));
+        m_detailLabel->setText(
+            QStringLiteral("The device has not responded for %1. Some sticks stall for minutes and then recover on "
+                           "their own. The restore has not changed the disk, but the system may still be flushing "
+                           "its own writes to it — unplug only if it never recovers, and expect to run the restore "
+                           "again afterwards.")
+                .arg(silence));
     } else {
-        m_detailLabel->setText(QStringLiteral(
-            "The device has not responded for %1. Some sticks stall for minutes and then recover on "
-            "their own. The disk is being rewritten — leave it plugged in and wait.")
-                                   .arg(silence));
+        m_detailLabel->setText(
+            QStringLiteral("The device has not responded for %1. Some sticks stall for minutes and then recover on "
+                           "their own. The disk is being rewritten — leave it plugged in and wait.")
+                .arg(silence));
     }
 }
 
@@ -905,12 +897,13 @@ void MainWindow::onRestoreCancelled()
 {
     setRunning(false);
     m_logger.log(QStringLiteral("Restore cancelled before erasing the disk; existing volumes may need to be mounted "
-                               "again or have their drive letters reassigned"));
+                                "again or have their drive letters reassigned"));
     refreshDisks();
-    setStatus(StatusKind::Info,
-              QStringLiteral("Restore cancelled."),
-              QStringLiteral("The restore did not erase the disk. Existing volumes may need to be mounted again "
-                             "or have their drive letters reassigned."));
+    setStatus(
+        StatusKind::Info,
+        QStringLiteral("Restore cancelled."),
+        QStringLiteral("The restore did not erase the disk. Existing volumes may need to be mounted again "
+                       "or have their drive letters reassigned."));
 }
 
 void MainWindow::onRestoreFinished(const QString &location)
@@ -976,9 +969,8 @@ void MainWindow::refreshStatusBadge()
     const QColor bg = statusBadgeBackground(m_status, palette);
     const QColor fg = statusBadgeText(m_status, palette);
 
-    m_statusLabel->setStyleSheet(QStringLiteral(
-                                     "QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
-                                     "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
+    m_statusLabel->setStyleSheet(QStringLiteral("QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
+                                                "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
                                      .arg(bg.red())
                                      .arg(bg.green())
                                      .arg(bg.blue())
@@ -1072,9 +1064,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
         QMessageBox::information(
             this,
             QStringLiteral("Restore in progress"),
-            QStringLiteral(
-                "A restore is still running. Wait for it to finish before closing; "
-                "stopping now would leave the disk unusable."));
+            QStringLiteral("A restore is still running. Wait for it to finish before closing; "
+                           "stopping now would leave the disk unusable."));
         event->ignore();
         return;
     }

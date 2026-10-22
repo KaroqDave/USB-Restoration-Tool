@@ -58,6 +58,11 @@ DiskInfo diskInfoFor(const QString &diskName)
     disk.uniqueId = stableDeviceIdLink(diskName);
     disk.serialNumber = serialFromUsbByIdLink(disk.uniqueId, disk.name);
     disk.path = QFileInfo(sysfs).canonicalFilePath();
+    bool sequenceOk = false;
+    const auto sequence = readSysfsAttribute(QStringLiteral("%1/diskseq").arg(sysfs)).toULongLong(&sequenceOk);
+    if (sequenceOk && sequence != 0) {
+        disk.deviceSequence = sequence;
+    }
 
     disk.size = readSysfsAttribute(QStringLiteral("%1/size").arg(sysfs)).toULongLong() * SysfsSectorUnit;
     disk.sectorSize = readSysfsAttribute(QStringLiteral("%1/queue/logical_block_size").arg(sysfs)).toUInt();

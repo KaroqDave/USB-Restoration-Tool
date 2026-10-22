@@ -261,6 +261,10 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
         return refuse(QStringLiteral("size"));
     }
 
+    if (selected.deviceSequence && !isSameDeviceSequence(selected.deviceSequence, current.deviceSequence)) {
+        return refuse(QStringLiteral("device instance"));
+    }
+
     if (selected.sectorSize != 0 && current.sectorSize != 0 && selected.sectorSize != current.sectorSize) {
         return refuse(QStringLiteral("sector size"));
     }
@@ -280,6 +284,45 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
     }
 
     return true;
+}
+
+bool isSameDeviceSequence(std::optional<std::uint64_t> expected, std::optional<std::uint64_t> current, QString *reason)
+{
+    if (expected && current && *expected != 0 && *expected == *current) {
+        return true;
+    }
+    if (reason) {
+        *reason = QStringLiteral("The disk instance could not be confirmed. Refresh and select the USB again.");
+    }
+    return false;
+}
+
+bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason)
+{
+    QString failure;
+    if (!isSupportedSectorSize(disk.sectorSize)) {
+        failure = QStringLiteral("Unsupported sector size of %1 bytes.").arg(disk.sectorSize);
+    } else {
+        const GptLayout layout = calculateGptLayout(disk.size, disk.sectorSize);
+        if (layout.length == 0) {
+            failure = QStringLiteral("The disk is too small for a partition layout.");
+        } else if (
+            style == PartitionStyle::Mbr && (layout.startOffset + layout.length) / disk.sectorSize > 0xFFFFFFFFull) {
+            failure = QStringLiteral("MBR cannot address a partition this far into the disk. Choose GPT.");
+        } else if (style != PartitionStyle::Mbr && style != PartitionStyle::Gpt) {
+            failure = QStringLiteral("No partition style was chosen.");
+        }
+    }
+    if (!failure.isEmpty() && reason) {
+        *reason = failure;
+    }
+    return failure.isEmpty();
+}
+
+bool isValidDeviceRange(std::uint64_t size, std::uint64_t offset, std::uint64_t length, quint32 sectorSize)
+{
+    return isSupportedSectorSize(sectorSize) && length > 0 && offset <= size && length <= size - offset &&
+           offset % sectorSize == 0 && length % sectorSize == 0;
 }
 
 QString serialFromUsbByIdLink(const QString &link, const QString &productName)
