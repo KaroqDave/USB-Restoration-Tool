@@ -2,10 +2,14 @@
 
 ## Next
 
-- [ ] Publish v1.7.0 after the release commit passes CI, then verify the Windows
-  ZIP, Linux AppImage, Debian package and checksum files.
+Nothing open.
 
 ## Recently completed
+
+- 2026-10-22: Published 1.7.0 as the latest stable release after all four CI
+  jobs and all five release jobs passed. Verified the downloaded Windows ZIP,
+  Linux AppImage and Debian package against the published hashes and checksum
+  files, all 20 Windows bundle files, and the executable's 1.7.0 version.
 
 - 2026-10-22: Prepared 1.7.0 with release notes, changelog, current support
   policy and updated interface previews. Windows Release build, all three test
