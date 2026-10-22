@@ -2,9 +2,16 @@
 
 ## Next
 
-No open tasks.
+- Publish v1.7.1 through the release workflow and verify its published assets.
 
 ## Recently completed
+
+- 2026-10-23: Prepared 1.7.1 with restore-safety release notes and the Linux
+  kernel/loop-driver requirement. Updated the Windows ZIP instructions to match
+  the erase checkbox and partition/filesystem choices. Windows Release build,
+  all three test suites and the release preflight pass. Verified the local ZIP's
+  executable version and all 22 bundled file checksums. Deleted the fully merged
+  review branch locally and on GitHub; platform release checks run in CI.
 
 - 2026-10-22: Added Linux mapping cleanup regressions for cancellation before
   erasure, formatter failure and launch failure at both sector sizes. Enabled

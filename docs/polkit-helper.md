@@ -55,7 +55,7 @@ partition table is reread; the mapping is flushed and detached first. See [SECUR
 The GUI probes `--protocol-version` before authentication. The helper also emits
 a version line when it starts a restore. The line names the protocol version,
 the helper's application version, its step count and its first destructive
-step, for example `version 4 app 1.7.0 steps 10 destructive 5`. The GUI numbers
+step, for example `version 4 app 1.7.1 steps 10 destructive 5`. The GUI numbers
 the helper's steps and decides when unplugging is still safe from its own copy
 of the plan, so it rejects a different protocol or plan, naming both
 application versions. If the mismatch is detected during the run, the GUI sends

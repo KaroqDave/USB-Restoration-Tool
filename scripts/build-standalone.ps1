@@ -119,10 +119,11 @@ How to run
   1. Extract this folder anywhere.
   2. Run $ExeName and approve the Windows Administrator prompt. Raw disk
      access is not possible without it.
-  3. Select the USB disk, type the confirmation phrase the app shows, and
-     choose Restore USB.
+  3. Select the USB disk and choose GPT or MBR and exFAT, FAT32 or NTFS.
+  4. Choose Restore USB, read the summary, tick the erase acknowledgement,
+     then confirm the restore.
 
-The disk is restored to one GPT partition formatted exFAT and labelled USB.
+The disk is restored to one partition labelled USB. GPT and exFAT are the defaults.
 Only disks Windows reports on the USB bus are listed; boot, system, offline and
 read-only disks are refused.
 

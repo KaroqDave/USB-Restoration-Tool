@@ -110,7 +110,22 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.7.0
+## What's New in 1.7.1
+
+- Unsupported MBR layouts are refused before a restore changes the drive.
+- Linux checks the selected disk instance through the open device and keeps
+  formatting bound to that disk, even if device names are reused.
+- Windows stops if it cannot confirm that a queued storage operation completed
+  successfully, instead of continuing after a missing or unreadable job result.
+- Restore refusal messages now cover unsupported partition layouts as well as
+  filesystem choices. The Windows ZIP's instructions match the current interface.
+- New regression tests cover disk identity, layout limits and formatter cleanup,
+  including all four Linux filesystems under ASan/UBSan.
+
+**Linux requirement:** restores now need kernel 5.15 or later with disk-sequence
+support and the loop driver. Upgrade the installed app and helper together.
+
+### Previously, in 1.7.0
 
 - A new USB restore icon and matching mint and ink themes across Windows and
   Linux, with refreshed project artwork.

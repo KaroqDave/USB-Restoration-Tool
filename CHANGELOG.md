@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.7.1 - 2026-10-23
+
+Stricter restore preflight, device identity and storage-job checks on Windows
+and Linux.
+
+### Fixed
+
+- MBR layouts that exceed the disk's sector-addressing limit are refused before
+  destructive work, including Windows partition deletion and signature clearing.
+- Linux compares the selected disk instance with the open device and freshly
+  enumerated identity before writing. Formatting stays bound to the verified
+  device through a temporary mapping, so a reused device pathname cannot redirect it.
+- Missing or unreadable Windows storage jobs no longer count as successful
+  completion. A queued operation needs an explicit completed state and zero error.
+- The restore refusal message covers unsupported partition layouts as well as
+  filesystems. Windows ZIP instructions now describe the current erase checkbox
+  and partition/filesystem choices.
+
+### Changed
+
+- Linux restores require kernel 5.15 or later with disk-sequence support and the
+  loop driver. The app and helper use protocol 4 and must be upgraded together.
+
+### Added
+
+- Regression tests for layout refusal before backend work, changed or unavailable
+  disk instances, helper arguments and WMI job monitoring.
+- Linux image tests for all four filesystems at 512-byte and 4096-byte sectors
+  with file and exclusive block-device backing. Cleanup tests cover cancellation
+  before erasure, formatter failure and launch failure. CI also runs the image
+  suite under ASan/UBSan.
+
 ## 1.7.0 - 2026-10-22
 
 Refreshed branding and a clearer restore interface, with Windows FAT32
