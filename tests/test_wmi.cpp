@@ -1,4 +1,5 @@
 #include "win/wmi.h"
+#include "win/windows_disk_service.h"
 
 #include <QtTest/QtTest>
 
@@ -37,6 +38,39 @@ WmiObject inputInstance(CIMTYPE type)
     return WmiObject(instance);
 }
 
+WmiObject storageJob(std::optional<quint32> state, std::optional<quint32> errorCode)
+{
+    IWbemClassObject *raw = nullptr;
+    if (FAILED(CoCreateInstance(
+            CLSID_WbemClassObject,
+            nullptr,
+            CLSCTX_INPROC_SERVER,
+            IID_IWbemClassObject,
+            reinterpret_cast<void **>(&raw)))) {
+        return {};
+    }
+    WmiObject job(raw);
+    _variant_t name(L"ReviewStorageJob");
+    raw->Put(L"__CLASS", 0, &name, 0);
+    _variant_t value;
+    value.vt = VT_NULL;
+    if (state) {
+        value = _variant_t(static_cast<long>(*state));
+    }
+    if (FAILED(raw->Put(L"JobState", 0, &value, CIM_UINT32))) {
+        return {};
+    }
+    value.Clear();
+    value.vt = VT_NULL;
+    if (errorCode) {
+        value = _variant_t(static_cast<long>(*errorCode));
+    }
+    if (FAILED(raw->Put(L"ErrorCode", 0, &value, CIM_UINT32))) {
+        return {};
+    }
+    return job;
+}
+
 } // namespace
 
 class WmiTests : public QObject {
@@ -53,6 +87,91 @@ class WmiTests : public QObject {
         if (m_comInitialized) {
             CoUninitialize();
         }
+    }
+
+    void refusesOversizedMbrBeforeAnyBackendStep()
+    {
+        struct Reporter : RestoreReporter {
+            int steps = 0;
+            void step(const QString &) override { ++steps; }
+            void detail(const QString &) override {}
+            bool cancelRequested() const override { return false; }
+        } reporter;
+        WindowsDiskService service;
+        RestoreRequest request;
+        request.disk.deviceId = QStringLiteral("synthetic-review-device");
+        request.disk.size = 4ull * 1024 * 1024 * 1024 * 1024;
+        request.disk.busType = UsbBusType;
+        request.disk.sectorSize = 512;
+        request.style = PartitionStyle::Mbr;
+        request.fileSystem = FileSystemType::ExFat;
+        QString error;
+        QVERIFY(!service.restore(request, reporter, nullptr, &error));
+        QCOMPARE(reporter.steps, 0);
+        QVERIFY(error.contains(QStringLiteral("MBR")));
+    }
+
+    void refusesQueuedOperationWithoutJobPath()
+    {
+        bool read = false;
+        QString error;
+        QVERIFY(!waitForStorageJob(
+            QString(),
+            [&](QString *) {
+                read = true;
+                return storageJob(7, 0);
+            },
+            1000,
+            &error));
+        QVERIFY(!read);
+        QVERIFY(error.contains(QStringLiteral("without a job")));
+    }
+
+    void refusesUnreadableStorageJobs()
+    {
+        for (const QString &failure :
+             {QStringLiteral("Access denied (0x80070005)"),
+              QStringLiteral("Provider unavailable"),
+              QStringLiteral("Object not found")}) {
+            QString error;
+            QVERIFY(!waitForStorageJob(
+                QStringLiteral("job"),
+                [&failure](QString *readError) {
+                    *readError = failure;
+                    return WmiObject();
+                },
+                1000,
+                &error));
+            QVERIFY(error.contains(failure));
+        }
+    }
+
+    void requiresExplicitSuccessfulJobCompletion()
+    {
+        QString error;
+        const auto completed = storageJob(7, 0);
+        QVERIFY(completed.isValid());
+        QVERIFY(waitForStorageJob(QStringLiteral("job"), [&completed](QString *) { return completed; }, 1000, &error));
+        for (const auto &job :
+             {storageJob(std::nullopt, 0),
+              storageJob(7, std::nullopt),
+              storageJob(7, 5),
+              storageJob(8, 0),
+              storageJob(9, 0),
+              storageJob(10, 0)}) {
+            QVERIFY(job.isValid());
+            error.clear();
+            QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&job](QString *) { return job; }, 1000, &error));
+            QVERIFY(!error.isEmpty());
+        }
+        const auto running = storageJob(4, std::nullopt);
+        QVERIFY(running.isValid());
+        int reads = 0;
+        QVERIFY(waitForStorageJob(
+            QStringLiteral("job"), [&](QString *) { return ++reads == 1 ? running : completed; }, 1000, &error));
+        QCOMPARE(reads, 2);
+        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, &error));
+        QVERIFY(error.contains(QStringLiteral("did not finish")));
     }
 
     void acceptsUnsignedFormatAllocationUnitSizes_data()

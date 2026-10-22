@@ -40,12 +40,12 @@ class BlockDevice {
 
     // Whether this node is a partition of `diskName`, and of the disk instance
     // with `expectedSequence` when one is given.
-    bool verifyPartitionOf(const QString &diskName,
-                           const std::optional<std::uint64_t> &expectedSequence,
-                           QString *error = nullptr) const;
+    bool verifyPartitionOf(
+        const QString &diskName, const std::optional<std::uint64_t> &expectedSequence, QString *error = nullptr) const;
 
     std::uint64_t sizeInBytes() const;
     quint32 logicalSectorSize() const;
+    int descriptor() const { return m_fd; }
 
     bool writeAt(std::uint64_t offset, const QByteArray &data, QString *error = nullptr);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error = nullptr);

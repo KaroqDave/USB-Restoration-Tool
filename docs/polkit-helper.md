@@ -39,20 +39,31 @@ The safety check protects against malicious requests. The identity comparison
 catches a drive being replaced while an honest user authenticates. The caller
 cannot supply bus type or override either check.
 
-Linux uses `O_EXCL` so mounted or claimed devices cannot be opened for restore.
+Linux requires kernel 5.15 or later, disk sequence support and the loop driver.
+It uses `O_EXCL` so mounted or claimed devices cannot be opened for restore.
 Formatters are resolved from fixed system directories and run with argument
-lists, never through a shell. See [SECURITY.md](../SECURITY.md) for the full policy.
+lists, never through a shell. A temporary loop device maps only the partition
+range of the already verified, exclusively held disk descriptor. The kernel
+retains that backing file even if the physical device pathname changes. The
+mapping is established before erasing, with an exclusive claim preventing an
+old filesystem from being mounted. That claim is released for `mkfs`, while the
+mapping and physical disk remain held. Formatting finishes before the physical
+partition table is reread; the mapping is flushed and detached first. See [SECURITY.md](../SECURITY.md) for the full policy.
 
 ## Protocol and cancellation
 
 The GUI probes `--protocol-version` before authentication. The helper also emits
 a version line when it starts a restore. The line names the protocol version,
 the helper's application version, its step count and its first destructive
-step, for example `version 3 app 1.5.1 steps 10 destructive 5`. The GUI numbers
+step, for example `version 4 app 1.7.0 steps 10 destructive 5`. The GUI numbers
 the helper's steps and decides when unplugging is still safe from its own copy
 of the plan, so it rejects a different protocol or plan, naming both
 application versions. If the mismatch is detected during the run, the GUI sends
 a cancellation request immediately. Application versions alone may differ.
+
+The optional `--expect-sequence` argument carries the GUI's observed disk
+instance and can only cause refusal. A missing sequence from the actual device
+always refuses the restore.
 
 Standard output carries `version`, `step`, `detail` and `result` lines. Control
 characters are stripped before encoding messages. Errors use standard error.

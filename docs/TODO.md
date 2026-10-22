@@ -2,9 +2,29 @@
 
 ## Next
 
-Nothing open.
+No open tasks.
 
 ## Recently completed
+
+- 2026-10-22: Added Linux mapping cleanup regressions for cancellation before
+  erasure, formatter failure and launch failure at both sector sizes. Enabled
+  ASan/UBSan for the Linux test target and its privileged image tests in CI;
+  corrected the GUI refusal message for unsupported partition layouts.
+  Windows Release build, all three local test suites, formatting and diff checks
+  pass. Debian image tests pass with 25 tests and no skips, including all six
+  cleanup cases; the image suite also passes under ASan/UBSan in CI. No
+  physical-drive restore was performed.
+
+- 2026-10-22: Implemented the four full-review fixes: shared layout preflight
+  before erasure, Linux disk-sequence identity checks, formatter mappings backed
+  by the verified exclusive disk handle, and fail-closed WMI job monitoring.
+  Added core, Windows preflight/WMI and Linux image regression tests; updated
+  helper protocol to 4 and documented the Linux 5.15+/loop-driver requirement.
+  PR #8 CI passes on commit `2785cc0`: Windows tests, Linux build and partition-table
+  verification, Debian packaging, and sanitizer tests/fuzzing. All 16 image-only
+  formatter cases pass across four filesystems, two sector sizes and both file
+  and exclusive block-device backing. CI resolves the local validation gaps;
+  no physical-drive restore was performed.
 
 - 2026-10-22: Published 1.7.0 as the latest stable release after all four CI
   jobs and all five release jobs passed. Verified the downloaded Windows ZIP,

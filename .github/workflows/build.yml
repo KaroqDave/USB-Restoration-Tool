@@ -122,7 +122,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake clang libclang-rt-18-dev qt6-base-dev gdisk fdisk
+          sudo apt-get install -y cmake clang libclang-rt-18-dev qt6-base-dev gdisk fdisk exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
 
       - name: Configure
         run: >
@@ -136,6 +136,9 @@ jobs:
         env:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build-sanitize --output-on-failure
+
+      - name: Test formatter mappings and cleanup under sanitizers
+        run: sudo env USBRESTORE_TEST_LOOP=1 UBSAN_OPTIONS=print_stacktrace=1 ./build-sanitize/usb-linux-tests
 
       - name: Verify generated partition tables
         run: ./scripts/verify-partition-tables.sh build-sanitize
@@ -170,7 +173,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ qt6-base-dev dpkg-dev file
+          sudo apt-get install -y cmake g++ qt6-base-dev dpkg-dev file exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
 
       - name: Build .deb
         run: ./scripts/build-deb.sh
@@ -178,6 +181,9 @@ jobs:
       # The same tests again, because this build links Qt 6.4 rather than 6.8.
       - name: Test
         run: ctest --test-dir build-deb --output-on-failure
+
+      - name: Test pinned formatter mappings on disposable images
+        run: sudo env USBRESTORE_TEST_LOOP=1 ./build-deb/usb-linux-tests
 
       - name: List package contents
         run: dpkg-deb -c standalone/*.deb

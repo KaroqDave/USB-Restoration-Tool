@@ -111,8 +111,8 @@ bool isValidVolumeLabel(const QString &label)
     return true;
 }
 
-QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem,
-                                  const QString &volumeLabel)
+QStringList
+buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel)
 {
     QStringList arguments;
     arguments << QStringLiteral("--device") << disk.deviceId;
@@ -122,6 +122,9 @@ QStringList buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, Fi
     arguments << QStringLiteral("--label") << volumeLabel;
     arguments << QStringLiteral("--expect-size") << QString::number(disk.size);
     arguments << QStringLiteral("--expect-sector-size") << QString::number(disk.sectorSize);
+    if (disk.deviceSequence) {
+        arguments << QStringLiteral("--expect-sequence") << QString::number(*disk.deviceSequence);
+    }
 
     // isSameRestoreTarget() skips an identifier only one side reports, so omitting
     // an unknown value costs no more than not knowing it.
@@ -171,6 +174,12 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
             size = value;
         } else if (flag == QStringLiteral("--expect-sector-size")) {
             sectorSize = value;
+        } else if (flag == QStringLiteral("--expect-sequence")) {
+            std::uint64_t sequence = 0;
+            if (!parseDecimal(value, std::numeric_limits<std::uint64_t>::max(), &sequence) || sequence == 0) {
+                return fail(error, QStringLiteral("--expect-sequence must be a positive disk sequence number."));
+            }
+            result.expected.deviceSequence = sequence;
         } else if (flag == QStringLiteral("--expect-serial")) {
             result.expected.serialNumber = value;
         } else if (flag == QStringLiteral("--expect-unique-id")) {
@@ -198,8 +207,10 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
         return fail(error, QStringLiteral("--filesystem must be \"exfat\", \"fat32\", \"ntfs\" or \"ext4\"."));
     }
     if (!isValidVolumeLabel(result.volumeLabel)) {
-        return fail(error, QStringLiteral("--label must be 1 to %1 letters, digits, spaces, \"-\" or \"_\".")
-                               .arg(MaxVolumeLabelLength));
+        return fail(
+            error,
+            QStringLiteral("--label must be 1 to %1 letters, digits, spaces, \"-\" or \"_\".")
+                .arg(MaxVolumeLabelLength));
     }
 
     std::uint64_t number = 0;
@@ -281,15 +292,14 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
     // Before the exit code: no line from a mismatched helper can be trusted, its
     // "success" or "cancelled" included.
     if (run.sawVersion && !run.versionAccepted) {
-        return failWith(run.versionError.isEmpty() ? describeRestoreExit(RestoreExitUsage, run.helperStderr)
-                                                   : run.versionError);
+        return failWith(
+            run.versionError.isEmpty() ? describeRestoreExit(RestoreExitUsage, run.helperStderr) : run.versionError);
     }
 
     if (!run.sawVersion) {
         // The exit code is pkexec's or a stranger's: pass 126/127 through, but do
         // not believe a success or cancellation from a process that never spoke.
-        const bool claimsFinished =
-            run.exitCode == RestoreExitSuccess || run.exitCode == RestoreExitCancelled;
+        const bool claimsFinished = run.exitCode == RestoreExitSuccess || run.exitCode == RestoreExitCancelled;
         return failWith(describeRestoreExit(claimsFinished ? RestoreExitUsage : run.exitCode, run.helperStderr));
     }
 
@@ -454,15 +464,15 @@ ProtocolLine parseProtocolLine(const QString &line)
     return parsed;
 }
 
-bool acceptHelperAnnouncement(const ProtocolLine &announcement, const QString &ourAppVersion,
-                              const QVector<RestoreStep> &plan, QString *error)
+bool acceptHelperAnnouncement(
+    const ProtocolLine &announcement, const QString &ourAppVersion, const QVector<RestoreStep> &plan, QString *error)
 {
     if (announcement.kind != ProtocolLineKind::Version) {
         return fail(error, describeRestoreExit(RestoreExitUsage, QString()));
     }
 
-    const bool samePlan = announcement.totalSteps == plan.size() &&
-                          announcement.firstDestructiveStep == firstDestructiveStepOf(plan);
+    const bool samePlan =
+        announcement.totalSteps == plan.size() && announcement.firstDestructiveStep == firstDestructiveStepOf(plan);
     if (announcement.version == RestoreProtocolVersion && samePlan) {
         return true;
     }
@@ -475,11 +485,13 @@ bool acceptHelperAnnouncement(const ProtocolLine &announcement, const QString &o
     } else {
         theirs = QStringLiteral("version %1").arg(announcement.appVersion);
     }
-    return fail(error, QStringLiteral("USB Restoration Tool is version %1, but its restore helper is from %2, so "
-                                      "the two disagree about how a restore proceeds. This usually means a partly "
-                                      "upgraded installation. Reinstall the application so both come from the same "
-                                      "release.")
-                           .arg(ourAppVersion, theirs));
+    return fail(
+        error,
+        QStringLiteral("USB Restoration Tool is version %1, but its restore helper is from %2, so "
+                       "the two disagree about how a restore proceeds. This usually means a partly "
+                       "upgraded installation. Reinstall the application so both come from the same "
+                       "release.")
+            .arg(ourAppVersion, theirs));
 }
 
 } // namespace usbrestore

@@ -66,14 +66,14 @@ destructive write. What happens after the partition table is written differs:
   is asked again before the deletion, before the new volume is given a letter,
   and right before the format. A live handle that still reports the number is what
   proves no other disk has been given it.
-- **Linux** has to close the exclusive descriptor after re-reading the
-  partition table, because udev will not publish the new partition while the
-  disk is held. Before `mkfs` runs, the disk is re-enumerated and compared with
-  the selection, its node is re-opened and re-verified, and the partition node
-  is confirmed through sysfs to belong to it. On kernel 5.15 and later the
-  disk sequence number (`BLKGETDISKSEQ`), taken before the descriptor was
-  closed, must also match: a replacement stick gets a new one even when it
-  takes the same name and `major:minor`.
+- **Linux** requires kernel 5.15 or later with disk sequence support. The sequence
+  reported by the open descriptor must match the enumerated instance, and fresh
+  sysfs identity must agree with the selection. The physical disk stays open
+  exclusively through partitioning and formatting. A temporary loop mapping
+  retains that same backing file and exposes only the planned partition range
+  to `mkfs`; no formatter reopens the physical disk or partition pathname.
+  The mapping is prepared before destructive work, held exclusively until
+  formatting, then flushed and detached before the partition table is reread.
 
 A refusal at that stage leaves the original stick with a new partition table
 and no filesystem; running the restore on it again finishes the job.

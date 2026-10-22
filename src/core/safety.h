@@ -41,6 +41,13 @@ bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QStrin
 // An identifier only one side reports is skipped rather than counted as a match.
 bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QString *reason = nullptr);
 
+bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason = nullptr);
+
+bool isSameDeviceSequence(
+    std::optional<std::uint64_t> expected, std::optional<std::uint64_t> current, QString *reason = nullptr);
+
+bool isValidDeviceRange(std::uint64_t size, std::uint64_t offset, std::uint64_t length, quint32 sectorSize);
+
 // The product name may contain underscores, so a candidate that is part of it is
 // dropped rather than passed off as a serial that isSameRestoreTarget() trusts.
 QString serialFromUsbByIdLink(const QString &link, const QString &productName);

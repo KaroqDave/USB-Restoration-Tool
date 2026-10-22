@@ -3,6 +3,7 @@
 #include "core/partition_table.h"
 #include "core/safety.h"
 #include "linux/block_device.h"
+#include "linux/loop_device.h"
 #include "linux/linux_enumerate.h"
 #include "linux/sysfs.h"
 
@@ -123,10 +124,11 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
                 continue;
             }
             if (error) {
-                *error = describeErrno(QStringLiteral("Could not unmount %1. Close anything using the drive and try "
-                                                      "again")
-                                           .arg(mount.mountPoint),
-                                       errorNumber);
+                *error = describeErrno(
+                    QStringLiteral("Could not unmount %1. Close anything using the drive and try "
+                                   "again")
+                        .arg(mount.mountPoint),
+                    errorNumber);
             }
             return false;
         }
@@ -178,12 +180,16 @@ std::optional<DesktopOwner> desktopOwner()
     return std::nullopt;
 }
 
-bool formatPartition(FileSystemType fileSystem,
-                     const QString &tool,
-                     const QString &partitionPath,
-                     const QString &label,
-                     RestoreReporter &reporter,
-                     QString *error)
+} // namespace
+
+bool formatLinuxPartition(
+    FileSystemType fileSystem,
+    const QString &tool,
+    const QString &partitionPath,
+    const QString &label,
+    std::uint64_t partitionStartSector,
+    RestoreReporter &reporter,
+    QString *error)
 {
     QList<QStringList> attempts;
     switch (fileSystem) {
@@ -196,23 +202,32 @@ bool formatPartition(FileSystemType fileSystem,
         };
         break;
     case FileSystemType::Fat32:
-        attempts = {{QStringLiteral("-F"), QStringLiteral("32"), QStringLiteral("-n"), label, partitionPath}};
+        attempts = {
+            {QStringLiteral("-F"),
+             QStringLiteral("32"),
+             QStringLiteral("-n"),
+             label,
+             QStringLiteral("-h"),
+             QString::number(partitionStartSector),
+             partitionPath}};
         break;
     case FileSystemType::Ntfs:
         // -Q skips a zero-fill that takes hours. One form only: -f is the same flag, not a dialect.
-        attempts = {{QStringLiteral("-Q"), QStringLiteral("-L"), label, partitionPath}};
+        attempts = {
+            {QStringLiteral("-Q"),
+             QStringLiteral("-L"),
+             label,
+             QStringLiteral("-p"),
+             QString::number(partitionStartSector),
+             partitionPath}};
         break;
     case FileSystemType::Ext4: {
         // -F so mkfs does not ask; -m 0 so a USB stick does not reserve 5%
         // of itself for root.
-        QStringList arguments = {QStringLiteral("-F"),
-                                 QStringLiteral("-L"),
-                                 label,
-                                 QStringLiteral("-m"),
-                                 QStringLiteral("0")};
+        QStringList arguments = {
+            QStringLiteral("-F"), QStringLiteral("-L"), label, QStringLiteral("-m"), QStringLiteral("0")};
         if (const std::optional<DesktopOwner> owner = desktopOwner()) {
-            arguments << QStringLiteral("-E")
-                      << QStringLiteral("root_owner=%1:%2").arg(owner->uid).arg(owner->gid);
+            arguments << QStringLiteral("-E") << QStringLiteral("root_owner=%1:%2").arg(owner->uid).arg(owner->gid);
             reporter.detail(
                 QStringLiteral("New filesystem will belong to uid %1, gid %2").arg(owner->uid).arg(owner->gid));
         } else {
@@ -284,6 +299,8 @@ bool formatPartition(FileSystemType fileSystem,
     return false;
 }
 
+namespace {
+
 QString resolveFormatTool(FileSystemType fileSystem, QString *error)
 {
     const auto missing = [error](const QString &message) {
@@ -337,56 +354,6 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
     return missing(QStringLiteral("That filesystem is not supported."));
 }
 
-// The verified descriptor is closed while waiting for the partition, long
-// enough for another stick to take the name, so mkfs's target is checked again.
-bool confirmNewPartition(const DiskInfo &disk,
-                         const QString &partitionPath,
-                         const std::optional<std::uint64_t> &diskSequence,
-                         RestoreReporter &reporter,
-                         QString *error)
-{
-    QString reason;
-    const auto refuse = [&disk, &reason, error]() {
-        if (error) {
-            *error = QStringLiteral("Stopped before formatting %1: %2 If the original USB disk was unplugged, its "
-                                    "partition table has already been rewritten. Plug it back in and run the restore "
-                                    "on it again.")
-                         .arg(disk.deviceId, reason);
-        }
-        return false;
-    };
-
-    DiskInfo current;
-    if (!refreshUsbDisk(disk.deviceId, &current, &reason) || !isSameRestoreTarget(disk, current, &reason)) {
-        return refuse();
-    }
-
-    BlockDevice wholeDisk(disk.deviceId);
-    if (!wholeDisk.open(BlockDevice::Access::Inspect, &reason) || !wholeDisk.verifyIdentity(disk, &reason)) {
-        return refuse();
-    }
-    if (diskSequence) {
-        std::uint64_t sequence = 0;
-        if (!wholeDisk.diskSequence(&sequence) || sequence != *diskSequence) {
-            reason = QStringLiteral("%1 is no longer the disk the partition table was written to.").arg(disk.deviceId);
-            return refuse();
-        }
-    }
-
-    BlockDevice partition(partitionPath);
-    const QString diskName = QFileInfo(disk.deviceId).fileName();
-    if (!partition.open(BlockDevice::Access::Inspect, &reason) ||
-        !partition.verifyPartitionOf(diskName, diskSequence, &reason)) {
-        return refuse();
-    }
-
-    reporter.detail(diskSequence ? QStringLiteral("Confirmed %1 is still the selected disk (sequence %2)")
-                                       .arg(disk.deviceId)
-                                       .arg(*diskSequence)
-                                 : QStringLiteral("Confirmed %1 is still the selected disk").arg(disk.deviceId));
-    return true;
-}
-
 } // namespace
 
 bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason)
@@ -429,10 +396,8 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
     return refuse(QStringLiteral("That filesystem is not supported."));
 }
 
-bool performLinuxRestore(const RestoreRequest &request,
-                         RestoreReporter &reporter,
-                         RestoreResult *result,
-                         QString *error)
+bool performLinuxRestore(
+    const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     DiskInfo disk = request.disk;
     QString reason;
@@ -455,8 +420,7 @@ bool performLinuxRestore(const RestoreRequest &request,
     if (!refreshUsbDisk(disk.deviceId, &currentDisk, error)) {
         return false;
     }
-    if (!isSameRestoreTarget(disk, currentDisk, &reason) ||
-        !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
+    if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
         if (error) {
             *error = reason;
         }
@@ -465,20 +429,18 @@ bool performLinuxRestore(const RestoreRequest &request,
     disk = currentDisk;
 
     // Repeats the GUI's check on the re-derived disk; a caller could skip the GUI.
-    if (!canCreateFileSystemOn(request.fileSystem, disk, &reason)) {
+    if (!canCreatePartitionLayout(request.style, disk, &reason) ||
+        !canCreateFileSystemOn(request.fileSystem, disk, &reason)) {
         if (error) {
             *error = reason;
         }
         return false;
     }
 
-    // Before unmounting, so a wrong device is caught after only a read-only open.
     reportPlannedStep(steps, reporter, RestoreStep::IdentifyDevice, QStringLiteral("Identifying the block device"));
-    {
-        BlockDevice inspect(disk.deviceId);
-        if (!inspect.open(BlockDevice::Access::Inspect, error) || !inspect.verifyIdentity(disk, error)) {
-            return false;
-        }
+    BlockDevice inspect(disk.deviceId);
+    if (!inspect.open(BlockDevice::Access::Inspect, error) || !inspect.verifyIdentity(disk, error)) {
+        return false;
     }
 
     if (reporter.cancelRequested()) {
@@ -537,9 +499,23 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
+    // Establish the formatter route before erasing; the exclusive loop claim prevents
+    // an automounter from mounting an old filesystem exposed by this mapping.
+    LoopDevice formatter;
+    if (!formatter.configure(
+            device.descriptor(), tableRequest.layout.startOffset, tableRequest.layout.length, disk.sectorSize, error)) {
+        return false;
+    }
+    if (reporter.cancelRequested()) {
+        return false;
+    }
+    if (!device.verifyIdentity(disk, error)) {
+        return false;
+    }
+
     // No cancellation past here: a half-written table is worse than a finished one.
-    reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures,
-                      QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
+    reportPlannedStep(
+        steps, reporter, RestoreStep::ClearSignatures, QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     const std::uint64_t sector = disk.sectorSize;
     const std::uint64_t clearBytes = (qMin(SignatureClearBytes, disk.size / 4) / sector) * sector;
     if (clearBytes < sector) {
@@ -553,8 +529,11 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::WritePartitionTable,
-                      QStringLiteral("Writing the %1 partition table").arg(partitionStyleLabel(request.style)));
+    reportPlannedStep(
+        steps,
+        reporter,
+        RestoreStep::WritePartitionTable,
+        QStringLiteral("Writing the %1 partition table").arg(partitionStyleLabel(request.style)));
     if (request.style == PartitionStyle::Gpt) {
         if (!device.writeAt(0, buildGptPrimary(tableRequest), error) ||
             !device.writeAt(gptBackupOffset(tableRequest), buildGptBackup(tableRequest), error)) {
@@ -566,25 +545,40 @@ bool performLinuxRestore(const RestoreRequest &request,
         }
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::RereadPartitionTable,
-                      QStringLiteral("Re-reading the partition table"));
+    if (!device.flush(error)) {
+        return false;
+    }
+    reportPlannedStep(
+        steps,
+        reporter,
+        RestoreStep::Format,
+        QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!formatter.prepareForFormatting(error) ||
+        !formatLinuxPartition(
+            request.fileSystem,
+            formatTool,
+            formatter.path(),
+            request.volumeLabel,
+            tableRequest.layout.startOffset / disk.sectorSize,
+            reporter,
+            error) ||
+        !formatter.detach(error)) {
+        return false;
+    }
+
+    reportPlannedStep(
+        steps, reporter, RestoreStep::RereadPartitionTable, QStringLiteral("Re-reading the partition table"));
     if (!device.flush(error)) {
         return false;
     }
     if (!device.rereadPartitionTable(error)) {
         return false;
     }
-    // Read after the re-read, so the re-read cannot change it afterwards.
-    std::optional<std::uint64_t> diskSequence;
-    if (std::uint64_t sequence = 0; device.diskSequence(&sequence)) {
-        diskSequence = sequence;
-    }
-
     // udev will not create the partition node while the disk is held exclusively.
     device.close();
 
-    reportPlannedStep(steps, reporter, RestoreStep::WaitForPartition,
-                      QStringLiteral("Waiting for the new partition to appear"));
+    reportPlannedStep(
+        steps, reporter, RestoreStep::WaitForPartition, QStringLiteral("Waiting for the new partition to appear"));
     const QString diskName = QFileInfo(disk.deviceId).fileName();
     const QString partitionPath = devicePathFor(partitionNameFor(diskName, 1));
     QElapsedTimer timer;
@@ -595,8 +589,7 @@ bool performLinuxRestore(const RestoreRequest &request,
         // Slow media can take tens of seconds, and silence reads as a stall.
         if (timer.elapsed() - lastWaitNote >= 5000) {
             lastWaitNote = timer.elapsed();
-            reporter.detail(
-                QStringLiteral("Still waiting for %1 (%2 s)").arg(partitionPath).arg(lastWaitNote / 1000));
+            reporter.detail(QStringLiteral("Still waiting for %1 (%2 s)").arg(partitionPath).arg(lastWaitNote / 1000));
         }
     }
     if (!QFileInfo::exists(partitionPath)) {
@@ -608,19 +601,9 @@ bool performLinuxRestore(const RestoreRequest &request,
         return false;
     }
 
-    // The automounter grabs new partitions and mkfs refuses a mounted one, so undo it.
-    QThread::msleep(500);
-    if (!unmountDisk(disk, reporter, error)) {
-        return false;
-    }
-
-    if (!confirmNewPartition(disk, partitionPath, diskSequence, reporter, error)) {
-        return false;
-    }
-
-    reportPlannedStep(steps, reporter, RestoreStep::Format,
-                      QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
-    if (!formatPartition(request.fileSystem, formatTool, partitionPath, request.volumeLabel, reporter, error)) {
+    BlockDevice partition(partitionPath);
+    if (!partition.open(BlockDevice::Access::Inspect, error) ||
+        !partition.verifyPartitionOf(diskName, disk.deviceSequence, error)) {
         return false;
     }
 

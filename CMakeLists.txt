@@ -167,6 +167,8 @@ set(USBRESTORE_WIN_SOURCES
 # Everything a restore needs and nothing that presents one. This is the set the
 # privileged helper links: no DiskService, no worker, no widgets.
 set(USBRESTORE_LINUX_RESTORE_SOURCES
+    src/linux/loop_device.cpp
+    src/linux/loop_device.h
     src/linux/block_device.cpp
     src/linux/block_device.h
     src/linux/linux_enumerate.cpp
@@ -574,14 +576,23 @@ if(USBRESTORE_BUILD_TESTS)
     endif()
     usbrestore_sanitize(usb-restoration-tool-tests)
 
+    if(NOT WIN32)
+        add_executable(usb-linux-tests tests/test_linux.cpp ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_LINUX_RESTORE_SOURCES})
+        target_include_directories(usb-linux-tests PRIVATE src)
+        target_link_libraries(usb-linux-tests PRIVATE Qt6::Core Qt6::Test)
+        usbrestore_sanitize(usb-linux-tests)
+        add_dependencies(usb-restoration-tool-tests usb-linux-tests)
+        add_test(NAME usb-linux-tests COMMAND usb-linux-tests)
+    endif()
+
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
     if(WIN32)
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
 
-        add_executable(usb-wmi-tests tests/test_wmi.cpp src/win/wmi.cpp src/win/wmi.h)
+        add_executable(usb-wmi-tests tests/test_wmi.cpp ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
         target_include_directories(usb-wmi-tests PRIVATE src)
-        target_link_libraries(usb-wmi-tests PRIVATE Qt6::Core Qt6::Test ole32 oleaut32 wbemuuid)
+        target_link_libraries(usb-wmi-tests PRIVATE Qt6::Core Qt6::Test ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
         target_compile_definitions(usb-wmi-tests PRIVATE UNICODE _UNICODE NOMINMAX)
         if(MSVC)
             target_compile_options(usb-wmi-tests PRIVATE /utf-8)

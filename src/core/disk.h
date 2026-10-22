@@ -4,6 +4,7 @@
 #include <QStringList>
 
 #include <cstdint>
+#include <optional>
 
 namespace usbrestore {
 
@@ -46,6 +47,7 @@ struct DiskInfo {
     QString uniqueId;
     QString serialNumber;
     QString path;
+    std::optional<std::uint64_t> deviceSequence;
     std::uint64_t size = 0;
     quint32 sectorSize = 512;
     quint16 health = static_cast<quint16>(HealthStatus::Healthy);
