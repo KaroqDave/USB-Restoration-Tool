@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.7.0 - 2026-10-22
+
+Refreshed branding and a clearer restore interface, with Windows FAT32
+formatting repaired.
+
 ### Fixed
 
 - The erase acknowledgement checkbox has a larger, clearly outlined indicator,

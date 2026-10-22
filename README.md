@@ -23,7 +23,7 @@ Built with Qt 6 for Windows and Linux. Tested across multiple devices and system
   <img src="docs/images/app-light.png" alt="USB Restoration Tool with drive selection, drive details and restore settings." width="960">
 </picture>
 
-Interface preview with an example drive. The branding refresh is unreleased.
+Interface preview with an example drive.
 
 ## Download and run
 
@@ -107,7 +107,19 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.6.3
+## What's New in 1.7.0
+
+- A new USB restore icon and matching mint and ink themes across Windows and
+  Linux, with refreshed project artwork.
+- Drive selection, drive details and restore settings sit side by side in a
+  cleaner layout, with a branded header and About dialog.
+- The erase acknowledgement is easier to see, with a larger outlined checkbox,
+  a contrasting checkmark and a visible keyboard focus state.
+- Windows FAT32 restores no longer fail with `AllocationUnitSize` WMI error
+  `0x80041005` before formatting. GPT + FAT32 has been confirmed working.
+- New Windows regression tests check WMI parameter types without accessing disks.
+
+### Previously, in 1.6.3
 
 - On Windows, USB sticks with a bootloader written directly to the disk and no
   partition table ("superfloppies") can now be restored. This also fixes sticks

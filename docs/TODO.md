@@ -2,9 +2,14 @@
 
 ## Next
 
-Nothing open.
+- [ ] Publish v1.7.0 after the release commit passes CI, then verify the Windows
+  ZIP, Linux AppImage, Debian package and checksum files.
 
 ## Recently completed
+
+- 2026-10-22: Prepared 1.7.0 with release notes, changelog, current support
+  policy and updated interface previews. Windows Release build, all three test
+  suites and the release workflow's version/notes preflight pass.
 
 - 2026-10-22: Made the erase acknowledgement clearly visible with a larger
   outlined checkbox, contrasting checkmark and keyboard focus. Checked both
