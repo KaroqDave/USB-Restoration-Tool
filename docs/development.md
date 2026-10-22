@@ -149,6 +149,8 @@ only what it needs.
 
 ## Contributing
 
+The icon sources, palette and export instructions are in [Branding](branding.md).
+
 Follow `.clang-format`: four spaces and a 120-column limit. Use `snake_case`
 filenames, `PascalCase` types, `camelCase` functions and variables, and `m_` members
 inside `namespace usbrestore`. Platform failures return `bool` with a

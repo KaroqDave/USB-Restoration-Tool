@@ -6,11 +6,22 @@ Nothing open.
 
 ## Recently completed
 
+- 2026-10-22: Made the erase acknowledgement clearly visible with a larger
+  outlined checkbox, contrasting checkmark and keyboard focus. Checked both
+  themes at 100% and 200% scaling, including Space toggling the erase gate.
+  Windows Release build passes.
+
 - 2026-10-22: Reproduced the FAT32 `AllocationUnitSize` type mismatch in an
   in-memory WMI object and corrected the numeric COM encoding. Added Windows
   regression tests that run without a storage provider or disk access. Release
   build, core tests, WMI tests and fuzz-corpus replay pass. GPT/FAT32 restore
   confirmed working by the user.
+
+- 2026-10-22: Refreshed the branding with a scalable USB restore icon, nine
+  Windows icon sizes, mint and ink themes, a two-column interface and README
+  artwork. Windows Release build, core tests and fuzz-corpus replay pass;
+  rendered UI checks cover both themes, compact windows, 200% scaling and the
+  erase acknowledgement. No physical-drive restore was performed.
 
 - 2026-10-22: Confirmed the 1.6.3 release: all five workflow jobs passed, and
   GitHub lists it as the latest stable release with the Windows ZIP, Linux

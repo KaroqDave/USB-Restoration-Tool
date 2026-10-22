@@ -21,6 +21,8 @@ QString tokenReplace(QString tpl, const Palette &p)
     tpl.replace(QStringLiteral("@accentHover"), hex(p.accentHover));
     tpl.replace(QStringLiteral("@accentPressed"), hex(p.accentPressed));
     tpl.replace(QStringLiteral("@accentText"), hex(p.accentText));
+    tpl.replace(QStringLiteral("@accentSoft"), hex(p.accentSoft));
+    tpl.replace(QStringLiteral("@warningSurface"), hex(p.warningSurface));
     tpl.replace(QStringLiteral("@accent"), hex(p.accent));
     tpl.replace(QStringLiteral("@dangerHover"), hex(p.dangerHover));
     tpl.replace(QStringLiteral("@dangerPressed"), hex(p.dangerPressed));
@@ -28,6 +30,9 @@ QString tokenReplace(QString tpl, const Palette &p)
     tpl.replace(
         QStringLiteral("@chevron"),
         p.isDark ? QStringLiteral(":/icons/chevron-down-dark.svg") : QStringLiteral(":/icons/chevron-down-light.svg"));
+    tpl.replace(
+        QStringLiteral("@checkmark"),
+        p.isDark ? QStringLiteral(":/icons/checkmark-dark.svg") : QStringLiteral(":/icons/checkmark-light.svg"));
     return tpl;
 }
 
@@ -36,26 +41,28 @@ QString tokenReplace(QString tpl, const Palette &p)
 Palette lightPalette()
 {
     Palette p;
-    p.background = QColor("#f4f6fb");
+    p.background = QColor("#f3f6f5");
     p.surface = QColor("#ffffff");
-    p.surfaceAlt = QColor("#eef2f9");
-    p.border = QColor("#d5dce8");
-    p.text = QColor("#1f2937");
+    p.surfaceAlt = QColor("#f0f4f3");
+    p.border = QColor("#d5e0dc");
+    p.text = QColor("#183235");
     // Dark enough for WCAG AA's 4.5:1 on the page background, where labels sit outside a card.
-    p.mutedText = QColor("#5b6a80");
-    p.accent = QColor("#2563eb");
-    p.accentHover = QColor("#1d4ed8");
-    p.accentPressed = QColor("#1e40af");
+    p.mutedText = QColor("#586e6b");
+    p.accent = QColor("#087f70");
+    p.accentHover = QColor("#066858");
+    p.accentPressed = QColor("#075749");
     p.accentText = QColor("#ffffff");
+    p.accentSoft = QColor("#def3eb");
+    p.warningSurface = QColor("#faf0df");
     // The restore button destroys data, so it alone is not the accent colour.
     p.danger = QColor("#b91c1c");
     p.dangerHover = QColor("#991b1b");
     p.dangerPressed = QColor("#7f1d1d");
-    p.statusSuccess = QColor("#15803d");
-    p.statusWarning = QColor("#c2410c");
+    p.statusSuccess = QColor("#08734f");
+    p.statusWarning = QColor("#955512");
     p.statusError = QColor("#b91c1c");
-    p.statusInfo = QColor("#2563eb");
-    p.statusMuted = QColor("#64748b");
+    p.statusInfo = QColor("#076c60");
+    p.statusMuted = QColor("#586e6b");
     p.isDark = false;
     return p;
 }
@@ -63,24 +70,26 @@ Palette lightPalette()
 Palette darkPalette()
 {
     Palette p;
-    p.background = QColor("#0f141b");
-    p.surface = QColor("#191f29");
-    p.surfaceAlt = QColor("#232b38");
-    p.border = QColor("#2d3848");
-    p.text = QColor("#e7ecf4");
-    p.mutedText = QColor("#94a3b8");
-    p.accent = QColor("#3b82f6");
-    p.accentHover = QColor("#60a5fa");
-    p.accentPressed = QColor("#2563eb");
-    p.accentText = QColor("#ffffff");
-    p.danger = QColor("#dc2626");
-    p.dangerHover = QColor("#ef4444");
-    p.dangerPressed = QColor("#b91c1c");
-    p.statusSuccess = QColor("#4ade80");
-    p.statusWarning = QColor("#fb923c");
-    p.statusError = QColor("#f87171");
-    p.statusInfo = QColor("#60a5fa");
-    p.statusMuted = QColor("#94a3b8");
+    p.background = QColor("#101c1f");
+    p.surface = QColor("#18282b");
+    p.surfaceAlt = QColor("#203336");
+    p.border = QColor("#354c4e");
+    p.text = QColor("#edf6f2");
+    p.mutedText = QColor("#a0b8b2");
+    p.accent = QColor("#79e2bf");
+    p.accentHover = QColor("#a3f5d7");
+    p.accentPressed = QColor("#45c9a8");
+    p.accentText = QColor("#102326");
+    p.accentSoft = QColor("#24483f");
+    p.warningSurface = QColor("#342e23");
+    p.danger = QColor("#c9343e");
+    p.dangerHover = QColor("#d63b46");
+    p.dangerPressed = QColor("#af2733");
+    p.statusSuccess = QColor("#79e2bf");
+    p.statusWarning = QColor("#f2c078");
+    p.statusError = QColor("#ff9ba1");
+    p.statusInfo = QColor("#79e2bf");
+    p.statusMuted = QColor("#a0b8b2");
     p.isDark = true;
     return p;
 }
@@ -120,7 +129,7 @@ QString buildStyleSheet(const Palette &palette)
 {
     static const QString tpl = QStringLiteral(R"(
 QWidget {
-    font-family: 'Segoe UI', 'Inter', sans-serif;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-size: 10pt;
     background: @bg;
     color: @text;
@@ -129,33 +138,65 @@ QWidget {
 QGroupBox#card {
     background: @surface;
     border: 1px solid @border;
-    border-radius: 12px;
+    border-radius: 16px;
     margin-top: 14px;
-    padding: 18px 16px 16px 16px;
+    padding: 16px 14px 14px 14px;
 }
 QGroupBox#card::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 14px;
-    padding: 0 6px;
-    color: @mutedText;
+    padding: 0 8px;
+    color: @accent;
     font-weight: 600;
 }
 
 QLabel { background: transparent; }
-QLabel#title { font-size: 22pt; font-weight: 700; color: @text; }
+QLabel#title { font-size: 19pt; font-weight: 700; color: @text; }
 QLabel#subtitle { color: @mutedText; }
+QLabel#version { color: @mutedText; font-size: 9pt; }
+QLabel#detailTitle { color: @text; font-weight: 600; font-size: 11pt; }
 QLabel#fieldLabel { color: @mutedText; font-weight: 600; }
 QLabel#fieldValue { color: @text; }
 QLabel#footnote { color: @mutedText; }
+QFrame#warningBanner {
+    background: @warningSurface;
+    border: 1px solid @border;
+    border-radius: 12px;
+}
+QLabel#warningTitle { font-weight: 600; }
+QToolTip { background: @surface; color: @text; border: 1px solid @border; padding: 6px; }
+QCheckBox {
+    background: transparent;
+    spacing: 10px;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+QCheckBox:focus { border: 1px solid @accent; background: @surfaceAlt; }
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border: 2px solid @mutedText;
+    border-radius: 5px;
+    background: @surface;
+}
+QCheckBox::indicator:unchecked:hover { border-color: @accent; background: @accentSoft; }
+QCheckBox::indicator:checked {
+    background: @accent;
+    border-color: @accent;
+    image: url(@checkmark);
+}
+QCheckBox::indicator:checked:hover { background: @accentHover; border-color: @accentHover; }
 
 QLabel#adminBadge {
     background: @surfaceAlt;
     border: 1px solid @border;
-    border-radius: 8px;
-    padding: 6px 10px;
+    border-radius: 6px;
+    padding: 4px 8px;
     color: @mutedText;
-    font-weight: 700;
+    font-size: 8pt;
+    font-weight: 600;
 }
 
 QLineEdit {
@@ -173,7 +214,7 @@ QComboBox {
     background: @surfaceAlt;
     border: 1px solid @border;
     border-radius: 8px;
-    padding: 7px 10px;
+    padding: 9px 12px;
     min-height: 20px;
     combobox-popup: 0;
 }
@@ -219,15 +260,19 @@ QListWidget {
     outline: none;
 }
 QListWidget::item {
-    padding: 10px 12px;
+    padding: 12px;
+    margin: 2px;
+    border: 1px solid transparent;
     border-radius: 6px;
     color: @text;
 }
 QListWidget::item:hover { background: @surface; }
 QListWidget::item:selected {
-    background: @accent;
-    color: @accentText;
+    background: @accentSoft;
+    border: 1px solid @accent;
+    color: @text;
 }
+QListWidget:focus { border: 1px solid @accent; }
 
 QTextEdit#activityLog {
     background: @surfaceAlt;
@@ -245,7 +290,7 @@ QPushButton {
     padding: 8px 16px;
     font-weight: 600;
 }
-QPushButton:hover { border: 1px solid @accent; color: @accent; }
+QPushButton:hover, QPushButton:focus { border: 1px solid @accent; color: @accent; }
 QPushButton:pressed { background: @border; }
 QPushButton:disabled { color: @mutedText; border: 1px solid @border; background: @surfaceAlt; }
 
@@ -281,7 +326,7 @@ QPushButton[variant="text"] {
     background: transparent;
     color: @mutedText;
     border: 1px solid transparent;
-    padding: 6px 12px;
+    padding: 6px 8px;
     font-weight: 600;
 }
 QPushButton[variant="text"]:hover { color: @accent; background: @surfaceAlt; }
@@ -296,7 +341,8 @@ QProgressBar {
     color: @text;
 }
 QProgressBar::chunk {
-    background: @accent;
+    background: @accentSoft;
+    border: 1px solid @accent;
     border-radius: 6px;
 }
 

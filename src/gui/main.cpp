@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("USB Restoration Tool"));
     QApplication::setApplicationVersion(QStringLiteral(USBRESTORE_APP_VERSION));
     QApplication::setDesktopFileName(QStringLiteral("usb-restoration-tool"));
-    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.ico")));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
 
     const std::unique_ptr<usbrestore::DiskService> service = usbrestore::DiskService::create();
 

@@ -19,10 +19,10 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFrame>
-#include <QGraphicsDropShadowEffect>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QListView>
 #include <QListWidget>
@@ -64,13 +64,6 @@ QGroupBox *card(const QString &title)
 {
     auto *box = new QGroupBox(title);
     box->setObjectName(QStringLiteral("card"));
-
-    auto *shadow = new QGraphicsDropShadowEffect(box);
-    shadow->setBlurRadius(24);
-    shadow->setXOffset(0);
-    shadow->setYOffset(4);
-    shadow->setColor(QColor(15, 23, 42, 40));
-    box->setGraphicsEffect(shadow);
 
     return box;
 }
@@ -146,8 +139,8 @@ MainWindow::MainWindow(DiskService &service, Theme initialTheme, QWidget *parent
 {
     setWindowTitle(QStringLiteral("USB Restoration Tool"));
     // Small enough to sit comfortably on a laptop screen.
-    setMinimumSize(760, 560);
-    resize(880, 640);
+    setMinimumSize(780, 560);
+    resize(960, 680);
 
     m_guard = m_service.restoreGuard();
 
@@ -192,14 +185,21 @@ void MainWindow::buildUi()
 
     auto *central = new QWidget;
     auto *mainLayout = new QVBoxLayout(central);
-    mainLayout->setContentsMargins(24, 20, 24, 18);
-    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(28, 20, 28, 20);
+    mainLayout->setSpacing(16);
 
     mainLayout->addLayout(buildHeaderLayout());
-    mainLayout->addWidget(buildDiskSection());
-    mainLayout->addWidget(buildDetailSection());
-    mainLayout->addWidget(buildRestoreSection());
-    mainLayout->addLayout(buildActionLayout());
+
+    auto *workspace = new QGridLayout;
+    workspace->setHorizontalSpacing(18);
+    workspace->setVerticalSpacing(14);
+    workspace->addWidget(buildDiskSection(), 0, 0);
+    workspace->addWidget(buildDetailSection(), 1, 0);
+    workspace->addWidget(buildRestoreSection(), 0, 1, 2, 1);
+    workspace->setColumnStretch(0, 5);
+    workspace->setColumnStretch(1, 4);
+    workspace->setRowStretch(0, 1);
+    mainLayout->addLayout(workspace);
     mainLayout->addWidget(buildFooterWarning());
     mainLayout->addStretch();
 
@@ -223,13 +223,24 @@ void MainWindow::buildUi()
 QLayout *MainWindow::buildHeaderLayout()
 {
     auto *header = new QGridLayout();
-    header->setHorizontalSpacing(12);
+    header->setHorizontalSpacing(16);
 
+    auto *mark = new QLabel;
+    mark->setPixmap(QIcon(QStringLiteral(":/icons/app.svg")).pixmap(QSize(56, 56), devicePixelRatioF()));
+    mark->setFixedSize(56, 56);
+    auto *brand = new QHBoxLayout;
+    brand->setSpacing(12);
+    auto *wordmark = new QVBoxLayout;
+    wordmark->setSpacing(2);
     auto *title = new QLabel(QStringLiteral("USB Restoration Tool"));
     title->setObjectName(QStringLiteral("title"));
-    auto *subtitle =
-        new QLabel(QStringLiteral("Restore a USB drive written by an ISO writer back to one clean volume."));
+    auto *subtitle = new QLabel(QStringLiteral("A fresh start for your USB drive."));
     subtitle->setObjectName(QStringLiteral("subtitle"));
+    wordmark->addWidget(title);
+    wordmark->addWidget(subtitle);
+    brand->addWidget(mark);
+    brand->addLayout(wordmark);
+    brand->addStretch();
 
     // On an installed Linux build the helper, not this process, is root, so the
     // badge must not claim ROOT there.
@@ -242,14 +253,13 @@ QLayout *MainWindow::buildHeaderLayout()
 #else
         badge->setText(QStringLiteral("ROOT"));
 #endif
-        badge->setToolTip(
-            QStringLiteral("Raw disk access needs elevated permission, and this process runs with it."));
+        badge->setToolTip(QStringLiteral("Raw disk access needs elevated permission, and this process runs with it."));
         break;
     case PrivilegeMode::Helper:
         badge->setText(QStringLiteral("USER"));
-        badge->setToolTip(QStringLiteral(
-            "The app runs as an ordinary user. When a restore starts, the system asks for permission "
-            "and a separate root helper does the writing."));
+        badge->setToolTip(
+            QStringLiteral("The app runs as an ordinary user. When a restore starts, the system asks for permission "
+                           "and a separate root helper does the writing."));
         break;
     case PrivilegeMode::None:
         // Unreachable: main() refuses to open this window without a route to privilege.
@@ -259,7 +269,7 @@ QLayout *MainWindow::buildHeaderLayout()
     }
 
     auto *headerButtons = new QHBoxLayout();
-    headerButtons->setSpacing(6);
+    headerButtons->setSpacing(4);
     m_activityButton = styledButton(QStringLiteral("Activity"), "text");
     m_activityButton->setToolTip(QStringLiteral("Every step of this session, and a link to the log file."));
     connect(m_activityButton, &QPushButton::clicked, this, &MainWindow::showActivity);
@@ -267,27 +277,36 @@ QLayout *MainWindow::buildHeaderLayout()
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
     auto *aboutButton = styledButton(QStringLiteral("About"), "text");
     connect(aboutButton, &QPushButton::clicked, this, &MainWindow::showAbout);
-    headerButtons->addWidget(badge);
     headerButtons->addWidget(m_activityButton);
     headerButtons->addWidget(m_themeButton);
     headerButtons->addWidget(aboutButton);
 
-    header->addWidget(title, 0, 0);
-    header->addLayout(headerButtons, 0, 1, Qt::AlignRight | Qt::AlignTop);
-    header->addWidget(subtitle, 1, 0, 1, 2);
+    auto *utilities = new QVBoxLayout;
+    utilities->setSpacing(6);
+    auto *metadata = new QHBoxLayout;
+    auto *version = new QLabel(QStringLiteral("v%1").arg(QString::fromLatin1(USBRESTORE_APP_VERSION)));
+    version->setObjectName(QStringLiteral("version"));
+    metadata->addStretch();
+    metadata->addWidget(version);
+    metadata->addSpacing(8);
+    metadata->addWidget(badge);
+    utilities->addLayout(metadata);
+    utilities->addLayout(headerButtons);
+    header->addLayout(brand, 0, 0);
+    header->addLayout(utilities, 0, 1, Qt::AlignRight);
     header->setColumnStretch(0, 1);
     return header;
 }
 
 QWidget *MainWindow::buildDiskSection()
 {
-    auto *box = card(QStringLiteral("USB disks"));
+    auto *box = card(QStringLiteral("01 / Select a drive"));
     auto *layout = new QGridLayout(box);
     layout->setHorizontalSpacing(12);
     layout->setVerticalSpacing(10);
 
     m_diskList = new QListWidget;
-    m_diskList->setMinimumHeight(120);
+    m_diskList->setMinimumHeight(156);
     m_diskList->setAccessibleName(QStringLiteral("Detected USB disks"));
     m_diskList->setSelectionMode(QAbstractItemView::SingleSelection);
     connect(m_diskList, &QListWidget::currentRowChanged, this, &MainWindow::onSelectionChanged);
@@ -308,12 +327,12 @@ QWidget *MainWindow::buildDiskSection()
 
 QWidget *MainWindow::buildDetailSection()
 {
-    auto *box = card(QStringLiteral("Selected disk"));
+    auto *box = card(QStringLiteral("Drive details"));
     auto *layout = new QVBoxLayout(box);
     layout->setSpacing(6);
 
     m_detailTitle = new QLabel(QStringLiteral("No disk selected"));
-    m_detailTitle->setObjectName(QStringLiteral("fieldLabel"));
+    m_detailTitle->setObjectName(QStringLiteral("detailTitle"));
     m_detailTitle->setWordWrap(true);
 
     m_detailValues = new QLabel(QStringLiteral("Only disks reported on the USB bus are listed."));
@@ -328,7 +347,7 @@ QWidget *MainWindow::buildDetailSection()
 
 QWidget *MainWindow::buildRestoreSection()
 {
-    auto *box = card(QStringLiteral("Restore"));
+    auto *box = card(QStringLiteral("02 / Set up your restore"));
     auto *layout = new QGridLayout(box);
     layout->setHorizontalSpacing(12);
     layout->setVerticalSpacing(10);
@@ -338,21 +357,20 @@ QWidget *MainWindow::buildRestoreSection()
     m_styleCombo->addItem(QStringLiteral("MBR (older devices)"), static_cast<int>(PartitionStyle::Mbr));
     m_styleCombo->setCursor(Qt::PointingHandCursor);
     m_styleCombo->setAccessibleName(QStringLiteral("Partition style"));
-    m_styleCombo->setToolTip(QStringLiteral(
-        "GPT is what current systems expect and what Windows itself writes.\n"
-        "MBR is for devices that predate it and refuse to read a GPT stick:\n"
-        "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
+    m_styleCombo->setToolTip(QStringLiteral("GPT is what current systems expect and what Windows itself writes.\n"
+                                            "MBR is for devices that predate it and refuse to read a GPT stick:\n"
+                                            "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
     styleComboPopup(m_styleCombo);
     connect(m_styleCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
 
     m_fileSystemCombo = new QComboBox;
     m_fileSystemCombo->setCursor(Qt::PointingHandCursor);
     m_fileSystemCombo->setAccessibleName(QStringLiteral("Filesystem"));
-    m_fileSystemCombo->setToolTip(QStringLiteral(
-        "exFAT (recommended) works on Windows, Linux and macOS.\n"
-        "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
-        "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
-        "ext4 is Linux-only; Windows will not mount it without extra software."));
+    m_fileSystemCombo->setToolTip(
+        QStringLiteral("exFAT (recommended) works on Windows, Linux and macOS.\n"
+                       "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
+                       "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
+                       "ext4 is Linux-only; Windows will not mount it without extra software."));
     for (const FileSystemType type : m_service.supportedFileSystems()) {
         m_fileSystemCombo->addItem(fileSystemTypeLabel(type), static_cast<int>(type));
     }
@@ -373,14 +391,16 @@ QWidget *MainWindow::buildRestoreSection()
     m_detailLabel->setObjectName(QStringLiteral("footnote"));
     m_detailLabel->setWordWrap(true);
 
-    layout->addWidget(fieldLabel(QStringLiteral("Layout")), 0, 0);
-    layout->addWidget(m_styleCombo, 0, 1);
-    layout->addWidget(fieldLabel(QStringLiteral("Filesystem")), 1, 0);
-    layout->addWidget(m_fileSystemCombo, 1, 1);
-    layout->addWidget(m_planLabel, 2, 0, 1, 2);
-    layout->addWidget(m_statusLabel, 3, 0, 1, 2);
-    layout->addWidget(m_detailLabel, 4, 0, 1, 2);
-    layout->setColumnStretch(1, 1);
+    layout->addWidget(fieldLabel(QStringLiteral("Partition layout")), 0, 0);
+    layout->addWidget(m_styleCombo, 1, 0);
+    layout->addWidget(fieldLabel(QStringLiteral("Filesystem")), 2, 0);
+    layout->addWidget(m_fileSystemCombo, 3, 0);
+    layout->addWidget(m_planLabel, 4, 0);
+    layout->setRowMinimumHeight(5, 6);
+    layout->addWidget(m_statusLabel, 6, 0);
+    layout->addWidget(m_detailLabel, 7, 0);
+    layout->setRowStretch(8, 1);
+    layout->addLayout(buildActionLayout(), 9, 0);
     return box;
 }
 
@@ -409,20 +429,31 @@ QLayout *MainWindow::buildActionLayout()
         }
     });
 
+    layout->setVerticalSpacing(12);
     layout->addWidget(m_progress, 0, 0);
-    layout->addWidget(m_restoreButton, 0, 1);
+    layout->addWidget(m_restoreButton, 1, 0);
     layout->setColumnStretch(0, 1);
     return layout;
 }
 
 QWidget *MainWindow::buildFooterWarning()
 {
+    auto *banner = new QFrame;
+    banner->setObjectName(QStringLiteral("warningBanner"));
+    auto *layout = new QVBoxLayout(banner);
+    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setSpacing(3);
+    auto *title = new QLabel(QStringLiteral("Restoring erases every partition and file on the selected drive."));
+    title->setObjectName(QStringLiteral("warningTitle"));
+    title->setWordWrap(true);
     auto *warning = new QLabel(QStringLiteral(
-        "Restoring erases every partition and file on the selected disk. Disks reported as boot, system, offline, "
-        "read-only, or on any bus other than USB are never offered."));
+        "Check the model and capacity before confirming. Boot, system, offline, read-only and non-USB disks "
+        "are refused."));
     warning->setObjectName(QStringLiteral("footnote"));
     warning->setWordWrap(true);
-    return warning;
+    layout->addWidget(title);
+    layout->addWidget(warning);
+    return banner;
 }
 
 QDialog *MainWindow::activityDialog()
@@ -614,9 +645,7 @@ void MainWindow::updateRestoreState()
 
     const QString style = partitionStyleLabel(selectedPartitionStyle());
     const QString fileSystem = fileSystemTypeName(selectedFileSystem());
-    m_planLabel->setText(QStringLiteral(
-                             "Every partition and file on the selected disk is erased and replaced with "
-                             "one %1 partition formatted %2 and labelled %3.")
+    m_planLabel->setText(QStringLiteral("Erases all contents. Creates one %1 partition formatted %2, labelled %3.")
                              .arg(style, fileSystem, RestoreVolumeLabel));
 
     const DiskInfo *disk = selectedDisk();
@@ -662,10 +691,9 @@ void MainWindow::updateRestoreState()
 
 bool MainWindow::confirmErase(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem)
 {
-    QString summary = QStringLiteral(
-                          "%1\n\nMounted at: %2\nVolume labels: %3\n\n"
-                          "Every partition and file on this disk will be erased and replaced with one %4 "
-                          "partition formatted %5 and labelled %6.")
+    QString summary = QStringLiteral("%1\n\nMounted at: %2\nVolume labels: %3\n\n"
+                                     "Every partition and file on this disk will be erased and replaced with one %4 "
+                                     "partition formatted %5 and labelled %6.")
                           .arg(
                               describeDisk(disk),
                               joinOrDash(disk.mountPoints),
@@ -686,10 +714,11 @@ bool MainWindow::confirmErase(const DiskInfo &disk, PartitionStyle style, FileSy
 
     // Gated here, beside the summary naming this disk, so what is agreed to is on screen.
     auto *understood = new QCheckBox(
-        QStringLiteral("I understand that everything on %1 will be permanently erased.").arg(disk.displayId));
+        QStringLiteral("I understand that everything on %1\nwill be permanently erased.").arg(disk.displayId));
     confirm.setCheckBox(understood);
 
     QPushButton *eraseButton = confirm.addButton(QStringLiteral("Erase and restore"), QMessageBox::DestructiveRole);
+    restyle(eraseButton, "danger");
     QPushButton *cancelButton = confirm.addButton(QMessageBox::Cancel);
     confirm.setDefaultButton(cancelButton);
     eraseButton->setEnabled(false);
@@ -994,13 +1023,14 @@ void MainWindow::showAbout()
 {
     QMessageBox about(this);
     about.setWindowTitle(QStringLiteral("About USB Restoration Tool"));
+    about.setIconPixmap(QIcon(QStringLiteral(":/icons/app.svg")).pixmap(QSize(64, 64), devicePixelRatioF()));
     about.setText(QStringLiteral("USB Restoration Tool %1").arg(QString::fromLatin1(USBRESTORE_APP_VERSION)));
-    about.setInformativeText(QStringLiteral(
-                                 "Created by %1\n\n"
-                                 "Restores a USB drive written by an ISO writer, Linux installer, or boot "
-                                 "media tool back to one GPT or MBR partition formatted as you choose.\n\n"
-                                 "Only USB disks are listed, and boot, system, offline, and read-only "
-                                 "disks are refused.")
+    about.setInformativeText(QStringLiteral("A fresh start for your USB drive.\n\n"
+                                            "Created by %1\n\n"
+                                            "Restores a USB drive written by an ISO writer, Linux installer, or boot "
+                                            "media tool back to one GPT or MBR partition formatted as you choose.\n\n"
+                                            "Only USB disks are listed, and boot, system, offline, and read-only "
+                                            "disks are refused.")
                                  .arg(QString::fromLatin1(AppAuthor)));
     about.setStandardButtons(QMessageBox::Ok);
     QPushButton *githubButton = about.addButton(QStringLiteral("Open GitHub"), QMessageBox::ActionRole);

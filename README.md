@@ -1,9 +1,13 @@
+<p align="center">
+  <img src="resources/branding/readme-banner.png" alt="USB Restoration Tool — A fresh start for your USB drive." width="1200">
+</p>
+
 # USB Restoration Tool
 
 [![Build](https://github.com/KaroqDave/USB-Restoration-Tool/actions/workflows/build.yml/badge.svg)](https://github.com/KaroqDave/USB-Restoration-Tool/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/KaroqDave/USB-Restoration-Tool?label=release)](https://github.com/KaroqDave/USB-Restoration-Tool/releases/latest)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-blue)](https://github.com/KaroqDave/USB-Restoration-Tool/releases/latest)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-087f70)](https://github.com/KaroqDave/USB-Restoration-Tool/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-087f70)](LICENSE)
 
 Restore an ISO-written or unusable USB drive to one partition labelled `USB`.
 Choose **GPT or MBR** and **exFAT, FAT32 or NTFS**. Linux also supports **ext4**.
@@ -13,6 +17,13 @@ Built with Qt 6 for Windows and Linux. Tested across multiple devices and system
 > **Restoring erases every partition and file on the selected drive.** Check the
 > model and capacity before confirming. Only USB disks are eligible; system,
 > protected and read-only disks are refused.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/app-dark.png">
+  <img src="docs/images/app-light.png" alt="USB Restoration Tool with drive selection, drive details and restore settings." width="960">
+</picture>
+
+Interface preview with an example drive. The branding refresh is unreleased.
 
 ## Download and run
 

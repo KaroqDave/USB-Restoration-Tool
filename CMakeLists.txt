@@ -475,6 +475,9 @@ set(USBRESTORE_GUI_SOURCES
     resources/resources.qrc
 )
 
+add_executable(usb-branding-export EXCLUDE_FROM_ALL tools/export_branding.cpp)
+target_link_libraries(usb-branding-export PRIVATE Qt6::Gui)
+
 if(WIN32)
     # The version resource is generated so PROJECT_VERSION stays the only place
     # a release is bumped.

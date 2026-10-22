@@ -40,6 +40,8 @@ struct Palette {
     QColor accentHover;
     QColor accentPressed;
     QColor accentText;
+    QColor accentSoft;
+    QColor warningSurface;
     QColor danger;
     QColor dangerHover;
     QColor dangerPressed;

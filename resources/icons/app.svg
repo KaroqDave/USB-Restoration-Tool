@@ -1,13 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- Matches resources/icons/app.ico so the Windows and Linux builds carry
-       the same mark: a rounded square outline with a USB plug inside. -->
-  <rect x="26" y="26" width="204" height="204" rx="46" ry="46"
-        fill="none" stroke="#0f766e" stroke-width="26"/>
-  <!-- Plug prongs -->
-  <path d="M108 62 v26 M148 62 v26"
-        fill="none" stroke="#0f766e" stroke-width="13" stroke-linecap="butt"/>
-  <!-- Plug body -->
-  <rect x="98" y="86" width="60" height="66" rx="26" ry="26" fill="#0f766e"/>
-  <!-- Cable stub -->
-  <ellipse cx="128" cy="168" rx="13" ry="18" fill="#0f766e"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="24" y1="16" x2="228" y2="244" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#203b3b"/>
+      <stop offset="1" stop-color="#102326"/>
+    </linearGradient>
+    <linearGradient id="loop" x1="64" y1="64" x2="192" y2="198" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a3f5d7"/>
+      <stop offset="1" stop-color="#45c9b0"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#tile)"/>
+  <rect x="9" y="9" width="238" height="238" rx="55" fill="none" stroke="#ffffff" stroke-opacity=".1" stroke-width="2"/>
+  <path d="M174 71a73 73 0 1 1-94 0" fill="none" stroke="url(#loop)" stroke-width="15" stroke-linecap="round"/>
+  <path d="M62 69l27-9-1 28" fill="none" stroke="#a3f5d7" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="111" y="62" width="34" height="35" rx="5" fill="#f0faf7"/>
+  <path d="M121 73v9m14-9v9" stroke="#183235" stroke-width="5"/>
+  <rect x="101" y="93" width="54" height="79" rx="18" fill="#f0faf7"/>
+  <rect x="119" y="148" width="18" height="5" rx="2.5" fill="#167d70"/>
 </svg>

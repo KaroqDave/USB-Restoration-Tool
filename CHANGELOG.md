@@ -8,9 +8,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The erase acknowledgement checkbox has a larger, clearly outlined indicator,
+  a contrasting checkmark and a visible keyboard focus state in both themes.
 - Windows FAT32 restores no longer fail while setting `AllocationUnitSize` with
   WMI error `0x80041005`. Numeric method parameters now use WMI's required COM
   types, covered by in-memory regression tests.
+
+### Changed
+
+- New USB and restore-arrow icon across Windows, Linux and the app, with matching
+  project artwork and a mint and ink palette in light and dark themes.
+- Drive selection and restore settings sit side by side, with drive details,
+  a persistent erase warning and a branded About dialog.
 
 ## 1.6.3 - 2026-10-22
 
