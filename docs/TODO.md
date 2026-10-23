@@ -2,7 +2,35 @@
 
 ## Next
 
-No open tasks.
+Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
+
+- Linux: a format failure now returns before `BLKRRPART`, leaving the kernel's
+  old partitions over the new table. Re-read the partition table on the format
+  error path too (`src/linux/linux_restore.cpp`, Format step).
+- Windows: `waitForStorageJob` now fails when the job object has vanished or a
+  completed job has no `ErrorCode`, which can report failure after the disk was
+  wiped. Confirm on hardware how Windows removes jobs and reports `ErrorCode`, then
+  decide whether a vanished or code-less completed job is success (`src/win/wmi.cpp`).
+- Linux: `verifyPartitionOf` compares against the pre-restore `deviceSequence`;
+  1.7.0 sampled it after `BLKRRPART`. A media-change event fails a finished
+  restore. Sample the sequence after the re-read, as before.
+- Linux: `LoopDevice::configure` retries `LOOP_CTL_GET_FREE` after an `EBUSY`
+  claim and gets the same busy node all 8 times. Skip or retry differently, and
+  clear `m_path` on failure (`src/linux/loop_device.cpp`).
+- Linux: the read-only `inspect` handle in `performLinuxRestore` is no longer
+  scoped and stays open for the whole restore. Restore the block scope.
+- `BlockDevice::verifyIdentity` compares the disk sequence three times
+  (`isSameDeviceSequence` twice plus `isSameRestoreTarget`). Reduce it to one.
+- `canCreatePartitionLayout` duplicates the sector-size, length and MBR end-LBA
+  checks in `isWritablePartitionRequest` and `RawDisk::createSingleMbrPartition`.
+  Share one implementation.
+- The comments in `src/core/safety.h` and `restore_protocol.cpp` say
+  `isSameRestoreTarget` skips identifiers only one side reports, but
+  `deviceSequence` now refuses. Update the comments.
+- The `isSameDeviceSequence` error text does not name the disk, as AGENTS.md
+  requires. Include the device path.
+- AGENTS.md still says tests live only in `tests/test_core.cpp` and backends have
+  no automated coverage; mention `tests/test_linux.cpp` and `tests/test_wmi.cpp`.
 
 ## Recently completed
 
