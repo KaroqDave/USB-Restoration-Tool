@@ -445,9 +445,9 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
                                     QString *error)
 {
     const GptLayout layout = calculateGptLayout(diskSize, sectorSize);
-    if (layout.length == 0) {
+    if (const QString failure = partitionLayoutError(style, layout, sectorSize); !failure.isEmpty()) {
         if (error) {
-            *error = QStringLiteral("Disk is too small for a safe partition layout.");
+            *error = failure;
         }
         return false;
     }
@@ -506,14 +506,7 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
 bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
                                        QString *error)
 {
-    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
-    const std::uint64_t endSector = (layout.startOffset + layout.length) / sector;
-    if (endSector > 0xFFFFFFFFull) {
-        if (error) {
-            *error = QStringLiteral("MBR cannot address a partition this far into the disk. Use GPT instead.");
-        }
-        return false;
-    }
+    const std::uint64_t sector = sectorSize;
 
     GUID signatureSource = {};
     if (FAILED(CoCreateGuid(&signatureSource))) {

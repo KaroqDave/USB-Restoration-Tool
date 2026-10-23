@@ -109,14 +109,37 @@ class CoreTests : public QObject {
         QVERIFY(!canCreatePartitionLayout(PartitionStyle::Mbr, disk));
     }
 
+    // The GUI's preflight and the table writer share one set of layout rules, so a disk the
+    // preflight accepts never reaches erasure only to be refused by the writer.
+    void preflightAndTableWriterAgreeOnLayouts()
+    {
+        constexpr std::uint64_t MiB = 1024ull * 1024ull;
+        constexpr std::uint64_t TiB = 1024ull * 1024ull * MiB;
+        for (const std::uint64_t size : {MiB, 3 * MiB, 8 * MiB, 16 * 1024 * MiB, 2 * TiB, 2 * TiB + MiB, 17 * TiB}) {
+            for (const quint32 sector : {0u, 512u, 999u, 4096u}) {
+                for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr, PartitionStyle::Unknown}) {
+                    DiskInfo disk = healthyUsbDisk();
+                    disk.size = size;
+                    disk.sectorSize = sector;
+                    QCOMPARE(
+                        isWritablePartitionRequest(tableRequestFor(size, sector, style)),
+                        canCreatePartitionLayout(style, disk));
+                }
+            }
+        }
+    }
+
     void refusesReplacedOrUnverifiableDeviceInstances()
     {
-        QVERIFY(isSameDeviceSequence(12, 12));
-        QVERIFY(!isSameDeviceSequence(12, 13));
-        QVERIFY(!isSameDeviceSequence(12, std::nullopt));
-        QVERIFY(!isSameDeviceSequence(std::nullopt, 12));
-        QVERIFY(!isSameDeviceSequence(std::nullopt, std::nullopt));
-        QVERIFY(!isSameDeviceSequence(0, 0));
+        const QString device = QStringLiteral("/dev/sdb");
+        QVERIFY(isSameDeviceSequence(device, 12, 12));
+        QString reason;
+        QVERIFY(!isSameDeviceSequence(device, 12, 13, &reason));
+        QVERIFY(reason.contains(device));
+        QVERIFY(!isSameDeviceSequence(device, 12, std::nullopt));
+        QVERIFY(!isSameDeviceSequence(device, std::nullopt, 12));
+        QVERIFY(!isSameDeviceSequence(device, std::nullopt, std::nullopt));
+        QVERIFY(!isSameDeviceSequence(device, 0, 0));
         DiskInfo selected = healthyUsbDisk();
         selected.deviceSequence = 12;
         DiskInfo current = selected;
@@ -905,7 +928,7 @@ class CoreTests : public QObject {
         QVERIFY(reason.contains(QStringLiteral("bus")));
     }
 
-    // Safe because isSameRestoreTarget() reads a value only one side reports as no information.
+    // Safe because isSameRestoreTarget() skips an identifier the selection lacks.
     void omitsIdentifiersTheGuiDoesNotHave()
     {
         DiskInfo disk = healthyUsbDisk();

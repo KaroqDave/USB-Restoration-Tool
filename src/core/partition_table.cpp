@@ -262,11 +262,9 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
         return false;
     };
 
-    if (!isSupportedSectorSize(request.sectorSize)) {
-        return refuse(QStringLiteral("Unsupported sector size of %1 bytes.").arg(request.sectorSize));
-    }
-    if (request.layout.length == 0) {
-        return refuse(QStringLiteral("The disk is too small for a partition layout."));
+    if (const QString failure = partitionLayoutError(request.style, request.layout, request.sectorSize);
+        !failure.isEmpty()) {
+        return refuse(failure);
     }
 
     const quint64 sector = request.sectorSize;
@@ -296,18 +294,10 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
         return true;
     }
 
-    if (request.style == PartitionStyle::Mbr) {
-        // 32-bit sector addresses: 2 TiB at 512 bytes, which an external drive can exceed.
-        if (endLba > MbrMaxSectors) {
-            return refuse(QStringLiteral("MBR cannot address a partition this far into the disk. Use GPT."));
-        }
-        if (request.diskGuid.size() < 4) {
-            return refuse(QStringLiteral("An MBR layout needs a disk identifier."));
-        }
-        return true;
+    if (request.diskGuid.size() < 4) {
+        return refuse(QStringLiteral("An MBR layout needs a disk identifier."));
     }
-
-    return refuse(QStringLiteral("No partition style was chosen."));
+    return true;
 }
 
 QByteArray buildGptPrimary(const PartitionTableRequest &request)
