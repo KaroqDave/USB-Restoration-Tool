@@ -64,15 +64,19 @@ bool LoopDevice::configure(
     if (control < 0) {
         return loopError(error, QStringLiteral("Could not open /dev/loop-control"));
     }
+    bool busy = false;
     for (int attempt = 0; attempt < 8; ++attempt) {
-        const int number = ::ioctl(control, LOOP_CTL_GET_FREE);
+        // GET_FREE returns the lowest unbound node, so after one is busy it would return the
+        // same one again; a negative ADD allocates a new node instead.
+        const int number = busy ? ::ioctl(control, LOOP_CTL_ADD, -1L) : ::ioctl(control, LOOP_CTL_GET_FREE);
         if (number < 0) {
             break;
         }
         m_path = QStringLiteral("/dev/loop%1").arg(number);
         m_claimFd = ::open(m_path.toLocal8Bit().constData(), O_RDWR | O_EXCL | O_CLOEXEC);
         if (m_claimFd < 0) {
-            if (errno == EBUSY) {
+            busy = errno == EBUSY;
+            if (busy) {
                 continue;
             }
             break;
@@ -100,12 +104,14 @@ bool LoopDevice::configure(
         ::close(m_claimFd);
         m_claimFd = -1;
         errno = code;
-        if (code != EBUSY) {
+        busy = code == EBUSY;
+        if (!busy) {
             break;
         }
     }
     const int code = errno;
     ::close(control);
+    m_path.clear();
     errno = code;
     return loopError(error, QStringLiteral("Could not create a pinned formatter mapping"));
 }

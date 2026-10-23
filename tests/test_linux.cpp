@@ -111,6 +111,37 @@ class LinuxTests : public QObject {
         QVERIFY(error.contains(QStringLiteral("outside")));
     }
 
+    // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.
+    void skipsLoopNodeClaimedElsewhere()
+    {
+        if (!qEnvironmentVariableIsSet("USBRESTORE_TEST_LOOP")) {
+            QSKIP("Set USBRESTORE_TEST_LOOP=1 and run as root for disposable-image loop tests.");
+        }
+        QVERIFY(::geteuid() == 0);
+        const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);
+        QVERIFY(control >= 0);
+        const int number = ::ioctl(control, LOOP_CTL_GET_FREE);
+        ::close(control);
+        QVERIFY(number >= 0);
+        const QString busyPath = QStringLiteral("/dev/loop%1").arg(number);
+        const int claim = ::open(busyPath.toLocal8Bit().constData(), O_RDWR | O_EXCL | O_CLOEXEC);
+        QVERIFY(claim >= 0);
+        const auto release = qScopeGuard([claim]() { ::close(claim); });
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile image(dir.filePath(QStringLiteral("image")));
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        QVERIFY(image.resize(8 * MiB));
+        QString error;
+        LoopDevice loop;
+        QVERIFY2(loop.configure(image.handle(), MiB, 6 * MiB, 512, &error), qPrintable(error));
+        QVERIFY(!loop.path().isEmpty());
+        QVERIFY(loop.path() != busyPath);
+        QVERIFY2(loop.detach(&error), qPrintable(error));
+        QVERIFY(loop.path().isEmpty());
+    }
+
     void releasesMappingsOnEarlyExit_data()
     {
         QTest::addColumn<int>("stage");
