@@ -19,6 +19,22 @@ bool formatLinuxPartition(
     RestoreReporter &reporter,
     QString *error);
 
+class BlockDevice;
+class LoopDevice;
+
+// The Format and RereadPartitionTable steps. The table is re-read even when formatting
+// fails, and `diskSequence` is the instance the new partition must belong to.
+bool formatAndRereadPartitionTable(
+    const RestoreRequest &request,
+    const QString &formatTool,
+    std::uint64_t partitionStartSector,
+    BlockDevice &device,
+    LoopDevice &formatter,
+    RestoreStepCounter &steps,
+    RestoreReporter &reporter,
+    std::uint64_t *diskSequence,
+    QString *error);
+
 // Reports its steps in the order of linuxRestorePlan().
 bool performLinuxRestore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error);

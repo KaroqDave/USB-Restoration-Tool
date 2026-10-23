@@ -4,21 +4,13 @@
 
 Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
 
-- Linux: a format failure now returns before `BLKRRPART`, leaving the kernel's
-  old partitions over the new table. Re-read the partition table on the format
-  error path too (`src/linux/linux_restore.cpp`, Format step).
 - Windows: `waitForStorageJob` now fails when the job object has vanished or a
   completed job has no `ErrorCode`, which can report failure after the disk was
   wiped. Confirm on hardware how Windows removes jobs and reports `ErrorCode`, then
   decide whether a vanished or code-less completed job is success (`src/win/wmi.cpp`).
-- Linux: `verifyPartitionOf` compares against the pre-restore `deviceSequence`;
-  1.7.0 sampled it after `BLKRRPART`. A media-change event fails a finished
-  restore. Sample the sequence after the re-read, as before.
 - Linux: `LoopDevice::configure` retries `LOOP_CTL_GET_FREE` after an `EBUSY`
   claim and gets the same busy node all 8 times. Skip or retry differently, and
   clear `m_path` on failure (`src/linux/loop_device.cpp`).
-- Linux: the read-only `inspect` handle in `performLinuxRestore` is no longer
-  scoped and stays open for the whole restore. Restore the block scope.
 - `BlockDevice::verifyIdentity` compares the disk sequence three times
   (`isSameDeviceSequence` twice plus `isSameRestoreTarget`). Reduce it to one.
 - `canCreatePartitionLayout` duplicates the sector-size, length and MBR end-LBA
@@ -33,6 +25,15 @@ Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
   no automated coverage; mention `tests/test_linux.cpp` and `tests/test_wmi.cpp`.
 
 ## Recently completed
+
+- 2026-10-24: Fixed three Linux restore regressions from 1.7.1. A formatter
+  failure now still re-reads the partition table, the new partition is checked
+  against the disk sequence read after the re-read, and the read-only identity
+  handle is closed before unmounting. `formatAndRereadPartitionTable` holds the
+  Format and re-read steps; `rereadsPartitionTableAfterFormatting` runs them on a
+  partition-scanning loop image at both sector sizes, with mkfs failing and
+  succeeding. Formatting passes locally; the Linux build and image tests run
+  only in CI. No physical-drive restore was performed.
 
 - 2026-10-23: Published 1.7.1 as the latest stable release after all five release
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
