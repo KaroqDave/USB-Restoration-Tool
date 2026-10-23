@@ -17,10 +17,11 @@ Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
   `BlockDevice::verifyIdentity` drops its redundant sequence check. The preflight,
   table writer and Windows `RawDisk` share `partitionLayoutError`. The sequence
   refusal names the disk, the `isSameRestoreTarget` comments describe the
-  sequence rule, and AGENTS.md lists all three test files. Windows Release build
-  and core tests (155) pass; this machine's app-control policy blocked the new
-  WMI test binary, and the Linux tests run only in CI. No physical-drive restore
-  was performed.
+  sequence rule, and AGENTS.md lists all three test files. Locally the Windows
+  Release build and core tests (155) pass. PR #9 CI passes on commit `5477660`:
+  Windows core, WMI and fuzz-corpus tests, and `skipsLoopNodeClaimedElsewhere`
+  in both the Debian and sanitizer Linux jobs. No physical-drive restore was
+  performed.
 
 - 2026-10-24: Fixed three Linux restore regressions from 1.7.1. A formatter
   failure now still re-reads the partition table, the new partition is checked
@@ -28,8 +29,10 @@ Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
   handle is closed before unmounting. `formatAndRereadPartitionTable` holds the
   Format and re-read steps; `rereadsPartitionTableAfterFormatting` runs them on a
   partition-scanning loop image at both sector sizes, with mkfs failing and
-  succeeding. Formatting passes locally; the Linux build and image tests run
-  only in CI. No physical-drive restore was performed.
+  succeeding. PR #9 CI passes on commit `5477660`: all four cases pass in the
+  Debian and sanitizer jobs, each running 30 Linux tests with none skipped. A
+  real media change cannot be triggered on a loop device. No physical-drive
+  restore was performed.
 
 - 2026-10-23: Published 1.7.1 as the latest stable release after all five release
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
