@@ -8,23 +8,19 @@ Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
   completed job has no `ErrorCode`, which can report failure after the disk was
   wiped. Confirm on hardware how Windows removes jobs and reports `ErrorCode`, then
   decide whether a vanished or code-less completed job is success (`src/win/wmi.cpp`).
-- Linux: `LoopDevice::configure` retries `LOOP_CTL_GET_FREE` after an `EBUSY`
-  claim and gets the same busy node all 8 times. Skip or retry differently, and
-  clear `m_path` on failure (`src/linux/loop_device.cpp`).
-- `BlockDevice::verifyIdentity` compares the disk sequence three times
-  (`isSameDeviceSequence` twice plus `isSameRestoreTarget`). Reduce it to one.
-- `canCreatePartitionLayout` duplicates the sector-size, length and MBR end-LBA
-  checks in `isWritablePartitionRequest` and `RawDisk::createSingleMbrPartition`.
-  Share one implementation.
-- The comments in `src/core/safety.h` and `restore_protocol.cpp` say
-  `isSameRestoreTarget` skips identifiers only one side reports, but
-  `deviceSequence` now refuses. Update the comments.
-- The `isSameDeviceSequence` error text does not name the disk, as AGENTS.md
-  requires. Include the device path.
-- AGENTS.md still says tests live only in `tests/test_core.cpp` and backends have
-  no automated coverage; mention `tests/test_linux.cpp` and `tests/test_wmi.cpp`.
 
 ## Recently completed
+
+- 2026-10-24: Closed the remaining v1.7.1 review cleanups. A busy loop node no
+  longer stalls the formatter mapping: after `EBUSY` it asks loop-control for a
+  new node, and a failed `configure` leaves no path behind.
+  `BlockDevice::verifyIdentity` drops its redundant sequence check. The preflight,
+  table writer and Windows `RawDisk` share `partitionLayoutError`. The sequence
+  refusal names the disk, the `isSameRestoreTarget` comments describe the
+  sequence rule, and AGENTS.md lists all three test files. Windows Release build
+  and core tests (155) pass; this machine's app-control policy blocked the new
+  WMI test binary, and the Linux tests run only in CI. No physical-drive restore
+  was performed.
 
 - 2026-10-24: Fixed three Linux restore regressions from 1.7.1. A formatter
   failure now still re-reads the partition table, the new partition is checked
