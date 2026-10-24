@@ -396,6 +396,58 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
     return refuse(QStringLiteral("That filesystem is not supported."));
 }
 
+bool formatAndRereadPartitionTable(
+    const RestoreRequest &request,
+    const QString &formatTool,
+    std::uint64_t partitionStartSector,
+    BlockDevice &device,
+    LoopDevice &formatter,
+    RestoreStepCounter &steps,
+    RestoreReporter &reporter,
+    std::uint64_t *diskSequence,
+    QString *error)
+{
+    reportPlannedStep(
+        steps,
+        reporter,
+        RestoreStep::Format,
+        QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
+    if (!formatter.prepareForFormatting(error) ||
+        !formatLinuxPartition(
+            request.fileSystem,
+            formatTool,
+            formatter.path(),
+            request.volumeLabel,
+            partitionStartSector,
+            reporter,
+            error) ||
+        !formatter.detach(error)) {
+        formatter.detach(nullptr);
+        // The new table is already on the disk; the kernel must not keep the old partitions over it.
+        QString rereadError;
+        if (!device.flush(&rereadError) || !device.rereadPartitionTable(&rereadError)) {
+            reporter.detail(rereadError);
+        }
+        return false;
+    }
+
+    reportPlannedStep(
+        steps, reporter, RestoreStep::RereadPartitionTable, QStringLiteral("Re-reading the partition table"));
+    if (!device.flush(error) || !device.rereadPartitionTable(error)) {
+        return false;
+    }
+    // The instance the kernel just scanned the new table on; a media change earlier must not fail the restore.
+    if (!device.diskSequence(diskSequence)) {
+        if (error) {
+            *error = QStringLiteral("Cannot confirm the instance of %1 after re-reading its partition table. Unplug "
+                                    "the drive, plug it back in and check that it shows one new partition.")
+                         .arg(request.disk.deviceId);
+        }
+        return false;
+    }
+    return true;
+}
+
 bool performLinuxRestore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
@@ -437,10 +489,13 @@ bool performLinuxRestore(
         return false;
     }
 
+    // Before unmounting, so a wrong device is caught after only a read-only open.
     reportPlannedStep(steps, reporter, RestoreStep::IdentifyDevice, QStringLiteral("Identifying the block device"));
-    BlockDevice inspect(disk.deviceId);
-    if (!inspect.open(BlockDevice::Access::Inspect, error) || !inspect.verifyIdentity(disk, error)) {
-        return false;
+    {
+        BlockDevice inspect(disk.deviceId);
+        if (!inspect.open(BlockDevice::Access::Inspect, error) || !inspect.verifyIdentity(disk, error)) {
+            return false;
+        }
     }
 
     if (reporter.cancelRequested()) {
@@ -548,30 +603,17 @@ bool performLinuxRestore(
     if (!device.flush(error)) {
         return false;
     }
-    reportPlannedStep(
-        steps,
-        reporter,
-        RestoreStep::Format,
-        QStringLiteral("Formatting as %1").arg(fileSystemTypeName(request.fileSystem)));
-    if (!formatter.prepareForFormatting(error) ||
-        !formatLinuxPartition(
-            request.fileSystem,
+    std::uint64_t diskSequence = 0;
+    if (!formatAndRereadPartitionTable(
+            request,
             formatTool,
-            formatter.path(),
-            request.volumeLabel,
             tableRequest.layout.startOffset / disk.sectorSize,
+            device,
+            formatter,
+            steps,
             reporter,
-            error) ||
-        !formatter.detach(error)) {
-        return false;
-    }
-
-    reportPlannedStep(
-        steps, reporter, RestoreStep::RereadPartitionTable, QStringLiteral("Re-reading the partition table"));
-    if (!device.flush(error)) {
-        return false;
-    }
-    if (!device.rereadPartitionTable(error)) {
+            &diskSequence,
+            error)) {
         return false;
     }
     // udev will not create the partition node while the disk is held exclusively.
@@ -603,7 +645,7 @@ bool performLinuxRestore(
 
     BlockDevice partition(partitionPath);
     if (!partition.open(BlockDevice::Access::Inspect, error) ||
-        !partition.verifyPartitionOf(diskName, disk.deviceSequence, error)) {
+        !partition.verifyPartitionOf(diskName, diskSequence, error)) {
         return false;
     }
 

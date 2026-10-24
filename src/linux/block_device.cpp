@@ -126,7 +126,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
                                      "later with disk sequence support.")
                           .arg(m_devicePath));
     }
-    if (!isSameDeviceSequence(expected.deviceSequence, sequence, error)) {
+    if (!isSameDeviceSequence(m_devicePath, expected.deviceSequence, sequence, error)) {
         return false;
     }
 
@@ -171,13 +171,8 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
         return refuse(QStringLiteral("%1 is not on the USB bus.").arg(m_devicePath));
     }
 
-    const DiskInfo current = diskInfoFor(diskName);
-    if (!isSameDeviceSequence(sequence, current.deviceSequence, error) ||
-        !isSameRestoreTarget(expected, current, error)) {
-        return false;
-    }
-
-    return true;
+    // Also compares the sequence, so with the handle's checked above, sysfs names the disk this handle holds.
+    return isSameRestoreTarget(expected, diskInfoFor(diskName), error);
 }
 
 bool BlockDevice::diskSequence(std::uint64_t *sequence) const

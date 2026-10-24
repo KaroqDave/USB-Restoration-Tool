@@ -126,7 +126,7 @@ buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType
         arguments << QStringLiteral("--expect-sequence") << QString::number(*disk.deviceSequence);
     }
 
-    // isSameRestoreTarget() skips an identifier only one side reports, so omitting
+    // isSameRestoreTarget() skips an identifier the selection lacks, so omitting
     // an unknown value costs no more than not knowing it.
     const auto appendIfKnown = [&arguments](const QString &flag, const QString &value) {
         if (!value.trimmed().isEmpty()) {

@@ -88,6 +88,10 @@ partition range changes, check filesystem recognition and confirm geometry.
 Cleanup tests exit at the cancellation checkpoint, run a formatter that fails,
 and attempt to start a missing formatter. They check that mappings detach,
 exclusive claims can be acquired again and image contents stay unchanged.
+A partition-scanning loop image checks that the kernel drops the old partition
+whether or not mkfs succeeds, and that the new partition matches the disk sequence
+read after the re-read. Another test holds the free loop node exclusively and
+checks that the formatter mapping claims a different one.
 They never enumerate or restore physical disks.
 
 The platform restore sequences have no automated hardware coverage. Use only

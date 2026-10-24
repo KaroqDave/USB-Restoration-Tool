@@ -6,6 +6,40 @@ No open tasks.
 
 ## Recently completed
 
+- 2026-10-24: Settled the review finding on `waitForStorageJob`: a vanished job or
+  a completed job without `ErrorCode` still stops the restore. The restore log now
+  says whether each `MSFT_Disk.Refresh`, `MSFT_Partition.DeleteObject` and
+  `MSFT_Volume.Format` call completed immediately or was queued, and how a queued
+  job ended. Four restores on an Intenso Office Line stick (Windows 11 build
+  26300; GPT exFAT, FAT32, NTFS and exFAT again) all completed, with every one of
+  the 16 calls completing immediately, so no job was queued. Keeping the strict
+  check means an unconfirmed job costs at worst a re-run, never a false success.
+  `describesStorageJobOutcomes` pins the log text. Windows Release build, WMI (24)
+  and core (155) tests pass.
+
+- 2026-10-24: Closed the remaining v1.7.1 review cleanups. A busy loop node no
+  longer stalls the formatter mapping: after `EBUSY` it asks loop-control for a
+  new node, and a failed `configure` leaves no path behind.
+  `BlockDevice::verifyIdentity` drops its redundant sequence check. The preflight,
+  table writer and Windows `RawDisk` share `partitionLayoutError`. The sequence
+  refusal names the disk, the `isSameRestoreTarget` comments describe the
+  sequence rule, and AGENTS.md lists all three test files. Locally the Windows
+  Release build and core tests (155) pass. PR #9 CI passes on commit `5477660`:
+  Windows core, WMI and fuzz-corpus tests, and `skipsLoopNodeClaimedElsewhere`
+  in both the Debian and sanitizer Linux jobs. No physical-drive restore was
+  performed.
+
+- 2026-10-24: Fixed three Linux restore regressions from 1.7.1. A formatter
+  failure now still re-reads the partition table, the new partition is checked
+  against the disk sequence read after the re-read, and the read-only identity
+  handle is closed before unmounting. `formatAndRereadPartitionTable` holds the
+  Format and re-read steps; `rereadsPartitionTableAfterFormatting` runs them on a
+  partition-scanning loop image at both sector sizes, with mkfs failing and
+  succeeding. PR #9 CI passes on commit `5477660`: all four cases pass in the
+  Debian and sanitizer jobs, each running 30 Linux tests with none skipped. A
+  real media change cannot be triggered on a loop device. No physical-drive
+  restore was performed.
+
 - 2026-10-23: Published 1.7.1 as the latest stable release after all five release
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
   both checksum files against GitHub's asset digests, both Linux checksums, all

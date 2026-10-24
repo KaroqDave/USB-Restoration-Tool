@@ -261,7 +261,7 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
         return refuse(QStringLiteral("size"));
     }
 
-    if (selected.deviceSequence && !isSameDeviceSequence(selected.deviceSequence, current.deviceSequence)) {
+    if (selected.deviceSequence && !isSameDeviceSequence(name, selected.deviceSequence, current.deviceSequence)) {
         return refuse(QStringLiteral("device instance"));
     }
 
@@ -286,33 +286,42 @@ bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QStr
     return true;
 }
 
-bool isSameDeviceSequence(std::optional<std::uint64_t> expected, std::optional<std::uint64_t> current, QString *reason)
+bool isSameDeviceSequence(
+    const QString &device, std::optional<std::uint64_t> expected, std::optional<std::uint64_t> current, QString *reason)
 {
     if (expected && current && *expected != 0 && *expected == *current) {
         return true;
     }
     if (reason) {
-        *reason = QStringLiteral("The disk instance could not be confirmed. Refresh and select the USB again.");
+        *reason = QStringLiteral("Could not confirm that %1 is still the disk that was selected. Refresh and select "
+                                 "the USB again.")
+                      .arg(device);
     }
     return false;
 }
 
+QString partitionLayoutError(PartitionStyle style, const GptLayout &layout, quint32 sectorSize)
+{
+    if (!isSupportedSectorSize(sectorSize)) {
+        return QStringLiteral("Unsupported sector size of %1 bytes.").arg(sectorSize);
+    }
+    if (layout.length == 0) {
+        return QStringLiteral("The disk is too small for a partition layout.");
+    }
+    if (style != PartitionStyle::Mbr && style != PartitionStyle::Gpt) {
+        return QStringLiteral("No partition style was chosen.");
+    }
+    // 32-bit sector addresses: 2 TiB at 512 bytes, which an external drive can exceed.
+    if (style == PartitionStyle::Mbr && (layout.startOffset + layout.length) / sectorSize > 0xFFFFFFFFull) {
+        return QStringLiteral("MBR cannot address a partition this far into the disk. Choose GPT.");
+    }
+    return {};
+}
+
 bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason)
 {
-    QString failure;
-    if (!isSupportedSectorSize(disk.sectorSize)) {
-        failure = QStringLiteral("Unsupported sector size of %1 bytes.").arg(disk.sectorSize);
-    } else {
-        const GptLayout layout = calculateGptLayout(disk.size, disk.sectorSize);
-        if (layout.length == 0) {
-            failure = QStringLiteral("The disk is too small for a partition layout.");
-        } else if (
-            style == PartitionStyle::Mbr && (layout.startOffset + layout.length) / disk.sectorSize > 0xFFFFFFFFull) {
-            failure = QStringLiteral("MBR cannot address a partition this far into the disk. Choose GPT.");
-        } else if (style != PartitionStyle::Mbr && style != PartitionStyle::Gpt) {
-            failure = QStringLiteral("No partition style was chosen.");
-        }
-    }
+    const QString failure =
+        partitionLayoutError(style, calculateGptLayout(disk.size, disk.sectorSize), disk.sectorSize);
     if (!failure.isEmpty() && reason) {
         *reason = failure;
     }

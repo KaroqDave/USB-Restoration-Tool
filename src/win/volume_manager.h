@@ -12,11 +12,16 @@ namespace usbrestore {
 
 class VolumeManager {
   public:
-    bool refreshDisk(quint32 diskNumber, QString *error = nullptr) const;
+    // The reporters here get one line per WMI call saying whether Windows queued it as a job.
+    bool refreshDisk(quint32 diskNumber, QString *error = nullptr, RestoreReporter *reporter = nullptr) const;
 
     // Leaves a partition at the start of the disk for the caller's empty partition table to replace,
     // and says through partitionAtDiskStart whether there was one.
-    bool deletePartitionsForDisk(quint32 diskNumber, bool *partitionAtDiskStart, QString *error = nullptr) const;
+    bool deletePartitionsForDisk(
+        quint32 diskNumber,
+        bool *partitionAtDiskStart,
+        QString *error = nullptr,
+        RestoreReporter *reporter = nullptr) const;
 
     // Protected letters (and C:) are never touched, even if Windows claims they live on the target.
     bool
@@ -52,7 +57,8 @@ class VolumeManager {
         FileSystemType fileSystem,
         quint32 allocationUnitSize,
         const QString &label,
-        QString *error = nullptr) const;
+        QString *error = nullptr,
+        RestoreReporter *reporter = nullptr) const;
 
   private:
     QString findVolumeNameForDisk(quint32 diskNumber) const;

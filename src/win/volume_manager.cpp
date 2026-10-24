@@ -111,7 +111,19 @@ bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error)
 
 } // namespace
 
-bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error) const
+namespace {
+
+// Logged success or not: whether Windows queues these as jobs, and how the jobs end, is not documented.
+void noteStorageCall(RestoreReporter *reporter, const QString &call, const QString &outcome)
+{
+    if (reporter && !outcome.isEmpty()) {
+        reporter->detail(QStringLiteral("%1 %2").arg(call, outcome));
+    }
+}
+
+} // namespace
+
+bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error, RestoreReporter *reporter) const
 {
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
@@ -131,11 +143,15 @@ bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error) const
         return false;
     }
 
-    return storage.callMethodAndWait(
-        QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error);
+    QString outcome;
+    const bool refreshed = storage.callMethodAndWait(
+        QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error, &outcome);
+    noteStorageCall(reporter, QStringLiteral("MSFT_Disk.Refresh"), outcome);
+    return refreshed;
 }
 
-bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *partitionAtDiskStart, QString *error) const
+bool VolumeManager::deletePartitionsForDisk(
+    quint32 diskNumber, bool *partitionAtDiskStart, QString *error, RestoreReporter *reporter) const
 {
     if (partitionAtDiskStart) {
         *partitionAtDiskStart = false;
@@ -169,13 +185,17 @@ bool VolumeManager::deletePartitionsForDisk(quint32 diskNumber, bool *partitionA
             }
             continue;
         }
-        if (!storage.callMethodAndWait(
-                QStringLiteral("MSFT_Partition"),
-                partition.objectPath(),
-                L"DeleteObject",
-                {},
-                DeleteJobTimeoutMs,
-                error)) {
+        QString outcome;
+        const bool deleted = storage.callMethodAndWait(
+            QStringLiteral("MSFT_Partition"),
+            partition.objectPath(),
+            L"DeleteObject",
+            {},
+            DeleteJobTimeoutMs,
+            error,
+            &outcome);
+        noteStorageCall(reporter, QStringLiteral("MSFT_Partition.DeleteObject"), outcome);
+        if (!deleted) {
             return false;
         }
     }
@@ -501,7 +521,8 @@ bool VolumeManager::formatVolume(
     FileSystemType fileSystem,
     quint32 allocationUnitSize,
     const QString &label,
-    QString *error) const
+    QString *error,
+    RestoreReporter *reporter) const
 {
     const QString formatName = [&]() -> QString {
         switch (fileSystem) {
@@ -583,8 +604,17 @@ bool VolumeManager::formatVolume(
     if (fileSystem == FileSystemType::Fat32) {
         inputs.append({QStringLiteral("AllocationUnitSize"), allocationUnitSize});
     }
-    if (!storage.callMethodAndWait(
-            QStringLiteral("MSFT_Volume"), targetVolume.objectPath(), L"Format", inputs, FormatJobTimeoutMs, error)) {
+    QString outcome;
+    const bool formatted = storage.callMethodAndWait(
+        QStringLiteral("MSFT_Volume"),
+        targetVolume.objectPath(),
+        L"Format",
+        inputs,
+        FormatJobTimeoutMs,
+        error,
+        &outcome);
+    noteStorageCall(reporter, QStringLiteral("MSFT_Volume.Format"), outcome);
+    if (!formatted) {
         return false;
     }
 

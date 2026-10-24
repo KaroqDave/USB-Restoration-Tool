@@ -174,6 +174,46 @@ class WmiTests : public QObject {
         QVERIFY(error.contains(QStringLiteral("did not finish")));
     }
 
+    // The log must tell a vanished job and a missing ErrorCode apart from a clean completion.
+    void describesStorageJobOutcomes()
+    {
+        const auto completed = storageJob(7, 0);
+        const auto running = storageJob(4, std::nullopt);
+        QString outcome;
+        int reads = 0;
+        QVERIFY(waitForStorageJob(
+            QStringLiteral("job"),
+            [&](QString *) { return ++reads == 1 ? running : completed; },
+            1000,
+            nullptr,
+            &outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("finished with ErrorCode 0")), qPrintable(outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("2 read(s), last state 7")), qPrintable(outcome));
+
+        const auto noCode = storageJob(7, std::nullopt);
+        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return noCode; }, 1000, nullptr, &outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("ErrorCode missing")), qPrintable(outcome));
+
+        reads = 0;
+        QVERIFY(!waitForStorageJob(
+            QStringLiteral("job"),
+            [&](QString *readError) {
+                if (++reads == 1) {
+                    return running;
+                }
+                *readError = QStringLiteral("Object not found");
+                return WmiObject();
+            },
+            1000,
+            nullptr,
+            &outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("could not be read (Object not found)")), qPrintable(outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("last state 4")), qPrintable(outcome));
+
+        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, nullptr, &outcome));
+        QVERIFY2(outcome.contains(QStringLiteral("still running")), qPrintable(outcome));
+    }
+
     void acceptsUnsignedFormatAllocationUnitSizes_data()
     {
         QTest::addColumn<QVariant>("value");

@@ -28,7 +28,9 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
   trusted. See `docs/polkit-helper.md`.
 - `src/gui/` — `main.cpp`, `main_window.*`, `theme.*`, `app_settings.*`.
 
-Tests live in `tests/test_core.cpp`; `tests/fuzz_core.cpp` fuzzes the parsers and
+Tests live in `tests/test_core.cpp` (`src/core`), `tests/test_wmi.cpp` (Windows WMI
+encoding and job monitoring) and `tests/test_linux.cpp` (Linux formatter mappings and
+partition re-reads on loop images); `tests/fuzz_core.cpp` fuzzes the parsers and
 partition tables and replays `tests/fuzz-corpus`. `tools/partition_dump.cpp` backs
 `scripts/verify-partition-tables.sh`. Docs beyond the README go in `docs/`.
 Build and project guidance lives in `docs/development.md`; open tasks live in `docs/TODO.md`.
@@ -70,8 +72,8 @@ comment or the docs already say.
 
 ## Testing Guidelines
 
-Tests use `QtTest` and live in `tests/test_core.cpp`, named after the behaviour
-they pin down. Every change to a safety rule needs a test, including the case it
+Tests use `QtTest`, are named after the behaviour they pin down, and go in the
+file for the code they cover: `test_core.cpp`, `test_wmi.cpp` or `test_linux.cpp`. Every change to a safety rule needs a test, including the case it
 now refuses that it previously allowed — several existing tests exist purely to
 document a rule that used to be too permissive, and their comments say so.
 
@@ -81,8 +83,10 @@ the unit tests, and against `sgdisk` and `fdisk` in
 spec and still be rejected by the tools that have to read the disk. Add a case
 to the script for any new layout the tool can produce.
 
-The backends drive real hardware and have no automated coverage. Never test a
-restore on a drive whose contents matter. Use disposable media for manual checks
+The backends' WMI handling and Linux loop-image steps have automated tests, but no
+test restores a physical drive. The Linux loop tests need root and
+`USBRESTORE_TEST_LOOP=1`; see `docs/development.md`. Never test a restore on a
+drive whose contents matter. Use disposable media for manual checks
 when a backend change needs them. Do not maintain a per-device hardware-test log.
 
 ## Commit & Pull Request Guidelines

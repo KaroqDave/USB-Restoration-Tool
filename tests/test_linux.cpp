@@ -1,9 +1,13 @@
 #include "linux/loop_device.h"
 #include "linux/linux_restore.h"
 #include "linux/block_device.h"
+#include "core/partition_table.h"
+#include "core/safety.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
@@ -34,6 +38,59 @@ bool loopIsDetached(const QString &path)
     struct loop_info64 info = {};
     return ::ioctl(device.descriptor(), LOOP_GET_STATUS64, &info) < 0 && errno == ENXIO;
 }
+
+QString systemTool(const QString &name)
+{
+    for (const auto &directory : {QStringLiteral("/usr/sbin/"), QStringLiteral("/sbin/")}) {
+        if (QFile::exists(directory + name)) {
+            return directory + name;
+        }
+    }
+    return {};
+}
+
+// Stands in for the USB disk: LoopDevice never scans partitions, but a restore relies on the scan.
+int attachScanningLoop(int backing, int sectorSize, QString *path)
+{
+    const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);
+    const int number = control < 0 ? -1 : ::ioctl(control, LOOP_CTL_GET_FREE);
+    if (control >= 0) {
+        ::close(control);
+    }
+    if (number < 0) {
+        return -1;
+    }
+    *path = QStringLiteral("/dev/loop%1").arg(number);
+    const int fd = ::open(path->toLocal8Bit().constData(), O_RDWR | O_CLOEXEC);
+    struct loop_config config = {};
+    config.fd = static_cast<quint32>(backing);
+    config.block_size = static_cast<quint32>(sectorSize);
+    config.info.lo_flags = LO_FLAGS_PARTSCAN | LO_FLAGS_AUTOCLEAR;
+    if (fd >= 0 && ::ioctl(fd, LOOP_CONFIGURE, &config) != 0) {
+        ::close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+// In 512-byte units whatever the sector size, as sysfs reports it.
+quint64 firstPartitionStart(const QString &diskPath)
+{
+    const QString name = QFileInfo(diskPath).fileName();
+    QFile start(QStringLiteral("/sys/block/%1/%1p1/start").arg(name));
+    return start.open(QIODevice::ReadOnly) ? start.readAll().trimmed().toULongLong() : 0;
+}
+
+PartitionTableRequest mbrTable(qint64 diskSize, int sectorSize, const GptLayout &layout)
+{
+    PartitionTableRequest table;
+    table.style = PartitionStyle::Mbr;
+    table.diskSize = static_cast<std::uint64_t>(diskSize);
+    table.sectorSize = static_cast<quint32>(sectorSize);
+    table.layout = layout;
+    table.diskGuid = QByteArray(16, '\x5a');
+    return table;
+}
 } // namespace
 
 class LinuxTests : public QObject {
@@ -52,6 +109,37 @@ class LinuxTests : public QObject {
         QVERIFY(file.resize(MiB));
         QVERIFY(!loop.configure(file.handle(), MiB, MiB, 512, &error));
         QVERIFY(error.contains(QStringLiteral("outside")));
+    }
+
+    // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.
+    void skipsLoopNodeClaimedElsewhere()
+    {
+        if (!qEnvironmentVariableIsSet("USBRESTORE_TEST_LOOP")) {
+            QSKIP("Set USBRESTORE_TEST_LOOP=1 and run as root for disposable-image loop tests.");
+        }
+        QVERIFY(::geteuid() == 0);
+        const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);
+        QVERIFY(control >= 0);
+        const int number = ::ioctl(control, LOOP_CTL_GET_FREE);
+        ::close(control);
+        QVERIFY(number >= 0);
+        const QString busyPath = QStringLiteral("/dev/loop%1").arg(number);
+        const int claim = ::open(busyPath.toLocal8Bit().constData(), O_RDWR | O_EXCL | O_CLOEXEC);
+        QVERIFY(claim >= 0);
+        const auto release = qScopeGuard([claim]() { ::close(claim); });
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile image(dir.filePath(QStringLiteral("image")));
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        QVERIFY(image.resize(8 * MiB));
+        QString error;
+        LoopDevice loop;
+        QVERIFY2(loop.configure(image.handle(), MiB, 6 * MiB, 512, &error), qPrintable(error));
+        QVERIFY(!loop.path().isEmpty());
+        QVERIFY(loop.path() != busyPath);
+        QVERIFY2(loop.detach(&error), qPrintable(error));
+        QVERIFY(loop.path().isEmpty());
     }
 
     void releasesMappingsOnEarlyExit_data()
@@ -212,13 +300,7 @@ class LinuxTests : public QObject {
 
         const QString toolName = QStringLiteral("mkfs.%1").arg(
             type == FileSystemType::Fat32 ? QStringLiteral("fat") : fileSystemTypeToken(type));
-        QString tool;
-        for (const auto &directory : {QStringLiteral("/usr/sbin/"), QStringLiteral("/sbin/")}) {
-            if (QFile::exists(directory + toolName)) {
-                tool = directory + toolName;
-                break;
-            }
-        }
+        const QString tool = systemTool(toolName);
         QVERIFY2(!tool.isEmpty(), qPrintable(toolName));
         Reporter reporter;
         QVERIFY2(
@@ -256,6 +338,107 @@ class LinuxTests : public QObject {
                 quint32(bytes[0]) | (quint32(bytes[1]) << 8) | (quint32(bytes[2]) << 16) | (quint32(bytes[3]) << 24);
             QCOMPARE(hidden, quint32(MiB / sectorSize));
         }
+    }
+
+    void rereadsPartitionTableAfterFormatting_data()
+    {
+        QTest::addColumn<int>("sectorSize");
+        QTest::addColumn<bool>("formatSucceeds");
+        for (int sector : {512, 4096}) {
+            for (bool succeeds : {true, false}) {
+                QTest::newRow(qPrintable(
+                    QString::number(sector) +
+                    (succeeds ? QStringLiteral("-formatted") : QStringLiteral("-mkfs-failed"))))
+                    << sector << succeeds;
+            }
+        }
+    }
+
+    // 1.7.1 returned before BLKRRPART when mkfs failed, leaving the old partitions over the
+    // new table, and checked the new partition against the sequence sampled before erasure.
+    void rereadsPartitionTableAfterFormatting()
+    {
+        if (!qEnvironmentVariableIsSet("USBRESTORE_TEST_LOOP")) {
+            QSKIP("Set USBRESTORE_TEST_LOOP=1 and run as root for disposable-image loop tests.");
+        }
+        QVERIFY(::geteuid() == 0);
+        QFETCH(int, sectorSize);
+        QFETCH(bool, formatSucceeds);
+        constexpr qint64 DiskBytes = 64 * MiB;
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile image(dir.filePath(QStringLiteral("image")));
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        QVERIFY(image.resize(DiskBytes));
+        const QByteArray oldTable = buildMbr(mbrTable(DiskBytes, sectorSize, {2 * MiB, 2 * MiB}));
+        QCOMPARE(image.write(oldTable), oldTable.size());
+        QVERIFY(image.flush());
+
+        QString diskPath;
+        const int scanningFd = attachScanningLoop(image.handle(), sectorSize, &diskPath);
+        QVERIFY(scanningFd >= 0);
+        const auto release = qScopeGuard([scanningFd]() {
+            ::ioctl(scanningFd, LOOP_CLR_FD, 0);
+            ::close(scanningFd);
+        });
+        QTRY_COMPARE_WITH_TIMEOUT(firstPartitionStart(diskPath), quint64(2 * MiB / 512), 3000);
+        // udev probing the old partition would hold it open and make BLKRRPART fail with EBUSY.
+        QProcess::execute(QStringLiteral("udevadm"), {QStringLiteral("settle")});
+
+        QString error;
+        BlockDevice device(diskPath);
+        QVERIFY2(device.open(BlockDevice::Access::Exclusive, &error), qPrintable(error));
+        const PartitionTableRequest newTable =
+            mbrTable(DiskBytes, sectorSize, calculateGptLayout(DiskBytes, static_cast<quint32>(sectorSize)));
+        QVERIFY2(device.writeAt(0, buildMbr(newTable), &error), qPrintable(error));
+        QVERIFY2(device.flush(&error), qPrintable(error));
+        LoopDevice formatter;
+        QVERIFY2(
+            formatter.configure(
+                device.descriptor(), newTable.layout.startOffset, newTable.layout.length, sectorSize, &error),
+            qPrintable(error));
+        const QString formatterPath = formatter.path();
+
+        RestoreRequest request;
+        request.disk.deviceId = diskPath;
+        request.fileSystem = FileSystemType::ExFat;
+        request.volumeLabel = QStringLiteral("USB");
+        const QString tool = formatSucceeds ? systemTool(QStringLiteral("mkfs.exfat")) : QStringLiteral("/bin/false");
+        QVERIFY(!tool.isEmpty());
+        RestoreStepCounter steps(linuxRestorePlan());
+        for (RestoreStep step : linuxRestorePlan()) {
+            if (step == RestoreStep::Format) {
+                break;
+            }
+            steps.advance(step);
+        }
+        Reporter reporter;
+        std::uint64_t sequence = 0;
+        const bool formatted = formatAndRereadPartitionTable(
+            request,
+            tool,
+            newTable.layout.startOffset / static_cast<std::uint64_t>(sectorSize),
+            device,
+            formatter,
+            steps,
+            reporter,
+            &sequence,
+            &error);
+        QCOMPARE(formatted, formatSucceeds);
+        QCOMPARE(firstPartitionStart(diskPath), quint64(newTable.layout.startOffset / 512));
+        QTRY_VERIFY_WITH_TIMEOUT(loopIsDetached(formatterPath), 3000);
+        if (!formatSucceeds) {
+            QVERIFY2(error.contains(QStringLiteral("failed")), qPrintable(error));
+            return;
+        }
+
+        std::uint64_t current = 0;
+        QVERIFY(device.diskSequence(&current));
+        QCOMPARE(sequence, current);
+        device.close();
+        BlockDevice partition(diskPath + QStringLiteral("p1"));
+        QTRY_VERIFY_WITH_TIMEOUT(partition.open(BlockDevice::Access::Inspect, &error), 3000);
+        QVERIFY2(partition.verifyPartitionOf(QFileInfo(diskPath).fileName(), sequence, &error), qPrintable(error));
     }
 };
 
