@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.7.2 - 2026-10-24
+
+Fixes for Linux restore regressions introduced in 1.7.1, and a more detailed
+Windows restore log.
+
+### Fixed
+
+- Linux re-reads the partition table even when the formatter fails, so the
+  kernel no longer keeps the old partitions over the new table.
+- Linux checks the new partition against the disk sequence read after the
+  partition-table re-read, so a media-change event no longer fails a finished
+  restore.
+- Linux closes the read-only identity-check handle before unmounting instead of
+  holding it for the whole restore.
+- Linux asks for a new loop device when the free one is held exclusively by
+  another program, instead of retrying the same busy device until it fails.
+- The disk-instance refusal names the disk.
+
+### Changed
+
+- The restore preflight, the partition-table writer and Windows partition
+  creation share one set of layout checks.
+- The Windows restore log records whether each `MSFT_Disk.Refresh`,
+  `MSFT_Partition.DeleteObject` and `MSFT_Volume.Format` call completed
+  immediately or was queued, and how a queued job ended. A queued job still
+  needs an explicit completed state and zero error code.
+
+### Added
+
+- Linux image tests for partition re-reads after formatter failure and success
+  at both sector sizes, and for a loop device held by another program.
+- Tests that the preflight and the table writer agree on every layout, and for
+  the Windows storage-job log text.
+
 ## 1.7.1 - 2026-10-23
 
 Stricter restore preflight, device identity and storage-job checks on Windows

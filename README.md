@@ -110,7 +110,22 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.7.1
+## What's New in 1.7.2
+
+- On Linux, a restore whose formatting step fails no longer leaves the old
+  partitions showing over the new partition table.
+- On Linux, a media-change event during a restore no longer makes a finished
+  restore report failure.
+- Linux formatting no longer fails when another program holds the free loop
+  device; the app uses a different one.
+- The Windows log records whether each storage operation completed immediately
+  or was queued, and how a queued job ended, to help diagnose a failed restore.
+- Disk-instance refusals name the disk, and new regression tests cover these
+  fixes on Linux loop images and Windows storage jobs.
+
+Linux requirements are unchanged from 1.7.1.
+
+### Previously, in 1.7.1
 
 - Unsupported MBR layouts are refused before a restore changes the drive.
 - Linux checks the selected disk instance through the open device and keeps

@@ -2,9 +2,16 @@
 
 ## Next
 
-No open tasks.
+- Publish v1.7.2 through the release workflow and verify its published assets.
 
 ## Recently completed
+
+- 2026-10-24: Prepared 1.7.2 with release notes for the Linux restore fixes,
+  loop-device retry and Windows storage-job logging. Helper protocol stays at 4.
+  Windows Release build, all three test suites and the release preflight pass.
+  Verified the local ZIP's executable version and all 22 bundled file checksums;
+  only the executable, README.txt and SHA256SUMS.txt differ from 1.7.1's bundle.
+  Platform release checks run in CI.
 
 - 2026-10-24: Settled the review finding on `waitForStorageJob`: a vanished job or
   a completed job without `ErrorCode` still stops the restore. The restore log now
