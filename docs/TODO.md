@@ -10,7 +10,8 @@ No open tasks.
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
   both checksum files against GitHub's asset digests, both Linux checksums, all
   20 published Windows bundle files and the executable's 1.7.2 version. The
-  merged PR and release branches have been removed locally and on GitHub.
+  merged PR branch has been removed locally and on GitHub, and the local
+  release branch after fast-forwarding main.
 
 - 2026-10-24: Prepared 1.7.2 with release notes for the Linux restore fixes,
   loop-device retry and Windows storage-job logging. Helper protocol stays at 4.
