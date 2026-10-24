@@ -2,14 +2,20 @@
 
 ## Next
 
-Findings from the 2026-10-23 review of v1.7.0..v1.7.1, highest priority first.
-
-- Windows: `waitForStorageJob` now fails when the job object has vanished or a
-  completed job has no `ErrorCode`, which can report failure after the disk was
-  wiped. Confirm on hardware how Windows removes jobs and reports `ErrorCode`, then
-  decide whether a vanished or code-less completed job is success (`src/win/wmi.cpp`).
+No open tasks.
 
 ## Recently completed
+
+- 2026-10-24: Settled the review finding on `waitForStorageJob`: a vanished job or
+  a completed job without `ErrorCode` still stops the restore. The restore log now
+  says whether each `MSFT_Disk.Refresh`, `MSFT_Partition.DeleteObject` and
+  `MSFT_Volume.Format` call completed immediately or was queued, and how a queued
+  job ended. Four restores on an Intenso Office Line stick (Windows 11 build
+  26300; GPT exFAT, FAT32, NTFS and exFAT again) all completed, with every one of
+  the 16 calls completing immediately, so no job was queued. Keeping the strict
+  check means an unconfirmed job costs at worst a re-run, never a false success.
+  `describesStorageJobOutcomes` pins the log text. Windows Release build, WMI (24)
+  and core (155) tests pass.
 
 - 2026-10-24: Closed the remaining v1.7.1 review cleanups. A busy loop node no
   longer stalls the formatter mapping: after `EBUSY` it asks loop-control for a
