@@ -496,7 +496,7 @@ WmiCallResult WmiConnection::callMethod(
     return callResult;
 }
 
-bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *error) const
+bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *error, QString *outcome) const
 {
     return waitForStorageJob(
         jobPath,
@@ -508,13 +508,21 @@ bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *e
             return job;
         },
         timeoutMs,
-        error);
+        error,
+        outcome);
 }
 
 bool waitForStorageJob(
-    const QString &jobPath, const std::function<WmiObject(QString *)> &readJob, int timeoutMs, QString *error)
+    const QString &jobPath,
+    const std::function<WmiObject(QString *)> &readJob,
+    int timeoutMs,
+    QString *error,
+    QString *outcome)
 {
     if (jobPath.isEmpty()) {
+        if (outcome) {
+            *outcome = QStringLiteral("queued without a job path");
+        }
         if (error) {
             *error = QStringLiteral("Windows queued a storage operation without a job to monitor. Restore stopped.");
         }
@@ -523,10 +531,25 @@ bool waitForStorageJob(
 
     QElapsedTimer timer;
     timer.start();
+    int reads = 0;
+    std::optional<quint64> lastState;
+    // What Windows actually did, for the log: whether a job vanishes or completes without an ErrorCode.
+    const auto note = [&](const QString &what) {
+        if (outcome) {
+            *outcome = QStringLiteral("queued as a job; %1 after %2 ms and %3 read(s), last state %4")
+                           .arg(what)
+                           .arg(timer.elapsed())
+                           .arg(reads)
+                           .arg(lastState ? QString::number(*lastState) : QStringLiteral("none"));
+        }
+    };
     for (;;) {
         QString readError;
         const WmiObject job = readJob(&readError);
+        ++reads;
         if (!job.isValid()) {
+            note(QStringLiteral("job object could not be read (%1)")
+                     .arg(readError.isEmpty() ? QStringLiteral("no detail") : readError));
             if (error) {
                 *error = QStringLiteral("Could not confirm that the Windows storage job completed. Restore stopped.%1")
                              .arg(readError.isEmpty() ? QString() : QStringLiteral(" %1").arg(readError));
@@ -535,15 +558,22 @@ bool waitForStorageJob(
         }
 
         const auto stateValue = job.optionalUint64Value(L"JobState");
+        const auto code = job.optionalUint64Value(L"ErrorCode");
+        const QString codeText = code ? QString::number(*code) : QStringLiteral("missing");
         if (!stateValue || *stateValue < 2 || *stateValue > 12) {
+            note(QStringLiteral("unusable JobState, ErrorCode %1").arg(codeText));
             if (error) {
                 *error = QStringLiteral("The Windows storage job reported no usable state. Restore stopped.");
             }
             return false;
         }
         const auto state = *stateValue;
+        lastState = state;
+        if (state == JobStateCompleted || state == JobStateTerminated || state == JobStateKilled ||
+            state == JobStateException) {
+            note(QStringLiteral("finished with ErrorCode %1").arg(codeText));
+        }
         if (state == JobStateCompleted) {
-            const auto code = job.optionalUint64Value(L"ErrorCode");
             if (code && *code == 0) {
                 return true;
             }
@@ -566,6 +596,7 @@ bool waitForStorageJob(
         }
 
         if (timer.elapsed() >= timeoutMs) {
+            note(QStringLiteral("still running at the timeout, ErrorCode %1").arg(codeText));
             if (error) {
                 *error =
                     QStringLiteral("A Windows storage job did not finish within %1 seconds.").arg(timeoutMs / 1000);
@@ -582,9 +613,14 @@ bool WmiConnection::callMethodAndWait(
     const wchar_t *methodName,
     const QVector<QPair<QString, QVariant>> &inputs,
     int timeoutMs,
-    QString *error) const
+    QString *error,
+    QString *outcome) const
 {
     const WmiCallResult result = callMethod(className, objectPath, methodName, inputs);
+    if (outcome) {
+        *outcome = result.returnValue == 0 ? QStringLiteral("completed immediately")
+                                           : QStringLiteral("returned %1").arg(result.returnValue);
+    }
     if (!result.accepted()) {
         if (error) {
             const QString method = QStringLiteral("%1.%2").arg(className, QString::fromWCharArray(methodName));
@@ -602,7 +638,7 @@ bool WmiConnection::callMethodAndWait(
         return false;
     }
 
-    return result.returnValue == 0 || waitForJob(result.jobPath, timeoutMs, error);
+    return result.returnValue == 0 || waitForJob(result.jobPath, timeoutMs, error, outcome);
 }
 
 void WmiConnection::setError(HRESULT result, const QString &context) const

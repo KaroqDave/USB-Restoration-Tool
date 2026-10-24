@@ -60,8 +60,13 @@ struct WmiCallResult {
     bool accepted() const { return returnValue == 0 || returnValue == WmiMethodStartedJob; }
 };
 
+// `outcome` describes what the job did, success or not, for the restore log.
 bool waitForStorageJob(
-    const QString &jobPath, const std::function<WmiObject(QString *)> &readJob, int timeoutMs, QString *error);
+    const QString &jobPath,
+    const std::function<WmiObject(QString *)> &readJob,
+    int timeoutMs,
+    QString *error,
+    QString *outcome = nullptr);
 
 class WmiConnection {
   public:
@@ -90,9 +95,10 @@ class WmiConnection {
         const wchar_t *methodName,
         const QVector<QPair<QString, QVariant>> &inputs,
         int timeoutMs,
-        QString *error) const;
+        QString *error,
+        QString *outcome = nullptr) const;
 
-    bool waitForJob(const QString &jobPath, int timeoutMs, QString *error) const;
+    bool waitForJob(const QString &jobPath, int timeoutMs, QString *error, QString *outcome = nullptr) const;
 
   private:
     void setError(HRESULT result, const QString &context) const;

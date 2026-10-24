@@ -187,7 +187,7 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshMetadata, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error)) {
+    if (!volumes.refreshDisk(disk.number, error, &reporter)) {
         return false;
     }
 
@@ -215,7 +215,7 @@ bool WindowsDiskService::restore(
     reportPlannedStep(
         steps, reporter, RestoreStep::DeletePartitions, QStringLiteral("Deleting existing partition records"));
     bool partitionAtDiskStart = false;
-    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, error)) {
+    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, error, &reporter)) {
         return false;
     }
     if (partitionAtDiskStart) {
@@ -288,7 +288,8 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshNewVolume, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error) || !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
+    if (!volumes.refreshDisk(disk.number, error, &reporter) ||
+        !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
         return false;
     }
 
@@ -313,7 +314,14 @@ bool WindowsDiskService::restore(
         return false;
     }
     if (!volumes.formatVolume(
-            volumeName, driveRoot, disk.number, request.fileSystem, allocationUnitSize, request.volumeLabel, error)) {
+            volumeName,
+            driveRoot,
+            disk.number,
+            request.fileSystem,
+            allocationUnitSize,
+            request.volumeLabel,
+            error,
+            &reporter)) {
         return false;
     }
 
