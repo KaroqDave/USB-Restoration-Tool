@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 
 using namespace usbrestore;
 
@@ -101,7 +102,8 @@ class LinuxTests : public QObject {
         LoopDevice loop;
         QString error;
         QVERIFY(!loop.configure(-1, MiB, MiB, 512, &error));
-        QVERIFY(!error.isEmpty());
+        QVERIFY(error.contains(QStringLiteral("Try the restore again")));
+        QVERIFY(error.endsWith(QStringLiteral(".")));
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         QFile file(dir.filePath(QStringLiteral("image")));
@@ -109,6 +111,47 @@ class LinuxTests : public QObject {
         QVERIFY(file.resize(MiB));
         QVERIFY(!loop.configure(file.handle(), MiB, MiB, 512, &error));
         QVERIFY(error.contains(QStringLiteral("outside")));
+    }
+
+    // The errno a syscall reports is not what the person holding the drive needs.
+    void explainsDeviceFailuresInPlainLanguage()
+    {
+        const QString busy = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), EBUSY);
+        QVERIFY(busy.contains(QStringLiteral("Could not open /dev/sdb")));
+        QVERIFY(busy.contains(QStringLiteral("another program still has it open")));
+        QVERIFY(busy.contains(QStringLiteral("unmount")));
+
+        const QString denied = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), EACCES);
+        QVERIFY(denied.contains(QStringLiteral("permission")));
+
+        const QString gone = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), ENXIO);
+        QVERIFY(gone.contains(QStringLiteral("no longer there")));
+        QVERIFY(gone.contains(QStringLiteral("plug it back in")));
+
+        // Anything not mapped above still reports strerror() so no cause is hidden.
+        const QString other = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), ETIMEDOUT);
+        QVERIFY(other.contains(QString::fromLocal8Bit(std::strerror(ETIMEDOUT))));
+    }
+
+    // Loop mapping failures belong to the kernel loop driver, not the USB stick.
+    void explainsLoopFailuresInPlainLanguage()
+    {
+        const QString noLoop = loopErrorText(
+            QStringLiteral("Could not reach the Linux loop driver at /dev/loop-control, which formatting needs"),
+            ENODEV,
+            QStringLiteral(
+                "Make sure the loop module is loaded (modprobe loop) and run the tool with permission to "
+                "write to the drive"));
+        QVERIFY(noLoop.contains(QStringLiteral("loop driver is not available")));
+        QVERIFY(noLoop.endsWith(QStringLiteral(".")));
+        QVERIFY(!noLoop.contains(QStringLiteral("drive is no longer there")));
+
+        const QString busyLoop = loopErrorText(
+            QStringLiteral("Could not claim a free loop device for the new volume"),
+            EBUSY,
+            QStringLiteral("Close any disk tools that already have a loop device open, then try again"));
+        QVERIFY(busyLoop.contains(QStringLiteral("loop driver is busy")));
+        QVERIFY(busyLoop.endsWith(QStringLiteral(".")));
     }
 
     // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.

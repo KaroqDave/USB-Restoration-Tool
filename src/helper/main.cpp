@@ -184,7 +184,11 @@ int main(int argc, char *argv[])
         if (reporter.cancelRequested() && error.isEmpty()) {
             return usbrestore::RestoreExitCancelled;
         }
-        writeError(error.isEmpty() ? QStringLiteral("The restore failed.") : error);
+        writeError(
+            error.isEmpty() ? QStringLiteral(
+                                  "The restore stopped. Unplug the drive, plug it back in and try "
+                                  "again.")
+                            : error);
         return usbrestore::RestoreExitFailed;
     }
 

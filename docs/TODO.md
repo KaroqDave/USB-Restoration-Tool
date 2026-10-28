@@ -6,6 +6,18 @@ No open tasks.
 
 ## Recently completed
 
+- 2026-10-28: Linux restore errors now name the drive, the operation and the next
+  step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`
+  maps `EBUSY`, `EACCES`/`EPERM`, `EIO`, `ENXIO`/`ENODEV` and `ENOSPC`, and is used by
+  `BlockDevice` and `linux_restore.cpp`. `LoopDevice` uses `loopErrorText()` in
+  `src/linux/loop_device.*` so loop-control and mapping failures are described as loop
+  driver problems; `EIO` is described as a drive write failure because the I/O error
+  usually comes from the drive underneath the mapping.
+  `explainsDeviceFailuresInPlainLanguage` and `explainsLoopFailuresInPlainLanguage` pin
+  the wording. Linux build, core tests (156) and the non-root Linux tests pass; the
+  loop-image tests were skipped here because they need root and
+  `USBRESTORE_TEST_LOOP=1`. No physical-drive restore was performed.
+
 - 2026-10-24: Published 1.7.2 as the latest stable release after all five release
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and
   both checksum files against GitHub's asset digests, both Linux checksums, all
