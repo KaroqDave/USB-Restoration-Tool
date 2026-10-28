@@ -433,6 +433,20 @@ class CoreTests : public QObject {
         QVERIFY(largeRestoreTargetWarning(large).contains(QStringLiteral("Large USB disk")));
     }
 
+    // The threshold is inclusive, so a 128 GiB stick is warned about and one byte smaller is not.
+    void treatsTheLargeTargetThresholdAsInclusive()
+    {
+        DiskInfo atThreshold = healthyUsbDisk();
+        atThreshold.size = LargeRestoreTargetBytes;
+        QVERIFY(isLargeRestoreTarget(atThreshold));
+        QVERIFY(!largeRestoreTargetWarning(atThreshold).isEmpty());
+
+        DiskInfo justBelow = healthyUsbDisk();
+        justBelow.size = LargeRestoreTargetBytes - 1ull;
+        QVERIFY(!isLargeRestoreTarget(justBelow));
+        QVERIFY(largeRestoreTargetWarning(justBelow).isEmpty());
+    }
+
     // 1 MiB boundaries are what other partitioners produce and `sgdisk -v` expects.
     void calculatesAlignedGptLayout()
     {
