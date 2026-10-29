@@ -477,7 +477,7 @@ bool performLinuxRestore(
     RestoreStepCounter steps(linuxRestorePlan());
     reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
-    if (!refreshUsbDisk(disk.deviceId, &currentDisk, error)) {
+    if (!refreshUsbDisk(disk.deviceId, &currentDisk, error, DiskDetails::Restore)) {
         return false;
     }
     if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {

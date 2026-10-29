@@ -264,15 +264,24 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
 bool RawDisk::lock(QString *error)
 {
     DWORD unused = 0;
+    DWORD code = ERROR_SUCCESS;
     for (int attempt = 0; attempt < 10; ++attempt) {
         if (DeviceIoControl(m_handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
             m_locked = true;
             return true;
         }
-        Sleep(500);
+        code = GetLastError();
+        // Physical-drive handles can reject this volume-only control permanently.
+        if (code != ERROR_ACCESS_DENIED && code != ERROR_SHARING_VIOLATION && code != ERROR_LOCK_VIOLATION &&
+            code != ERROR_BUSY) {
+            break;
+        }
+        if (attempt < 9) {
+            Sleep(500);
+        }
     }
     if (error) {
-        *error = lastError(QStringLiteral("lock the drive"));
+        *error = windowsDeviceErrorText(QStringLiteral("Could not lock the drive on disk %1").arg(m_diskNumber), code);
     }
     return false;
 }

@@ -152,12 +152,11 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    VolumeManager volumes;
     RestoreStepCounter steps(windowsRestorePlan());
 
     reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
-    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, &reason)) {
+    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, &reason, DiskDetails::Restore)) {
         return failOperation(QStringLiteral("verify the selected drive"), reason);
     }
     if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
@@ -194,6 +193,7 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshMetadata, QStringLiteral("Refreshing Windows disk metadata"));
+    VolumeManager volumes;
     if (!volumes.refreshDisk(disk.number, &reason, &reporter)) {
         return failOperation(QStringLiteral("refresh Windows disk metadata"), reason);
     }

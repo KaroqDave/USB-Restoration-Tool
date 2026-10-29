@@ -16,8 +16,6 @@ namespace usbrestore {
 
 namespace {
 
-constexpr auto StorageNamespace = L"ROOT\\Microsoft\\Windows\\Storage";
-
 constexpr int RefreshJobTimeoutMs = 60 * 1000;
 constexpr int DeleteJobTimeoutMs = 120 * 1000;
 constexpr int FormatJobTimeoutMs = 15 * 60 * 1000;
@@ -125,26 +123,25 @@ void noteStorageCall(RestoreReporter *reporter, const QString &call, const QStri
 
 bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error, RestoreReporter *reporter) const
 {
-    WmiConnection storage(StorageNamespace);
-    if (!storage.isValid()) {
+    if (!m_storage.isValid()) {
         if (error) {
-            *error = storage.lastError();
+            *error = m_storage.lastError();
         }
         return false;
     }
 
-    const auto disks = storage.query(
+    const auto disks = m_storage.query(
         QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (disks.isEmpty()) {
         if (error) {
-            const QString detail = storage.lastError();
+            const QString detail = m_storage.lastError();
             *error = detail.isEmpty() ? QStringLiteral("Windows did not report USB disk %1.").arg(diskNumber) : detail;
         }
         return false;
     }
 
     QString outcome;
-    const bool refreshed = storage.callMethodAndWait(
+    const bool refreshed = m_storage.callMethodAndWait(
         QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error, &outcome);
     noteStorageCall(reporter, QStringLiteral("MSFT_Disk.Refresh"), outcome);
     return refreshed;
@@ -156,20 +153,19 @@ bool VolumeManager::deletePartitionsForDisk(
     if (partitionAtDiskStart) {
         *partitionAtDiskStart = false;
     }
-    WmiConnection storage(StorageNamespace);
-    if (!storage.isValid()) {
+    if (!m_storage.isValid()) {
         if (error) {
-            *error = storage.lastError();
+            *error = m_storage.lastError();
         }
         return false;
     }
 
     const auto partitions =
-        storage.query(QStringLiteral("SELECT * FROM MSFT_Partition WHERE DiskNumber = %1").arg(diskNumber));
+        m_storage.query(QStringLiteral("SELECT * FROM MSFT_Partition WHERE DiskNumber = %1").arg(diskNumber));
     if (partitions.isEmpty()) {
-        if (!storage.lastError().isEmpty()) {
+        if (!m_storage.lastError().isEmpty()) {
             if (error) {
-                *error = storage.lastError();
+                *error = m_storage.lastError();
             }
             return false;
         }
@@ -186,7 +182,7 @@ bool VolumeManager::deletePartitionsForDisk(
             continue;
         }
         QString outcome;
-        const bool deleted = storage.callMethodAndWait(
+        const bool deleted = m_storage.callMethodAndWait(
             QStringLiteral("MSFT_Partition"),
             partition.objectPath(),
             L"DeleteObject",
@@ -554,10 +550,9 @@ bool VolumeManager::formatVolume(
         return false;
     }
 
-    WmiConnection storage(StorageNamespace);
-    if (!storage.isValid()) {
+    if (!m_storage.isValid()) {
         if (error) {
-            *error = storage.lastError();
+            *error = m_storage.lastError();
         }
         return false;
     }
@@ -568,9 +563,9 @@ bool VolumeManager::formatVolume(
     QElapsedTimer timer;
     timer.start();
     while (!targetVolume.isValid() && timer.elapsed() < 30 * 1000) {
-        const auto volumes = storage.query(QStringLiteral("SELECT * FROM MSFT_Volume"));
-        if (!storage.lastError().isEmpty()) {
-            queryError = storage.lastError();
+        const auto volumes = m_storage.query(QStringLiteral("SELECT * FROM MSFT_Volume"));
+        if (!m_storage.lastError().isEmpty()) {
+            queryError = m_storage.lastError();
         }
 
         for (const WmiObject &volume : volumes) {
@@ -605,7 +600,7 @@ bool VolumeManager::formatVolume(
         inputs.append({QStringLiteral("AllocationUnitSize"), allocationUnitSize});
     }
     QString outcome;
-    const bool formatted = storage.callMethodAndWait(
+    const bool formatted = m_storage.callMethodAndWait(
         QStringLiteral("MSFT_Volume"),
         targetVolume.objectPath(),
         L"Format",

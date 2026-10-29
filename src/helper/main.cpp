@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
     const usbrestore::RestoreGuard guard = usbrestore::linuxRestoreGuard();
 
     usbrestore::DiskInfo disk;
-    if (!usbrestore::refreshUsbDisk(parsed.expected.deviceId, &disk, &error)) {
+    if (!usbrestore::refreshUsbDisk(parsed.expected.deviceId, &disk, &error, usbrestore::DiskDetails::Restore)) {
         writeError(error);
         return usbrestore::RestoreExitFailed;
     }

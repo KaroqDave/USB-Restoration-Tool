@@ -44,7 +44,7 @@ QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error) const
     return disks;
 }
 
-bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *error) const
+bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *error, DiskDetails details) const
 {
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
@@ -70,12 +70,12 @@ bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *e
     }
 
     if (disk) {
-        *disk = diskInfoFromObject(objects.first());
+        *disk = diskInfoFromObject(objects.first(), details);
     }
     return true;
 }
 
-DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object) const
+DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object, DiskDetails details) const
 {
     DiskInfo disk;
     disk.number = object.uintValue(L"Number");
@@ -96,7 +96,9 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object) const
     disk.isReadOnly = object.boolValue(L"IsReadOnly");
     disk.isOffline = object.boolValue(L"IsOffline");
     disk.mountPoints = driveLettersForDisk(disk.number);
-    volumeInfoForLetters(disk.mountPoints, &disk.labels, &disk.fileSystems);
+    if (details == DiskDetails::Display) {
+        volumeInfoForLetters(disk.mountPoints, &disk.labels, &disk.fileSystems);
+    }
     return disk;
 }
 

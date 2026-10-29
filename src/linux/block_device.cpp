@@ -27,7 +27,8 @@ namespace usbrestore {
 
 namespace {
 
-constexpr std::uint64_t WriteChunkBytes = 1024ull * 1024ull;
+// O_SYNC flushes each write, so clearing a 4 MiB signature area should take one request.
+constexpr std::uint64_t WriteChunkBytes = 4ull * 1024ull * 1024ull;
 
 } // namespace
 
@@ -224,7 +225,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error)
     }
 
     // Also compares the sequence, so with the handle's checked above, sysfs names the disk this handle holds.
-    return isSameRestoreTarget(expected, diskInfoFor(diskName), error);
+    return isSameRestoreTarget(expected, diskInfoFor(diskName, DiskDetails::Restore), error);
 }
 
 bool BlockDevice::diskSequence(std::uint64_t *sequence) const
@@ -346,7 +347,7 @@ bool BlockDevice::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 
 
     // A 4Kn disk rejects any raw write that is not a sector multiple.
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
-    const auto chunk = static_cast<int>((WriteChunkBytes / sector) * sector);
+    const auto chunk = static_cast<int>((qMin(WriteChunkBytes, bytes) / sector) * sector);
     const QByteArray zeros(chunk > 0 ? chunk : static_cast<int>(sector), '\0');
 
     std::uint64_t remaining = bytes;

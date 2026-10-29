@@ -97,6 +97,11 @@ They never enumerate or restore physical disks.
 The platform restore sequences have no automated hardware coverage. Use only
 disposable media for manual restore checks. A per-device test log is not required.
 
+The application log records setup time, each numbered restore step and the total
+attempt time in milliseconds, including failed or cancelled attempts. Use these
+to identify slow stages when checking performance on disposable media. Helper
+setup includes the time spent approving the authentication prompt.
+
 ## Install and package
 
 For an installed Linux build, configure the final prefix before building:

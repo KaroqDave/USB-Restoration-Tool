@@ -3,6 +3,7 @@
 #include "win/raw_disk.h"
 #include "win/windows_util.h"
 
+#include <QElapsedTimer>
 #include <QtTest/QtTest>
 
 #include <limits>
@@ -206,6 +207,19 @@ class WmiTests : public QObject {
         QVERIFY(!disk.verifyIdentity(DiskInfo(), &error));
         QVERIFY(error.contains(QStringLiteral("verify disk 7")));
         QVERIFY(error.contains(QStringLiteral("Run the restore again")));
+    }
+
+    void doesNotRetryPermanentPhysicalDriveLockErrors()
+    {
+        RawDisk disk(7);
+        QString error;
+        QElapsedTimer timer;
+        timer.start();
+        QVERIFY(!disk.lock(&error));
+        // An invalid handle used to consume all ten 500 ms waits, like an unsupported control.
+        QVERIFY2(timer.elapsed() < 1000, "A permanent lock error must return without the retry delay.");
+        QVERIFY(error.contains(windowsErrorMessage(ERROR_INVALID_HANDLE)));
+        QVERIFY(error.contains(QStringLiteral("disk 7")));
     }
 
     void refusesQueuedOperationWithoutJobPath()

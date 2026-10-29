@@ -31,6 +31,12 @@ enum class HealthStatus : quint16 {
     Unhealthy = 2,
 };
 
+// Both read fresh identity, state and mount points; restore checks need no filesystem display details.
+enum class DiskDetails {
+    Display,
+    Restore,
+};
+
 struct DiskInfo {
     // "\\.\PhysicalDrive2" or "/dev/sdb": the disk's identity; every other field
     // is only corroboration.

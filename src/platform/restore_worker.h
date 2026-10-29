@@ -3,6 +3,7 @@
 #include "platform/disk_service.h"
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <QString>
 
 #include <atomic>
@@ -35,10 +36,13 @@ class RestoreWorker : public QObject, private RestoreReporter {
     void step(const QString &message) override;
     void detail(const QString &message) override;
     bool cancelRequested() const override;
+    void logStepDuration();
 
     DiskService &m_service;
     RestoreRequest m_request;
     int m_step = 0;
+    QElapsedTimer m_elapsed;
+    qint64 m_stepStartedMs = 0;
     std::atomic_bool m_cancelRequested{false};
 };
 

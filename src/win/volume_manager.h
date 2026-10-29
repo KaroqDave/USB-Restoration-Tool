@@ -2,6 +2,7 @@
 
 #include "core/disk.h"
 #include "platform/disk_service.h"
+#include "win/wmi.h"
 
 #include <QString>
 #include <QStringList>
@@ -62,6 +63,9 @@ class VolumeManager {
 
   private:
     QString findVolumeNameForDisk(quint32 diskNumber) const;
+
+    // Owned by one restore on its worker thread; queries and job reads still fetch live objects.
+    WmiConnection m_storage;
 };
 
 } // namespace usbrestore

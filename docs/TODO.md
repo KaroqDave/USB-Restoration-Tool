@@ -3,9 +3,25 @@
 ## Next
 
 - Run the Windows Release build and `usb-wmi-tests` for the restore-error wording
-  changes; the current Linux environment cannot build or run the Windows backend.
+  and performance changes; the current Linux environment cannot build or run the
+  Windows backend.
+- Run the privileged Linux loop-image tests, including the restore inspection's
+  mounted-partition check. This environment has no `/dev/loop-control`.
+- Measure restore times on disposable media using the setup and step durations
+  now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-29: Preflight and Linux handle checks skip filesystem display details
+  while still reading fresh identity, state and mount points. Windows storage
+  operations reuse one WMI connection per restore; permanent physical-drive lock
+  errors no longer spend five seconds retrying. Linux signature clearing uses
+  4 MiB chunks, reducing the usual eight synchronous writes to two without
+  changing the cleared range or flushes. The log records setup, step and total
+  durations. Added sector-alignment/range tests, a loop-image mount/identity
+  regression and a Windows lock-delay regression. Linux build, 156 core tests,
+  eight Linux tests and fuzz-corpus replay pass; 29 loop cases skip locally.
+  Windows and privileged loop validation remain above. No physical drive tested.
 
 - 2026-10-29: Windows raw-device errors now name the disk and operation and give
   advice for busy, write-protected, disconnected, not-ready, I/O and capacity
