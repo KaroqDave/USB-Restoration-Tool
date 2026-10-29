@@ -179,6 +179,38 @@ class LinuxTests : public QObject {
         QVERIFY(!failedWrite.contains(QStringLiteral("loop")));
     }
 
+    void reportsFormatterFailuresWithoutDiagnosingDriveDamage()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString tool = dir.filePath(QStringLiteral("mkfs-test"));
+        const QString partitionPath = dir.filePath(QStringLiteral("volume"));
+        const QString diagnostic = QStringLiteral("Unsupported feature in formatter configuration");
+        Reporter reporter;
+
+        for (const bool withOutput : {true, false}) {
+            QFile script(tool);
+            QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QByteArray contents = "#!/bin/sh\n";
+            if (withOutput) {
+                contents += "printf '%s\\n' '" + diagnostic.toUtf8() + "' >&2\n";
+            }
+            contents += "exit 1\n";
+            QCOMPARE(script.write(contents), contents.size());
+            script.close();
+            QVERIFY(script.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+
+            QString error;
+            QVERIFY(!formatLinuxPartition(
+                FileSystemType::ExFat, tool, partitionPath, QStringLiteral("USB"), 2048, reporter, &error));
+            QVERIFY2(error.contains(QStringLiteral("mkfs-test failed to format")), qPrintable(error));
+            QVERIFY2(error.contains(partitionPath), qPrintable(error));
+            QCOMPARE(error.contains(diagnostic), withOutput);
+            QVERIFY2(error.contains(QStringLiteral("run the restore again")), qPrintable(error));
+            QVERIFY2(!error.contains(QStringLiteral("damaged")), qPrintable(error));
+        }
+    }
+
     // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.
     void skipsLoopNodeClaimedElsewhere()
     {

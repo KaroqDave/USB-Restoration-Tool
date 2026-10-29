@@ -8,6 +8,10 @@
 
 ## Recently completed
 
+- 2026-10-29: Formatter failures keep their diagnostic output and neutral retry
+  advice without claiming the drive is damaged. A non-root regression test covers
+  failures with configuration-error output and with no output.
+
 - 2026-10-28: Linux restore errors now name the drive, the operation and the next
   step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`
   maps `EBUSY`, `EACCES`/`EPERM`, `EIO`, `ENXIO`/`ENODEV` and `ENOSPC`, and is used by

@@ -292,11 +292,11 @@ bool formatLinuxPartition(
         *error = lastOutput.isEmpty()
                      ? QStringLiteral(
                            "%1 failed to format the new volume on %2. Unplug the drive, plug it back in "
-                           "and run the restore again; if it keeps failing the drive is damaged.")
+                           "and run the restore again.")
                            .arg(QFileInfo(tool).fileName(), partitionPath)
                      : QStringLiteral(
                            "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug it back in and "
-                           "run the restore again; if it keeps failing the drive is damaged.")
+                           "run the restore again.")
                            .arg(QFileInfo(tool).fileName(), partitionPath, lastOutput);
     }
     return false;
