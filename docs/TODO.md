@@ -8,10 +8,6 @@
 
 ## Recently completed
 
-- 2026-10-29: Formatter failures keep their diagnostic output and neutral retry
-  advice without claiming the drive is damaged. A non-root regression test covers
-  failures with configuration-error output and with no output.
-
 - 2026-10-28: Linux restore errors now name the drive, the operation and the next
   step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`
   maps `EBUSY`, `EACCES`/`EPERM`, `EIO`, `ENXIO`/`ENODEV` and `ENOSPC`, and is used by
@@ -23,9 +19,12 @@
   the wording. Every device message gives the errno, then the next step, as a full
   sentence. `EPERM`, `EACCES` and `EROFS` point to a write-protect switch or a drive
   that made itself read-only, since the kernel refuses writes to a read-only disk with
-  `EPERM`; `ENOSPC` warns that the drive may be smaller than it claims. Linux build,
-  core tests (156) and the non-root Linux tests pass locally. PR #10 CI passes on all
-  four jobs; the Debian and sanitizer jobs each ran 32 Linux tests with none skipped.
+  `EPERM`; `ENOSPC` warns that the drive may be smaller than it claims. Formatter
+  failures keep mkfs's output and advise a retry without calling the drive damaged,
+  since mkfs also fails for reasons of its own; `reportsFormatterFailuresWithoutDiagnosingDriveDamage`
+  runs a failing stand-in formatter with and without output. Linux build, core tests
+  (156) and the non-root Linux tests pass locally. PR #10 CI passes on all four jobs;
+  the Debian and sanitizer jobs each ran 33 Linux tests with none skipped.
   No physical-drive restore was performed, and a drive turning read-only part way
   through cannot be reproduced on a loop device.
 

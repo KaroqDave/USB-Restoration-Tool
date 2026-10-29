@@ -179,6 +179,7 @@ class LinuxTests : public QObject {
         QVERIFY(!failedWrite.contains(QStringLiteral("loop")));
     }
 
+    // mkfs fails for its own reasons too, so its failure says nothing about the drive.
     void reportsFormatterFailuresWithoutDiagnosingDriveDamage()
     {
         QTemporaryDir dir;
