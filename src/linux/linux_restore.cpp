@@ -73,13 +73,6 @@ QString partitionNameFor(const QString &diskName, int index)
     return QStringLiteral("%1%2%3").arg(diskName, needsSeparator ? QStringLiteral("p") : QString()).arg(index);
 }
 
-QString describeErrno(const QString &context, int errorNumber)
-{
-    return QStringLiteral("%1: %2 (errno %3)")
-        .arg(context, QString::fromLocal8Bit(std::strerror(errorNumber)))
-        .arg(errorNumber);
-}
-
 bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error)
 {
     const QString diskName = QFileInfo(disk.deviceId).fileName();
@@ -110,7 +103,9 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
         // The guard ran against a snapshot; ask again of the live mount table.
         if (isProtectedMountPoint(mount.mountPoint, protectedSystemMounts())) {
             if (error) {
-                *error = QStringLiteral("%1 is mounted at %2, which the running system depends on.")
+                *error = QStringLiteral(
+                             "%1 is mounted at %2, which the running system needs. Pick a different "
+                             "drive.")
                              .arg(disk.deviceId, mount.mountPoint);
             }
             return false;
@@ -124,11 +119,7 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
                 continue;
             }
             if (error) {
-                *error = describeErrno(
-                    QStringLiteral("Could not unmount %1. Close anything using the drive and try "
-                                   "again")
-                        .arg(mount.mountPoint),
-                    errorNumber);
+                *error = deviceErrorText(QStringLiteral("Could not unmount %1").arg(mount.mountPoint), errorNumber);
             }
             return false;
         }
@@ -249,7 +240,10 @@ bool formatLinuxPartition(
         process.start();
         if (!process.waitForStarted(10 * 1000)) {
             if (error) {
-                *error = QStringLiteral("Could not run %1.").arg(tool);
+                *error = QStringLiteral(
+                             "Could not run %1, the tool that formats the drive. Check that it is still "
+                             "installed and that the system allows it to run, then try again.")
+                             .arg(QFileInfo(tool).fileName());
             }
             return false;
         }
@@ -257,7 +251,10 @@ bool formatLinuxPartition(
             process.kill();
             process.waitForFinished(5 * 1000);
             if (error) {
-                *error = QStringLiteral("%1 did not finish within 15 minutes.").arg(tool);
+                *error = QStringLiteral(
+                             "%1 did not finish formatting after 15 minutes and was stopped. The drive may be partly "
+                             "formatted: unplug it, plug it back in and run the restore again.")
+                             .arg(QFileInfo(tool).fileName());
             }
             return false;
         }
@@ -293,8 +290,14 @@ bool formatLinuxPartition(
 
     if (error) {
         *error = lastOutput.isEmpty()
-                     ? QStringLiteral("%1 failed to format %2.").arg(tool, partitionPath)
-                     : QStringLiteral("%1 failed to format %2: %3").arg(tool, partitionPath, lastOutput);
+                     ? QStringLiteral(
+                           "%1 failed to format the new volume on %2. Unplug the drive, plug it back in "
+                           "and run the restore again.")
+                           .arg(QFileInfo(tool).fileName(), partitionPath)
+                     : QStringLiteral(
+                           "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug it back in and "
+                           "run the restore again.")
+                           .arg(QFileInfo(tool).fileName(), partitionPath, lastOutput);
     }
     return false;
 }
@@ -317,8 +320,9 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
             tool = findSystemTool(QStringLiteral("mkexfatfs"));
         }
         if (tool.isEmpty()) {
-            return missing(QStringLiteral("mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
-                                          "\"exfatprogs\", Arch: \"exfatprogs\") and try again."));
+            return missing(QStringLiteral(
+                "mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
+                "\"exfatprogs\", Arch: \"exfatprogs\") and try again."));
         }
         return tool;
     }
@@ -338,8 +342,9 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error)
             tool = findSystemTool(QStringLiteral("mkntfs"));
         }
         if (tool.isEmpty()) {
-            return missing(QStringLiteral("mkfs.ntfs was not found. Install ntfs-3g (Debian/Ubuntu: \"ntfs-3g\", "
-                                          "Fedora: \"ntfsprogs\", Arch: \"ntfs-3g\") and try again."));
+            return missing(QStringLiteral(
+                "mkfs.ntfs was not found. Install ntfs-3g (Debian/Ubuntu: \"ntfs-3g\", "
+                "Fedora: \"ntfsprogs\", Arch: \"ntfs-3g\") and try again."));
         }
         return tool;
     }
@@ -380,14 +385,16 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
                 QStringLiteral("A disk with %1-byte sectors cannot be formatted as FAT32.").arg(disk.sectorSize));
         }
         if (length > maximum) {
-            return refuse(QStringLiteral("FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
-                                         "the rest of the drive would be left unused. Choose exFAT or NTFS.")
+            return refuse(QStringLiteral(
+                              "FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
+                              "the rest of the drive would be left unused. Choose exFAT or NTFS.")
                               .arg(QLocale().formattedDataSize(static_cast<qint64>(maximum)))
                               .arg(disk.sectorSize));
         }
         if (length < minimum) {
-            return refuse(QStringLiteral("This drive is too small for a valid FAT32 filesystem; it needs at least "
-                                         "%1. Choose exFAT.")
+            return refuse(QStringLiteral(
+                              "This drive is too small for a valid FAT32 filesystem; it needs at least "
+                              "%1. Choose exFAT.")
                               .arg(QLocale().formattedDataSize(static_cast<qint64>(minimum))));
         }
         return true;
@@ -439,8 +446,9 @@ bool formatAndRereadPartitionTable(
     // The instance the kernel just scanned the new table on; a media change earlier must not fail the restore.
     if (!device.diskSequence(diskSequence)) {
         if (error) {
-            *error = QStringLiteral("Cannot confirm the instance of %1 after re-reading its partition table. Unplug "
-                                    "the drive, plug it back in and check that it shows one new partition.")
+            *error = QStringLiteral(
+                         "The drive %1 was formatted, but it could not be re-identified afterwards. "
+                         "Unplug it, plug it back in and check that it shows one new partition.")
                          .arg(request.disk.deviceId);
         }
         return false;
@@ -515,7 +523,9 @@ bool performLinuxRestore(
     bool opened = false;
     for (int attempt = 0; attempt < 3 && !opened; ++attempt) {
         if (attempt > 0) {
-            reporter.detail(QStringLiteral("Device was busy; unmounting again and retrying the exclusive open"));
+            reporter.detail(
+                QStringLiteral("The drive is still in use; unmounting it and trying again (attempt %1 of 3)")
+                    .arg(attempt + 1));
             if (!unmountDisk(disk, reporter, error)) {
                 return false;
             }
@@ -575,7 +585,11 @@ bool performLinuxRestore(
     const std::uint64_t clearBytes = (qMin(SignatureClearBytes, disk.size / 4) / sector) * sector;
     if (clearBytes < sector) {
         if (error) {
-            *error = QStringLiteral("The disk is too small to clear safely.");
+            *error =
+                QStringLiteral(
+                    "%1 reports too little space to clear its old partition signatures. Unplug the drive, plug it back "
+                    "in and select it again; if it still reports a tiny size, the drive is damaged.")
+                    .arg(disk.deviceId);
         }
         return false;
     }
@@ -636,8 +650,10 @@ bool performLinuxRestore(
     }
     if (!QFileInfo::exists(partitionPath)) {
         if (error) {
-            *error = QStringLiteral("The kernel did not publish %1 within %2 seconds.")
-                         .arg(partitionPath)
+            *error = QStringLiteral(
+                         "The new partition did not appear on %1 within %2 seconds. Unplug the drive, "
+                         "plug it back in and run the restore again.")
+                         .arg(disk.deviceId)
                          .arg(NewPartitionTimeoutMs / 1000);
         }
         return false;

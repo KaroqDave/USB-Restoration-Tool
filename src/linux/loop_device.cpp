@@ -14,14 +14,50 @@
 
 namespace usbrestore {
 
-namespace {
-bool loopError(QString *error, const QString &operation)
+// A loop-control or mapping failure is a kernel loop-driver problem, not a USB
+// stick problem, except EIO, which comes from the drive underneath. The caller supplies
+// the action, without a final full stop.
+QString loopErrorText(const QString &operation, int errorNumber, const QString &advice)
 {
-    const int code = errno;
+    QString reason;
+    switch (errorNumber) {
+    case EBUSY:
+        reason = QStringLiteral("the loop driver is busy with another mapping");
+        break;
+    case EACCES:
+    case EPERM:
+        reason = QStringLiteral("the system refused access to the loop driver");
+        break;
+    case ENODEV:
+        reason = QStringLiteral("the loop driver is not available");
+        break;
+    case ENXIO:
+        reason = QStringLiteral("the loop device went away");
+        break;
+    case EINVAL:
+        reason = QStringLiteral("the loop mapping was rejected");
+        break;
+    case EIO:
+        reason = QStringLiteral("the drive failed while writing");
+        break;
+    case ENOSPC:
+        reason = QStringLiteral("the loop mapping ran out of room");
+        break;
+    default:
+        reason = QString::fromLocal8Bit(std::strerror(errorNumber));
+        break;
+    }
+
+    return QStringLiteral("%1: %2 (errno %3). %4.").arg(operation, reason).arg(errorNumber).arg(advice);
+}
+
+namespace {
+// The loop device is an internal detail; say what it was being used for and what
+// the user can do about it, rather than naming a loop node as if it were the drive.
+bool loopError(QString *error, const QString &operation, const QString &advice)
+{
     if (error) {
-        *error = QStringLiteral("%1: %2 (errno %3). Check that the Linux loop driver is available and try again.")
-                     .arg(operation, QString::fromLocal8Bit(std::strerror(code)))
-                     .arg(code);
+        *error = loopErrorText(operation, errno, advice);
     }
     return false;
 }
@@ -37,32 +73,44 @@ bool LoopDevice::configure(
 {
     if (m_fd >= 0 || m_claimFd >= 0) {
         if (error) {
-            *error = QStringLiteral("The formatter mapping is already in use.");
+            *error = QStringLiteral(
+                "A formatting area is already set up for this drive. Unplug the drive, plug it "
+                "back in and try again.");
         }
         return false;
     }
     struct stat status = {};
     if (::fstat(backingDescriptor, &status) != 0) {
-        return loopError(error, QStringLiteral("Could not inspect the formatter's backing file"));
+        return loopError(
+            error,
+            QStringLiteral("Could not read the drive through the formatting area"),
+            QStringLiteral("Try the restore again"));
     }
     std::uint64_t size = 0;
     if (S_ISREG(status.st_mode)) {
         size = static_cast<std::uint64_t>(status.st_size);
     } else if (!S_ISBLK(status.st_mode) || ::ioctl(backingDescriptor, BLKGETSIZE64, &size) != 0) {
         if (error) {
-            *error = QStringLiteral("The formatter backing must be a readable disk or image file.");
+            *error = QStringLiteral(
+                "The drive could not be read for formatting. Unplug it, plug it back in and try "
+                "again.");
         }
         return false;
     }
     if (!isValidDeviceRange(size, offset, length, sectorSize)) {
         if (error) {
-            *error = QStringLiteral("The formatter mapping is outside the disk or is not sector-aligned.");
+            *error = QStringLiteral(
+                "The space set aside for the new volume is outside the drive or is not aligned to "
+                "its sectors. Refresh the list and select the drive again.");
         }
         return false;
     }
     const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);
     if (control < 0) {
-        return loopError(error, QStringLiteral("Could not open /dev/loop-control"));
+        return loopError(
+            error,
+            QStringLiteral("Could not reach the Linux loop driver at /dev/loop-control, which formatting needs"),
+            QStringLiteral("Make sure the loop module is loaded (modprobe loop) and try again"));
     }
     bool busy = false;
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -113,14 +161,20 @@ bool LoopDevice::configure(
     ::close(control);
     m_path.clear();
     errno = code;
-    return loopError(error, QStringLiteral("Could not create a pinned formatter mapping"));
+    return loopError(
+        error,
+        QStringLiteral("Could not set up the temporary area used to format the drive"),
+        QStringLiteral("Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again"));
 }
 
 bool LoopDevice::prepareForFormatting(QString *error)
 {
     // The raw writer changed the backing sectors after this mapping was created.
     if (m_fd < 0 || ::ioctl(m_fd, BLKFLSBUF, 0) != 0) {
-        return loopError(error, QStringLiteral("Could not invalidate the formatter mapping's cache"));
+        return loopError(
+            error,
+            QStringLiteral("Could not make the new partition available to the formatter"),
+            QStringLiteral("Unplug the drive, plug it back in and try again"));
     }
     releaseClaim();
     return true;
@@ -142,11 +196,19 @@ bool LoopDevice::detach(QString *error)
     }
     bool ok = true;
     if (::fsync(m_fd) != 0) {
-        ok = loopError(error, QStringLiteral("Could not flush the formatted volume"));
+        ok = loopError(
+            error,
+            QStringLiteral("Could not finish writing the new volume to the drive"),
+            QStringLiteral(
+                "Unplug the drive, plug it back in and check whether the volume appears; if it does not, "
+                "run the restore again"));
     }
     releaseClaim();
     if (::ioctl(m_fd, LOOP_CLR_FD, 0) != 0 && ok) {
-        ok = loopError(error, QStringLiteral("Could not release the formatter mapping"));
+        ok = loopError(
+            error,
+            QStringLiteral("The new volume was written, but its temporary formatting area could not be closed"),
+            QStringLiteral("Unplug the drive and plug it back in; this does not damage the drive"));
     }
     ::close(m_fd);
     m_fd = -1;

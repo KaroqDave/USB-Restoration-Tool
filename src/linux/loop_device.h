@@ -5,6 +5,9 @@
 
 namespace usbrestore {
 
+// Exposed so tests can check that loop-mapping errors do not blame the USB drive.
+QString loopErrorText(const QString &operation, int errorNumber, const QString &advice);
+
 // The kernel retains the backing file, so a formatter never reopens the USB pathname.
 class LoopDevice {
   public:

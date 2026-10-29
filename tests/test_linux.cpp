@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 
 using namespace usbrestore;
 
@@ -101,7 +102,8 @@ class LinuxTests : public QObject {
         LoopDevice loop;
         QString error;
         QVERIFY(!loop.configure(-1, MiB, MiB, 512, &error));
-        QVERIFY(!error.isEmpty());
+        QVERIFY(error.contains(QStringLiteral("Try the restore again")));
+        QVERIFY(error.endsWith(QStringLiteral(".")));
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         QFile file(dir.filePath(QStringLiteral("image")));
@@ -109,6 +111,105 @@ class LinuxTests : public QObject {
         QVERIFY(file.resize(MiB));
         QVERIFY(!loop.configure(file.handle(), MiB, MiB, 512, &error));
         QVERIFY(error.contains(QStringLiteral("outside")));
+    }
+
+    // The errno a syscall reports is not what the person holding the drive needs.
+    void explainsDeviceFailuresInPlainLanguage()
+    {
+        const QString busy = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), EBUSY);
+        QVERIFY(busy.startsWith(QStringLiteral("Could not open /dev/sdb: another program still has it open")));
+        QVERIFY(busy.contains(QStringLiteral("unmount every partition")));
+
+        // A worn stick that turns read-only fails writes with EPERM; the advice is not about privileges.
+        for (const int code : {EPERM, EACCES, EROFS}) {
+            const QString readOnly = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), code);
+            QVERIFY(readOnly.contains(QStringLiteral("write-protect switch")));
+            QVERIFY(readOnly.contains(QStringLiteral("read-only")));
+            QVERIFY(!readOnly.contains(QStringLiteral("root")));
+        }
+
+        const QString gone = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), ENXIO);
+        QVERIFY(gone.contains(QStringLiteral("no longer there")));
+        QVERIFY(gone.contains(QStringLiteral("Plug it back in")));
+
+        QVERIFY(deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), ENOSPC)
+                    .contains(QStringLiteral("smaller than it claims")));
+
+        // Anything not mapped above still reports strerror() so no cause is hidden, and still says what to do.
+        const QString other = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), ETIMEDOUT);
+        QVERIFY(other.contains(QString::fromLocal8Bit(std::strerror(ETIMEDOUT))));
+        QVERIFY(other.contains(QStringLiteral("plug it back in")));
+
+        // The errno comes before the advice, and every message ends as a sentence.
+        for (const int code : {EBUSY, EPERM, EACCES, EROFS, EIO, ENXIO, ENODEV, ENOSPC, ETIMEDOUT}) {
+            const QString text = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), code);
+            QVERIFY2(text.contains(QStringLiteral("(errno %1). ").arg(code)), qPrintable(text));
+            QVERIFY2(text.endsWith(QLatin1Char('.')), qPrintable(text));
+        }
+    }
+
+    // Loop mapping failures belong to the kernel loop driver, not the USB stick.
+    void explainsLoopFailuresInPlainLanguage()
+    {
+        const QString noLoop = loopErrorText(
+            QStringLiteral("Could not reach the Linux loop driver at /dev/loop-control, which formatting needs"),
+            ENODEV,
+            QStringLiteral("Make sure the loop module is loaded (modprobe loop) and try again"));
+        QCOMPARE(
+            noLoop,
+            QStringLiteral(
+                "Could not reach the Linux loop driver at /dev/loop-control, which formatting needs: the loop driver "
+                "is not available (errno %1). Make sure the loop module is loaded (modprobe loop) and try again.")
+                .arg(ENODEV));
+
+        const QString busyLoop = loopErrorText(
+            QStringLiteral("Could not set up the temporary area used to format the drive"),
+            EBUSY,
+            QStringLiteral(
+                "Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again"));
+        QVERIFY(busyLoop.contains(QStringLiteral("loop driver is busy")));
+        QVERIFY(!busyLoop.contains(QStringLiteral("another program still has it open")));
+
+        // The write underneath the mapping reached the drive, so EIO is the one case that blames it.
+        const QString failedWrite = loopErrorText(
+            QStringLiteral("Could not finish writing the new volume to the drive"),
+            EIO,
+            QStringLiteral("Unplug the drive, plug it back in and try again"));
+        QVERIFY(failedWrite.contains(QStringLiteral("the drive failed while writing")));
+        QVERIFY(!failedWrite.contains(QStringLiteral("loop")));
+    }
+
+    // mkfs fails for its own reasons too, so its failure says nothing about the drive.
+    void reportsFormatterFailuresWithoutDiagnosingDriveDamage()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString tool = dir.filePath(QStringLiteral("mkfs-test"));
+        const QString partitionPath = dir.filePath(QStringLiteral("volume"));
+        const QString diagnostic = QStringLiteral("Unsupported feature in formatter configuration");
+        Reporter reporter;
+
+        for (const bool withOutput : {true, false}) {
+            QFile script(tool);
+            QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QByteArray contents = "#!/bin/sh\n";
+            if (withOutput) {
+                contents += "printf '%s\\n' '" + diagnostic.toUtf8() + "' >&2\n";
+            }
+            contents += "exit 1\n";
+            QCOMPARE(script.write(contents), contents.size());
+            script.close();
+            QVERIFY(script.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+
+            QString error;
+            QVERIFY(!formatLinuxPartition(
+                FileSystemType::ExFat, tool, partitionPath, QStringLiteral("USB"), 2048, reporter, &error));
+            QVERIFY2(error.contains(QStringLiteral("mkfs-test failed to format")), qPrintable(error));
+            QVERIFY2(error.contains(partitionPath), qPrintable(error));
+            QCOMPARE(error.contains(diagnostic), withOutput);
+            QVERIFY2(error.contains(QStringLiteral("run the restore again")), qPrintable(error));
+            QVERIFY2(!error.contains(QStringLiteral("damaged")), qPrintable(error));
+        }
     }
 
     // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.

@@ -10,6 +10,10 @@
 
 namespace usbrestore {
 
+// A syscall on a device failed. errno is the fact; the wording is for the person
+// holding the drive, so it names the device, says what went wrong, and what to do next.
+QString deviceErrorText(const QString &context, int errorNumber);
+
 // The Linux counterpart of RawDisk.
 class BlockDevice {
   public:
@@ -54,8 +58,6 @@ class BlockDevice {
     bool rereadPartitionTable(QString *error = nullptr);
 
   private:
-    QString errorText(const QString &context, int errorNumber) const;
-
     QString m_devicePath;
     int m_fd = -1;
 };
