@@ -2,15 +2,16 @@
 
 ## Next
 
-- Run the Windows Release build and `usb-wmi-tests` for the restore-error wording
-  and performance changes; the current Linux environment cannot build or run the
-  Windows backend.
-- Run the privileged Linux loop-image tests, including the restore inspection's
-  mounted-partition check. This environment has no `/dev/loop-control`.
 - Measure restore times on disposable media using the setup and step durations
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-29: Fixed the Ubuntu 22.04 test build by including glibc's mount header
+  before the kernel filesystem header, whose macros otherwise replace the mount
+  enum names. The initial PR #11 CI run confirmed the Windows build, tests and
+  portable bundle, plus all 37 privileged Linux cases with no skips in both the
+  Debian and sanitizer jobs, including the new mounted-partition checks.
 
 - 2026-10-29: Preflight and Linux handle checks skip filesystem display details
   while still reading fresh identity, state and mount points. Windows storage
@@ -21,7 +22,7 @@
   durations. Added sector-alignment/range tests, a loop-image mount/identity
   regression and a Windows lock-delay regression. Linux build, 156 core tests,
   eight Linux tests and fuzz-corpus replay pass; 29 loop cases skip locally.
-  Windows and privileged loop validation remain above. No physical drive tested.
+  Windows and privileged loop validation passed in CI as noted above. No physical drive tested.
 
 - 2026-10-29: Windows raw-device errors now name the disk and operation and give
   advice for busy, write-protected, disconnected, not-ready, I/O and capacity
@@ -29,7 +30,7 @@
   keep Windows' details alongside the disk, operation and retry advice.
   Added Windows tests for the wording, preserved details and invalid raw handles.
   Linux build and all three ctest suites pass; privileged loop tests are skipped.
-  Windows validation remains above. No physical-drive restore was performed.
+  Windows validation passed in CI as noted above. No physical-drive restore was performed.
 
 - 2026-10-28: Linux restore errors now name the drive, the operation and the next
   step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`

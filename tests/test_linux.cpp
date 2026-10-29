@@ -14,10 +14,11 @@
 #include <QtTest/QtTest>
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
+// Older glibc mount enums must precede the kernel's mount-flag macros.
+#include <sys/mount.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
-#include <sys/ioctl.h>
-#include <sys/mount.h>
 #include <unistd.h>
 
 #include <cerrno>
