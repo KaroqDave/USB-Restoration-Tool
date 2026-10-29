@@ -15,7 +15,8 @@
 namespace usbrestore {
 
 // A loop-control or mapping failure is a kernel loop-driver problem, not a USB
-// stick problem. The caller supplies the one action for the operation.
+// stick problem, except EIO, which comes from the drive underneath. The caller supplies
+// the action, without a final full stop.
 QString loopErrorText(const QString &operation, int errorNumber, const QString &advice)
 {
     QString reason;
@@ -47,15 +48,7 @@ QString loopErrorText(const QString &operation, int errorNumber, const QString &
         break;
     }
 
-    QString action = advice.trimmed();
-    if (action.endsWith(QLatin1Char('.'))) {
-        action.chop(1);
-    }
-    if (action.isEmpty()) {
-        action = QStringLiteral("Try the restore again");
-    }
-
-    return QStringLiteral("%1: %2 (errno %3). %4.").arg(operation).arg(reason).arg(errorNumber).arg(action);
+    return QStringLiteral("%1: %2 (errno %3). %4.").arg(operation, reason).arg(errorNumber).arg(advice);
 }
 
 namespace {
@@ -89,7 +82,9 @@ bool LoopDevice::configure(
     struct stat status = {};
     if (::fstat(backingDescriptor, &status) != 0) {
         return loopError(
-            error, QStringLiteral("Could not read the drive through the formatting area"), "Try the restore again");
+            error,
+            QStringLiteral("Could not read the drive through the formatting area"),
+            QStringLiteral("Try the restore again"));
     }
     std::uint64_t size = 0;
     if (S_ISREG(status.st_mode)) {
@@ -115,8 +110,7 @@ bool LoopDevice::configure(
         return loopError(
             error,
             QStringLiteral("Could not reach the Linux loop driver at /dev/loop-control, which formatting needs"),
-            "Make sure the loop module is loaded (modprobe loop) and run the tool with permission to write to the "
-            "drive");
+            QStringLiteral("Make sure the loop module is loaded (modprobe loop) and try again"));
     }
     bool busy = false;
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -170,7 +164,7 @@ bool LoopDevice::configure(
     return loopError(
         error,
         QStringLiteral("Could not set up the temporary area used to format the drive"),
-        "Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again");
+        QStringLiteral("Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again"));
 }
 
 bool LoopDevice::prepareForFormatting(QString *error)
@@ -180,7 +174,7 @@ bool LoopDevice::prepareForFormatting(QString *error)
         return loopError(
             error,
             QStringLiteral("Could not make the new partition available to the formatter"),
-            "Unplug the drive, plug it back in and try again");
+            QStringLiteral("Unplug the drive, plug it back in and try again"));
     }
     releaseClaim();
     return true;
@@ -205,15 +199,16 @@ bool LoopDevice::detach(QString *error)
         ok = loopError(
             error,
             QStringLiteral("Could not finish writing the new volume to the drive"),
-            "Unplug the drive, plug it back in and check whether the volume appears; if it does not, run the restore "
-            "again");
+            QStringLiteral(
+                "Unplug the drive, plug it back in and check whether the volume appears; if it does not, "
+                "run the restore again"));
     }
     releaseClaim();
     if (::ioctl(m_fd, LOOP_CLR_FD, 0) != 0 && ok) {
         ok = loopError(
             error,
             QStringLiteral("The new volume was written, but its temporary formatting area could not be closed"),
-            "Unplug the drive and plug it back in; this does not damage the drive");
+            QStringLiteral("Unplug the drive and plug it back in; this does not damage the drive"));
     }
     ::close(m_fd);
     m_fd = -1;

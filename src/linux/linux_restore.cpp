@@ -106,7 +106,7 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
                 *error = QStringLiteral(
                              "%1 is mounted at %2, which the running system needs. Pick a different "
                              "drive.")
-                             .arg(disk.displayId.isEmpty() ? disk.deviceId : disk.displayId, mount.mountPoint);
+                             .arg(disk.deviceId, mount.mountPoint);
             }
             return false;
         }
@@ -294,7 +294,9 @@ bool formatLinuxPartition(
                            "%1 failed to format the new volume on %2. Unplug the drive, plug it back in "
                            "and run the restore again; if it keeps failing the drive is damaged.")
                            .arg(QFileInfo(tool).fileName(), partitionPath)
-                     : QStringLiteral("%1 failed to format the new volume on %2: %3")
+                     : QStringLiteral(
+                           "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug it back in and "
+                           "run the restore again; if it keeps failing the drive is damaged.")
                            .arg(QFileInfo(tool).fileName(), partitionPath, lastOutput);
     }
     return false;
@@ -447,7 +449,7 @@ bool formatAndRereadPartitionTable(
             *error = QStringLiteral(
                          "The drive %1 was formatted, but it could not be re-identified afterwards. "
                          "Unplug it, plug it back in and check that it shows one new partition.")
-                         .arg(request.disk.displayId.isEmpty() ? request.disk.deviceId : request.disk.displayId);
+                         .arg(request.disk.deviceId);
         }
         return false;
     }
@@ -587,7 +589,7 @@ bool performLinuxRestore(
                 QStringLiteral(
                     "%1 reports too little space to clear its old partition signatures. Unplug the drive, plug it back "
                     "in and select it again; if it still reports a tiny size, the drive is damaged.")
-                    .arg(disk.displayId.isEmpty() ? disk.deviceId : disk.displayId);
+                    .arg(disk.deviceId);
         }
         return false;
     }

@@ -117,20 +117,35 @@ class LinuxTests : public QObject {
     void explainsDeviceFailuresInPlainLanguage()
     {
         const QString busy = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), EBUSY);
-        QVERIFY(busy.contains(QStringLiteral("Could not open /dev/sdb")));
-        QVERIFY(busy.contains(QStringLiteral("another program still has it open")));
-        QVERIFY(busy.contains(QStringLiteral("unmount")));
+        QVERIFY(busy.startsWith(QStringLiteral("Could not open /dev/sdb: another program still has it open")));
+        QVERIFY(busy.contains(QStringLiteral("unmount every partition")));
 
-        const QString denied = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), EACCES);
-        QVERIFY(denied.contains(QStringLiteral("permission")));
+        // A worn stick that turns read-only fails writes with EPERM; the advice is not about privileges.
+        for (const int code : {EPERM, EACCES, EROFS}) {
+            const QString readOnly = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), code);
+            QVERIFY(readOnly.contains(QStringLiteral("write-protect switch")));
+            QVERIFY(readOnly.contains(QStringLiteral("read-only")));
+            QVERIFY(!readOnly.contains(QStringLiteral("root")));
+        }
 
         const QString gone = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), ENXIO);
         QVERIFY(gone.contains(QStringLiteral("no longer there")));
-        QVERIFY(gone.contains(QStringLiteral("plug it back in")));
+        QVERIFY(gone.contains(QStringLiteral("Plug it back in")));
 
-        // Anything not mapped above still reports strerror() so no cause is hidden.
+        QVERIFY(deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), ENOSPC)
+                    .contains(QStringLiteral("smaller than it claims")));
+
+        // Anything not mapped above still reports strerror() so no cause is hidden, and still says what to do.
         const QString other = deviceErrorText(QStringLiteral("Could not open /dev/sdb"), ETIMEDOUT);
         QVERIFY(other.contains(QString::fromLocal8Bit(std::strerror(ETIMEDOUT))));
+        QVERIFY(other.contains(QStringLiteral("plug it back in")));
+
+        // The errno comes before the advice, and every message ends as a sentence.
+        for (const int code : {EBUSY, EPERM, EACCES, EROFS, EIO, ENXIO, ENODEV, ENOSPC, ETIMEDOUT}) {
+            const QString text = deviceErrorText(QStringLiteral("Could not write to /dev/sdb"), code);
+            QVERIFY2(text.contains(QStringLiteral("(errno %1). ").arg(code)), qPrintable(text));
+            QVERIFY2(text.endsWith(QLatin1Char('.')), qPrintable(text));
+        }
     }
 
     // Loop mapping failures belong to the kernel loop driver, not the USB stick.
@@ -139,19 +154,29 @@ class LinuxTests : public QObject {
         const QString noLoop = loopErrorText(
             QStringLiteral("Could not reach the Linux loop driver at /dev/loop-control, which formatting needs"),
             ENODEV,
+            QStringLiteral("Make sure the loop module is loaded (modprobe loop) and try again"));
+        QCOMPARE(
+            noLoop,
             QStringLiteral(
-                "Make sure the loop module is loaded (modprobe loop) and run the tool with permission to "
-                "write to the drive"));
-        QVERIFY(noLoop.contains(QStringLiteral("loop driver is not available")));
-        QVERIFY(noLoop.endsWith(QStringLiteral(".")));
-        QVERIFY(!noLoop.contains(QStringLiteral("drive is no longer there")));
+                "Could not reach the Linux loop driver at /dev/loop-control, which formatting needs: the loop driver "
+                "is not available (errno %1). Make sure the loop module is loaded (modprobe loop) and try again.")
+                .arg(ENODEV));
 
         const QString busyLoop = loopErrorText(
-            QStringLiteral("Could not claim a free loop device for the new volume"),
+            QStringLiteral("Could not set up the temporary area used to format the drive"),
             EBUSY,
-            QStringLiteral("Close any disk tools that already have a loop device open, then try again"));
+            QStringLiteral(
+                "Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again"));
         QVERIFY(busyLoop.contains(QStringLiteral("loop driver is busy")));
-        QVERIFY(busyLoop.endsWith(QStringLiteral(".")));
+        QVERIFY(!busyLoop.contains(QStringLiteral("another program still has it open")));
+
+        // The write underneath the mapping reached the drive, so EIO is the one case that blames it.
+        const QString failedWrite = loopErrorText(
+            QStringLiteral("Could not finish writing the new volume to the drive"),
+            EIO,
+            QStringLiteral("Unplug the drive, plug it back in and try again"));
+        QVERIFY(failedWrite.contains(QStringLiteral("the drive failed while writing")));
+        QVERIFY(!failedWrite.contains(QStringLiteral("loop")));
     }
 
     // 1.7.1 asked LOOP_CTL_GET_FREE again after an EBUSY claim and got the same node all 8 times.

@@ -2,7 +2,9 @@
 
 ## Next
 
-No open tasks.
+- Bring Windows restore errors up to the Linux wording: `raw_disk.*` and
+  `windows_disk_service.*` should name the drive, the operation and the next step
+  instead of passing system error text through.
 
 ## Recently completed
 
@@ -14,9 +16,14 @@ No open tasks.
   driver problems; `EIO` is described as a drive write failure because the I/O error
   usually comes from the drive underneath the mapping.
   `explainsDeviceFailuresInPlainLanguage` and `explainsLoopFailuresInPlainLanguage` pin
-  the wording. Linux build, core tests (156) and the non-root Linux tests pass; the
-  loop-image tests were skipped here because they need root and
-  `USBRESTORE_TEST_LOOP=1`. No physical-drive restore was performed.
+  the wording. Every device message gives the errno, then the next step, as a full
+  sentence. `EPERM`, `EACCES` and `EROFS` point to a write-protect switch or a drive
+  that made itself read-only, since the kernel refuses writes to a read-only disk with
+  `EPERM`; `ENOSPC` warns that the drive may be smaller than it claims. Linux build,
+  core tests (156) and the non-root Linux tests pass locally. PR #10 CI passes on all
+  four jobs; the Debian and sanitizer jobs each ran 32 Linux tests with none skipped.
+  No physical-drive restore was performed, and a drive turning read-only part way
+  through cannot be reproduced on a loop device.
 
 - 2026-10-24: Published 1.7.2 as the latest stable release after all five release
   jobs passed. Verified the downloaded Windows ZIP, AppImage, Debian package and

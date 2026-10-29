@@ -36,32 +36,40 @@ QString deviceErrorText(const QString &context, int errorNumber)
     // strerror() is a code the user cannot act on; these are the cases that
     // actually happen on a USB stick and what fixes them.
     QString reason;
+    QString advice = QStringLiteral("Unplug the drive, plug it back in and try again");
     switch (errorNumber) {
     case EBUSY:
-        reason = QStringLiteral(
-            "another program still has it open. Close that program and unmount every partition "
-            "on the drive");
+        reason = QStringLiteral("another program still has it open");
+        advice = QStringLiteral("Close that program, unmount every partition on the drive and try again");
         break;
+    // The kernel refuses writes to a read-only disk with EPERM, and worn sticks make themselves read-only.
     case EACCES:
     case EPERM:
-        reason = QStringLiteral(
-            "the system refused it. USB Restoration Tool needs permission to write to the drive: "
-            "answer the privilege prompt, or run it as root");
+    case EROFS:
+        reason = QStringLiteral("the drive would not accept writes");
+        advice = QStringLiteral(
+            "If it has a write-protect switch, turn it off and try again. If it has none, the drive may have made "
+            "itself read-only, which worn drives do, and needs replacing");
         break;
     case EIO:
-        reason = QStringLiteral("the drive stopped answering. Unplug it, plug it back in and try again");
+        reason = QStringLiteral("the drive stopped answering");
+        advice = QStringLiteral("Unplug it, plug it back in and try again; if it keeps happening the drive is damaged");
         break;
     case ENXIO:
     case ENODEV:
-        reason = QStringLiteral("the drive is no longer there. Unplug it, plug it back in and refresh the list");
+        reason = QStringLiteral("the drive is no longer there");
+        advice = QStringLiteral("Plug it back in, refresh the list and select it again");
         break;
+    // Every write lies inside the size the drive reported, so running out of room means that size was wrong.
     case ENOSPC:
-        reason = QStringLiteral("the drive ran out of room while writing");
+        reason = QStringLiteral("the drive ran out of room before its reported size");
+        advice = QStringLiteral(
+            "Unplug it, plug it back in and try again; if it happens again the drive is smaller than it claims");
         break;
     default:
         reason = QString::fromLocal8Bit(std::strerror(errorNumber));
     }
-    return QStringLiteral("%1: %2 (errno %3)").arg(context, reason).arg(errorNumber);
+    return QStringLiteral("%1: %2 (errno %3). %4.").arg(context, reason).arg(errorNumber).arg(advice);
 }
 
 BlockDevice::BlockDevice(QString devicePath) : m_devicePath(std::move(devicePath)) {}
