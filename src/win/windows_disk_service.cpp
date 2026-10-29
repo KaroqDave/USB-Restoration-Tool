@@ -137,6 +137,13 @@ bool WindowsDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     DiskInfo disk = request.disk;
+    const auto failOperation = [&disk, error](const QString &operation, const QString &detail) {
+        if (error) {
+            *error = windowsRestoreErrorText(
+                QStringLiteral("Could not %1 on disk %2").arg(operation).arg(disk.number), detail);
+        }
+        return false;
+    };
     QString reason;
     if (!isSafeRestoreTarget(disk, request.guard, &reason) || !canCreatePartitionLayout(request.style, disk, &reason)) {
         if (error) {
@@ -150,8 +157,8 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
-    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, error)) {
-        return false;
+    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, &reason)) {
+        return failOperation(QStringLiteral("verify the selected drive"), reason);
     }
     if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
         if (error) {
@@ -187,8 +194,8 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshMetadata, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error, &reporter)) {
-        return false;
+    if (!volumes.refreshDisk(disk.number, &reason, &reporter)) {
+        return failOperation(QStringLiteral("refresh Windows disk metadata"), reason);
     }
 
     reportPlannedStep(
@@ -197,9 +204,9 @@ bool WindowsDiskService::restore(
         RestoreStep::DetachDriveLetters,
         QStringLiteral("Detaching existing volumes and drive letters"));
     // Letterless volumes first, so a volume whose letter is about to be removed is not counted twice.
-    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, error, &reporter) ||
-        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
-        return false;
+    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, &reason, &reporter) ||
+        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, &reason)) {
+        return failOperation(QStringLiteral("detach the existing volumes and drive letters"), reason);
     }
 
     // Last harmless stop: deleting the partition records is the first change to the disk itself.
@@ -215,8 +222,8 @@ bool WindowsDiskService::restore(
     reportPlannedStep(
         steps, reporter, RestoreStep::DeletePartitions, QStringLiteral("Deleting existing partition records"));
     bool partitionAtDiskStart = false;
-    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, error, &reporter)) {
-        return false;
+    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, &reason, &reporter)) {
+        return failOperation(QStringLiteral("delete the existing partitions"), reason);
     }
     if (partitionAtDiskStart) {
         reporter.detail(QStringLiteral("Disk %1 has a partition at its very start that Windows cannot delete, as on "
@@ -281,16 +288,16 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::WaitForVolume, QStringLiteral("Waiting for Windows to discover the new volume"));
-    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error, &reporter);
+    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, &reason, &reporter);
     if (volumeName.isEmpty()) {
-        return false;
+        return failOperation(QStringLiteral("find the new volume"), reason);
     }
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshNewVolume, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error, &reporter) ||
-        !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
-        return false;
+    if (!volumes.refreshDisk(disk.number, &reason, &reporter) ||
+        !volumes.volumePathBelongsToDisk(volumeName, disk.number, &reason)) {
+        return failOperation(QStringLiteral("verify the new volume"), reason);
     }
 
     // The rest goes by disk number alone; a live handle that still reports it
@@ -300,9 +307,9 @@ bool WindowsDiskService::restore(
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::AssignDriveLetter, QStringLiteral("Assigning a drive letter"));
-    const QString driveRoot = volumes.mountVolume(volumeName, error);
+    const QString driveRoot = volumes.mountVolume(volumeName, &reason);
     if (driveRoot.isEmpty()) {
-        return false;
+        return failOperation(QStringLiteral("assign a drive letter"), reason);
     }
 
     reportPlannedStep(
@@ -320,9 +327,9 @@ bool WindowsDiskService::restore(
             request.fileSystem,
             allocationUnitSize,
             request.volumeLabel,
-            error,
+            &reason,
             &reporter)) {
-        return false;
+        return failOperation(QStringLiteral("format as %1").arg(fileSystemTypeName(request.fileSystem)), reason);
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::Complete, QStringLiteral("Restore complete"));

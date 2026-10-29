@@ -11,6 +11,9 @@ QString windowsErrorMessage(DWORD error);
 QString windowsErrorMessage();
 QString windowsErrorMessage(const QString &context, DWORD error);
 
+QString windowsDeviceErrorText(const QString &context, DWORD error);
+QString windowsRestoreErrorText(const QString &context, const QString &detail);
+
 // The only test of whether a drive letter belongs to the target, asked through the handle
 // rather than inferred from any name.
 bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber);

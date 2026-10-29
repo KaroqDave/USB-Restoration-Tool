@@ -1,5 +1,7 @@
 #include "win/wmi.h"
 #include "win/windows_disk_service.h"
+#include "win/raw_disk.h"
+#include "win/windows_util.h"
 
 #include <QtTest/QtTest>
 
@@ -109,6 +111,101 @@ class WmiTests : public QObject {
         QVERIFY(!service.restore(request, reporter, nullptr, &error));
         QCOMPARE(reporter.steps, 0);
         QVERIFY(error.contains(QStringLiteral("MBR")));
+    }
+
+    void explainsDeviceFailuresInPlainLanguage()
+    {
+        const QString context = QStringLiteral("Could not clear old signatures on disk 7");
+        for (const DWORD code : {ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION, ERROR_BUSY}) {
+            const QString text = windowsDeviceErrorText(context, code);
+            QVERIFY(text.contains(QStringLiteral("another program")));
+            QVERIFY(text.contains(QStringLiteral("Close any files")));
+        }
+        for (const DWORD code : {ERROR_ACCESS_DENIED, ERROR_WRITE_PROTECT}) {
+            const QString text = windowsDeviceErrorText(context, code);
+            QVERIFY(text.contains(QStringLiteral("write-protect switch")));
+            QVERIFY(text.contains(QStringLiteral("read-only")));
+        }
+        for (const DWORD code :
+             {ERROR_DEV_NOT_EXIST,
+              ERROR_DEVICE_NOT_CONNECTED,
+              ERROR_NO_MEDIA_IN_DRIVE,
+              ERROR_FILE_NOT_FOUND,
+              ERROR_PATH_NOT_FOUND}) {
+            const QString text = windowsDeviceErrorText(context, code);
+            QVERIFY(text.contains(QStringLiteral("no longer available")));
+            QVERIFY(text.contains(QStringLiteral("refresh the list and select it again")));
+        }
+        for (const DWORD code : {ERROR_IO_DEVICE, ERROR_CRC, ERROR_READ_FAULT, ERROR_WRITE_FAULT}) {
+            const QString text = windowsDeviceErrorText(context, code);
+            QVERIFY(text.contains(QStringLiteral("could not complete the read or write")));
+            QVERIFY(text.contains(QStringLiteral("another USB port")));
+        }
+        for (const DWORD code : {ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL}) {
+            QVERIFY(windowsDeviceErrorText(context, code).contains(QStringLiteral("smaller than it claims")));
+        }
+        const QString notReady = windowsDeviceErrorText(context, ERROR_NOT_READY);
+        QVERIFY(notReady.contains(QStringLiteral("not ready")));
+        QVERIFY(notReady.contains(QStringLiteral("plug it back in")));
+        QVERIFY(!notReady.contains(QStringLiteral("damaged")));
+
+        const QString other = windowsDeviceErrorText(context, ERROR_INVALID_DATA);
+        QVERIFY(other.contains(windowsErrorMessage(ERROR_INVALID_DATA)));
+        QVERIFY(other.contains(QStringLiteral("plug it back in")));
+
+        for (const DWORD code :
+             {ERROR_SHARING_VIOLATION,
+              ERROR_LOCK_VIOLATION,
+              ERROR_BUSY,
+              ERROR_ACCESS_DENIED,
+              ERROR_WRITE_PROTECT,
+              ERROR_IO_DEVICE,
+              ERROR_CRC,
+              ERROR_READ_FAULT,
+              ERROR_WRITE_FAULT,
+              ERROR_NOT_READY,
+              ERROR_DEV_NOT_EXIST,
+              ERROR_DEVICE_NOT_CONNECTED,
+              ERROR_NO_MEDIA_IN_DRIVE,
+              ERROR_FILE_NOT_FOUND,
+              ERROR_PATH_NOT_FOUND,
+              ERROR_DISK_FULL,
+              ERROR_HANDLE_DISK_FULL}) {
+            const QString text = windowsDeviceErrorText(context, code);
+            QVERIFY2(text.startsWith(context), qPrintable(text));
+            QVERIFY2(text.contains(QStringLiteral("(Windows error %1). ").arg(code)), qPrintable(text));
+            QVERIFY2(text.endsWith(QLatin1Char('.')), qPrintable(text));
+        }
+    }
+
+    void reportsStorageFailuresWithoutDiagnosingDriveDamage()
+    {
+        const QString context = QStringLiteral("Could not format as exFAT on disk 7");
+        for (const QString &detail : {QString(), QStringLiteral("MSFT_Volume.Format failed (0x80041001).\nDetails")}) {
+            const QString text = windowsRestoreErrorText(context, detail);
+            QVERIFY(text.startsWith(context));
+            QVERIFY(text.contains(QStringLiteral("run the restore again")));
+            QVERIFY(!text.contains(QStringLiteral("damaged")));
+            if (detail.isEmpty()) {
+                QVERIFY(!text.contains(QStringLiteral("Windows reported:")));
+            } else {
+                QVERIFY(text.endsWith(detail));
+            }
+        }
+    }
+
+    void identifiesDiskAndOperationWhenRawHandleIsInvalid()
+    {
+        RawDisk disk(7);
+        QString error;
+        QVERIFY(!disk.refreshLayout(&error));
+        QVERIFY(error.startsWith(QStringLiteral("Could not refresh the disk properties on disk 7")));
+        QVERIFY(error.contains(windowsErrorMessage(ERROR_INVALID_HANDLE)));
+        QVERIFY(error.contains(QStringLiteral("plug it back in")));
+
+        QVERIFY(!disk.verifyIdentity(DiskInfo(), &error));
+        QVERIFY(error.contains(QStringLiteral("verify disk 7")));
+        QVERIFY(error.contains(QStringLiteral("Run the restore again")));
     }
 
     void refusesQueuedOperationWithoutJobPath()

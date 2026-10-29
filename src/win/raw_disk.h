@@ -55,7 +55,7 @@ class RawDisk {
     bool createGptDisk(GUID *diskId, QString *error);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
     bool layoutHasPartitions(bool *hasPartitions, QString *error) const;
-    QString lastError(const QString &context) const;
+    QString lastError(const QString &operation) const;
 
     quint32 m_diskNumber = 0;
     HANDLE m_handle = INVALID_HANDLE_VALUE;

@@ -2,11 +2,18 @@
 
 ## Next
 
-- Bring Windows restore errors up to the Linux wording: `raw_disk.*` and
-  `windows_disk_service.*` should name the drive, the operation and the next step
-  instead of passing system error text through.
+- Run the Windows Release build and `usb-wmi-tests` for the restore-error wording
+  changes; the current Linux environment cannot build or run the Windows backend.
 
 ## Recently completed
+
+- 2026-10-29: Windows raw-device errors now name the disk and operation and give
+  advice for busy, write-protected, disconnected, not-ready, I/O and capacity
+  failures, retaining the Windows error number. Storage and formatter failures
+  keep Windows' details alongside the disk, operation and retry advice.
+  Added Windows tests for the wording, preserved details and invalid raw handles.
+  Linux build and all three ctest suites pass; privileged loop tests are skipped.
+  Windows validation remains above. No physical-drive restore was performed.
 
 - 2026-10-28: Linux restore errors now name the drive, the operation and the next
   step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`
