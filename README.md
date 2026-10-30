@@ -44,11 +44,17 @@ If runtime DLLs are missing, install the
 Restores require Linux 5.15 or later with disk-sequence support and the loop
 driver available (`/dev/loop-control`).
 
-On Ubuntu 24.04 or later and Debian 13 or later, install the `.deb`. It pulls
-in the formatters and pkexec:
+Native packages pull in the formatters and pkexec. On Ubuntu 24.04 or later and
+Debian 13 or later, install the `.deb`:
 
 ```bash
 sudo apt install ./usb-restoration-tool_*_amd64.deb
+```
+
+On Fedora 43 or later, install the `.rpm`:
+
+```bash
+sudo dnf install ./usb-restoration-tool-*.x86_64.rpm
 ```
 
 An installed build runs the GUI as your normal user and asks for authentication
@@ -124,6 +130,8 @@ application data when that directory is not writable.
   clears signatures in larger writes without changing the erased range.
 - Linux and Windows drive errors explain the failed operation and what to try
   next. The log now records setup, step and total restore durations.
+- A native Fedora RPM installs the unprivileged app, restore helper and polkit
+  policy, with dependencies on the system Qt and all four formatters.
 
 Linux requirements are unchanged. Upgrade the installed app and helper together.
 

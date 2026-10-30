@@ -142,6 +142,7 @@ only `cmake --install --prefix` would break that relationship. See the
 | Windows portable | `./scripts/build-standalone.ps1` | Folder, ZIP and checksums under `standalone/` |
 | Linux AppImage | `./scripts/build-appimage.sh` | AppImage and checksum under `standalone/` |
 | Debian package | `./scripts/build-deb.sh` | `.deb` and checksum under `standalone/` |
+| Fedora package | `./scripts/build-rpm.sh` | `.rpm` and checksum under `standalone/` |
 
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options
@@ -160,7 +161,43 @@ Leave `CMAKE_PREFIX_PATH` unset so CMake finds the system Qt; `dpkg-shlibdeps`
 fails on a Qt kit no package owns. The script checks that the package contains
 the helper at `/usr/libexec/usb-restoration-helper` and a polkit action naming
 that path. `cpack` refuses any prefix other than `/usr`, since polkit reads
-actions only from `/usr/share/polkit-1/actions`.
+actions only from `/usr/share/polkit-1/actions`. Both native package formats are
+non-relocatable for the same reason.
+
+Build the RPM on Fedora 43 or later against the distribution's Qt (CI and
+releases use Fedora 43):
+
+```bash
+sudo dnf install cmake gcc-c++ make qt6-qtbase-devel rpm-build binutils cpio
+./scripts/build-rpm.sh
+ctest --test-dir build-rpm --output-on-failure
+```
+
+Leave `CMAKE_PREFIX_PATH` unset for this build too. The script refuses Qt
+libraries that are not owned by an RPM, verifies the helper/policy/GUI paths,
+file ownership and permissions, runtime dependencies and helper version, and
+writes a checksum. RPM's library dependency generator supplements explicit
+requirements for Qt plugins, polkit and the formatters; Fedora's NTFS formatter
+package is `ntfsprogs`, not `ntfs-3g`. It does not install anything on the host.
+`BUILD_DIR` overrides the build directory; `CMAKE_BUILD_PARALLEL_LEVEL` sets
+parallelism (default: 2).
+
+The shared Fedora CI/release workflow also checks an install, upgrade and
+removal in a disposable container. It installs a release-0.1 baseline built from
+the same binaries, upgrades it to the real release-1 RPM, verifies package
+integrity, probes the helper and Qt platform/SVG loading as an unprivileged user,
+loads the installed polkit action through an isolated D-Bus, then checks that
+removal leaves no package files. It never starts a restore. To repeat this
+**only in a clean disposable Fedora environment**, after building:
+
+```bash
+dnf install -y dbus-daemon polkit glib2 libxml2 util-linux
+USBRESTORE_TEST_RPM=1 ./scripts/test-rpm-install.sh build-rpm standalone/*.rpm
+```
+
+This check requires root and refuses an existing application installation.
+Desktop authentication prompts and restores on disposable USB media still need
+manual validation.
 
 `PROJECT_VERSION` in `CMakeLists.txt` is the version source. Before tagging
 `vX.Y.Z`, update the changelog and the README's `## What's New in X.Y.Z` section.

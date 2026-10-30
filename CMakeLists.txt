@@ -726,6 +726,8 @@ else()
     # A package without the helper would be the AppImage's run-as-root mode
     # with none of the AppImage's portability, so there is none.
     if(USBRESTORE_INSTALL_HELPER)
+        install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/licenses/usb-restoration-tool")
+
         set(CPACK_GENERATOR DEB)
         set(CPACK_PACKAGE_NAME usb-restoration-tool)
         set(CPACK_PACKAGE_VENDOR KaroqDave)
@@ -740,6 +742,7 @@ else()
         set(CPACK_USBRESTORE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
         set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpack_project_config.cmake")
         set(CPACK_STRIP_FILES ON)
+        set(CPACK_PACKAGE_RELOCATABLE OFF)
 
         set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
         set(CPACK_DEBIAN_PACKAGE_SECTION admin)
@@ -756,6 +759,36 @@ else()
             dosfstools
             ntfs-3g
             e2fsprogs)
+
+        set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+        set(CPACK_RPM_PACKAGE_RELEASE 1)
+        set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)
+        set(CPACK_RPM_PACKAGE_LICENSE MIT)
+        set(CPACK_RPM_PACKAGE_GROUP "System/Tools")
+        set(CPACK_RPM_PACKAGE_AUTOREQ ON)
+        # RPM discovers linked libraries, not Qt plugins or external programs.
+        string(JOIN ", " CPACK_RPM_PACKAGE_REQUIRES
+            qt6-qtbase-gui
+            qt6-qtwayland
+            qt6-qtsvg
+            polkit
+            exfatprogs
+            dosfstools
+            ntfsprogs
+            e2fsprogs)
+        set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+            /usr/libexec
+            /usr/share/applications
+            /usr/share/icons
+            /usr/share/icons/hicolor
+            /usr/share/icons/hicolor/scalable
+            /usr/share/icons/hicolor/scalable/apps
+            /usr/share/icons/hicolor/256x256
+            /usr/share/icons/hicolor/256x256/apps
+            /usr/share/licenses
+            /usr/share/polkit-1
+            /usr/share/polkit-1/actions)
+        set(CPACK_RPM_USER_FILELIST "%license /usr/share/licenses/usb-restoration-tool/LICENSE")
 
         include(CPack)
     endif()

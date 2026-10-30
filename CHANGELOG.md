@@ -17,6 +17,9 @@ clearer drive errors.
   attempt, including failed and cancelled attempts.
 - GUI regressions for restore outcomes, fresh acknowledgement on retry and
   missing, unsafe or unscannable drives after a restore.
+- A native Fedora RPM built with CPack, including the restore helper, polkit
+  action, system Qt and formatter dependencies. CI and release builds check
+  installation, upgrade and removal in a disposable Fedora environment.
 
 ### Changed
 

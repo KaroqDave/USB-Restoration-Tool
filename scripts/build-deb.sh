@@ -59,7 +59,7 @@ cmake --build "$BuildDir" --parallel
 step "Packaging"
 PackageDir="$BuildDir/package"
 rm -rf "$PackageDir"
-cpack --config "$BuildDir/CPackConfig.cmake" -B "$PackageDir"
+cpack -G DEB --config "$BuildDir/CPackConfig.cmake" -B "$PackageDir"
 
 Deb="$(find "$PackageDir" -maxdepth 1 -name '*.deb' -type f | head -1)"
 [[ -n "$Deb" ]] || fail "cpack did not produce a .deb"

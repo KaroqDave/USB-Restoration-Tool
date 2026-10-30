@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-rpm:
+    uses: ./.github/workflows/rpm.yml
+    with:
+      artifact-name: usb-restoration-tool-rpm
+
   build-windows:
     runs-on: windows-latest
 

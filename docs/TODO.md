@@ -24,6 +24,17 @@
 
 ## Recently completed
 
+- 2026-10-30: Added CPack Fedora RPM packaging with system Qt, formatter
+  dependencies, the helper, polkit policy and license. Shared CI/release
+  integration builds on Fedora 43 and publishes the RPM and checksum. Fedora 43
+  container and Fedora 44 local builds pass all four ctest suites and all 65
+  GUI checks at 200% scaling. Fedora 43 install, release-0.1-to-1 upgrade and
+  removal pass, including package integrity, unprivileged helper/Qt/SVG probes
+  and polkit action loading. Package paths, permissions, dependencies, versions,
+  prefix refusals and checksums pass. Updated native-package guidance. GitHub
+  workflow execution, desktop authentication and physical-media restore checks
+  remain pending; privileged loop tests skipped. No physical drive accessed.
+
 - 2026-10-30: Prepared 1.8.0 in `CMakeLists.txt` with unreleased README notes and
   changelog entries for the restore dialog, setup improvements, clearer errors
   and the About dialog. Package metadata and artifact naming derive from the
@@ -273,8 +284,7 @@
 - 2026-10-18: Added a `.deb` built by CPack through `scripts/build-deb.sh`, with
   the helper at `/usr/libexec/usb-restoration-helper` and its polkit action. CI
   builds, checks and installs it; releases attach it. Installing it and restoring
-  through pkexec is tested and confirmed working. No other package formats are
-  planned; the `.deb` and AppImage cover Linux.
+  through pkexec is tested and confirmed working.
 
 - 2026-10-18: The Linux helper catches `SIGPIPE`/`SIGHUP`, and both backends
   confirm the disk again after the partition table is written and before

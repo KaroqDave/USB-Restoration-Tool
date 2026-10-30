@@ -50,7 +50,7 @@ Build and project guidance lives in `docs/development.md`; open tasks live in `d
 - `./scripts/verify-partition-tables.sh build-linux` — hand the partition tables
   to `sgdisk` and `fdisk`. Needs the `usb-partition-dump` target built.
 - `./scripts/build-standalone.ps1` / `./scripts/build-appimage.sh` /
-  `./scripts/build-deb.sh` — package.
+  `./scripts/build-deb.sh` / `./scripts/build-rpm.sh` — package.
 - `clang-format -i src/**/*.cpp src/**/*.h` — the repo ships a `.clang-format`.
 
 ## Coding Style & Naming Conventions
