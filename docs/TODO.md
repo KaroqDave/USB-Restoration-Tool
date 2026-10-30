@@ -12,17 +12,11 @@
    helper and polkit policy. Add CI/release integration and check installation,
    upgrade and removal.
 
-3. Review Linux/Windows integration: confirmation-to-progress transitions,
-   worker signals, cancellation, errors, completion and closing behavior. Check
-   both themes and display scaling without weakening the erase or identity
-   gates. Run the new dialog's Windows and sanitizer CI checks; local sanitizer
-   linking remains blocked by the missing ASan runtime.
-
-4. Finish release cleanup: remove obsolete UI/code, update documentation and
+3. Finish release cleanup: remove obsolete UI/code, update documentation and
    screenshots, revise the previous Debian/AppImage-only packaging guidance,
    and check build scripts, workflows and release notes for consistency.
 
-5. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
+4. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
    Windows builds. Require passing tests and packaging/startup checks, verify
    versions and checksums, and record any remaining validation limits before
    approving a release. Use only disposable media for manual restore checks.
@@ -33,6 +27,20 @@
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-30: Reviewed the restore dialog against both backends. Confirmation still
+  freezes the request shown, and dismissal cannot start a restore. Progress,
+  cancellation, failure and success stay in the dialog; the main window rescans
+  afterward. Cancel is refused from the first disk-writing step on the Linux and
+  Windows plans, matching the backends' last safe checkpoints. Closing is still
+  refused while the restore thread runs. The close explanation now says the disk
+  is unchanged before that step, and is parented to the restore dialog so it is
+  not hidden behind it. Linux build and all four ctest suites pass. The GUI suite
+  reports 77 passed at 100% and 200% scaling, in both themes, including both
+  plans. Confirmation, progress, success and failure previews were checked in
+  both themes, with confirmation and Windows progress also checked at 200%.
+  Windows and sanitizer CI have not run for this dialog; the ASan runtime is not
+  installed locally. Privileged loop tests were skipped. No physical drive accessed.
 
 - 2026-10-30: Refreshed the About dialog for the single restore window, the
   filesystem choices and the Windows, Debian, Fedora and AppImage builds. The

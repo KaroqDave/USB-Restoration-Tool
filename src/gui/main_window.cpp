@@ -990,12 +990,21 @@ bool MainWindow::waitForRestoreThread(int timeoutMs)
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_restoreRunning && m_restoreThread && m_restoreThread->isRunning()) {
-        // Killing a partition rewrite midway leaves a disk nothing can read, so closing waits.
+        // The restore dialog is window-modal, so the explanation has to be its child to be seen.
+        QWidget *parent = m_restoreDialog && m_restoreDialog->isVisible()
+                              ? static_cast<QWidget *>(m_restoreDialog.data())
+                              : static_cast<QWidget *>(this);
+        // Closing is refused either way. Only a rewrite already in progress would leave the disk unreadable.
+        const bool writing = m_restoreStep >= m_service.firstDestructiveStep();
         QMessageBox::information(
-            this,
+            parent,
             QStringLiteral("Restore in progress"),
-            QStringLiteral("A restore is still running. Wait for it to finish before closing; "
-                           "stopping now would leave the disk unusable."));
+            writing ? QStringLiteral(
+                          "A restore is writing to the disk. Wait for it to finish before closing; "
+                          "stopping now would leave the disk unusable.")
+                    : QStringLiteral(
+                          "A restore is still running. Wait for it to finish before closing. "
+                          "The disk has not been changed yet, but closing now would stop the restore."));
         event->ignore();
         return;
     }

@@ -110,6 +110,22 @@ class ExampleService : public DiskService {
             }
             return false;
         }
+        if (outcome == 3) {
+            for (int index = 0; index < firstDestructiveStep(); ++index) {
+                reporter.step(QStringLiteral("Example step %1").arg(index + 1));
+            }
+            QElapsedTimer timeout;
+            timeout.start();
+            while (!reporter.cancelRequested() && timeout.elapsed() < 2000) {
+                QThread::msleep(1);
+            }
+            if (reporter.cancelRequested()) {
+                *error = QStringLiteral("Example cancel was accepted after writing started");
+            } else {
+                *error = QStringLiteral("Example stopped after writing started");
+            }
+            return false;
+        }
         for (int index = 0; index < totalRestoreSteps(); ++index) {
             reporter.step(QStringLiteral("Example step %1").arg(index + 1));
         }
@@ -197,10 +213,13 @@ class GuiTests : public QObject {
         confirmErase(writingDialog);
         auto *writingCancel = writingDialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"));
         for (int step = 1; step < firstDestructiveStepOf(linuxRestorePlan()); ++step) {
-            writingDialog.setProgress(step, 10, QStringLiteral("Preparing"));
+            writingDialog.setProgress(step, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Preparing"));
             QVERIFY(writingCancel->isEnabled());
         }
-        writingDialog.setProgress(firstDestructiveStepOf(linuxRestorePlan()), 10, QStringLiteral("Writing"));
+        writingDialog.setProgress(
+            firstDestructiveStepOf(linuxRestorePlan()),
+            static_cast<int>(linuxRestorePlan().size()),
+            QStringLiteral("Writing"));
         QVERIFY(!writingCancel->isEnabled());
     }
 
@@ -696,6 +715,146 @@ class GuiTests : public QObject {
         QVERIFY(details.contains(QStringLiteral("Linux AppImage")));
         QVERIFY(details.contains(QStringLiteral("ext4")));
         QVERIFY(hasGithub);
+        window.close();
+    }
+
+    void disablesCancellationAtTheFirstWrite_data()
+    {
+        QTest::addColumn<bool>("windowsPlan");
+        QTest::newRow("linux") << false;
+        QTest::newRow("windows") << true;
+    }
+
+    void disablesCancellationAtTheFirstWrite()
+    {
+        QFETCH(bool, windowsPlan);
+        const QVector<RestoreStep> &plan = windowsPlan ? windowsRestorePlan() : linuxRestorePlan();
+        const int total = static_cast<int>(plan.size());
+        const int destructive = firstDestructiveStepOf(plan);
+        RestoreDialog dialog(exampleRequest(), plan);
+        confirmErase(dialog);
+        auto *cancel = dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"));
+        QSignalSpy requested(&dialog, &RestoreDialog::cancelRequested);
+        for (int step = 1; step < destructive; ++step) {
+            dialog.setProgress(step, total, QStringLiteral("Preparing"));
+            QVERIFY(cancel->isEnabled());
+        }
+        dialog.setProgress(destructive, total, QStringLiteral("Writing"));
+        QVERIFY(!cancel->isEnabled());
+        QCOMPARE(cancel->text(), QStringLiteral("Writing in progress"));
+        cancel->click();
+        QCOMPARE(requested.count(), 0);
+        QVERIFY(
+            dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"))->text().contains(QStringLiteral("rewritten")));
+    }
+
+    void keepsTheEraseGateInsideTheDialog_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<bool>("windowsPlan");
+        for (bool dark : {false, true}) {
+            for (bool windowsPlan : {false, true}) {
+                QTest::newRow(
+                    qPrintable(QStringLiteral("%1-%2").arg(dark ? "dark" : "light", windowsPlan ? "windows" : "linux")))
+                    << dark << windowsPlan;
+            }
+        }
+    }
+
+    void keepsTheEraseGateInsideTheDialog()
+    {
+        QFETCH(bool, dark);
+        QFETCH(bool, windowsPlan);
+        applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
+        const QVector<RestoreStep> &plan = windowsPlan ? windowsRestorePlan() : linuxRestorePlan();
+        RestoreDialog dialog(exampleRequest(), plan);
+        dialog.show();
+        dialog.resize(dialog.minimumSize());
+        QApplication::processEvents();
+
+        const auto inside = [&dialog](QWidget *widget) {
+            const QRect rect(widget->mapTo(&dialog, QPoint(0, 0)), widget->size());
+            return widget->isVisible() && dialog.rect().contains(rect);
+        };
+        QVERIFY(inside(dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))));
+        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"))));
+        confirmErase(dialog);
+        dialog.resize(dialog.minimumSize());
+        QApplication::processEvents();
+        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"))));
+        dialog.finishFailure(QStringLiteral("Example failure"));
+        QApplication::processEvents();
+        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))));
+    }
+
+    void explainsClosingDuringARestore_data()
+    {
+        QTest::addColumn<int>("outcome");
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<QString>("explanation");
+        for (bool dark : {false, true}) {
+            QTest::newRow(qPrintable(QStringLiteral("before-writing-%1").arg(dark ? "dark" : "light")))
+                << 2 << dark << QStringLiteral("The disk has not been changed yet");
+            QTest::newRow(qPrintable(QStringLiteral("writing-%1").arg(dark ? "dark" : "light")))
+                << 3 << dark << QStringLiteral("leave the disk unusable");
+        }
+    }
+
+    void explainsClosingDuringARestore()
+    {
+        QFETCH(int, outcome);
+        QFETCH(bool, dark);
+        QFETCH(QString, explanation);
+        ExampleService service;
+        service.outcome = outcome;
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        QVERIFY(QMetaObject::invokeMethod(&window, "startRestore", Qt::DirectConnection));
+        auto *dialog = window.findChild<RestoreDialog *>();
+        QVERIFY(dialog);
+        confirmErase(*dialog);
+        if (outcome == 3) {
+            QTRY_COMPARE(
+                dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->text(),
+                QStringLiteral("Writing in progress"));
+        } else {
+            QTRY_VERIFY(service.restores.load() == 1);
+        }
+
+        QString boxText;
+        QTimer::singleShot(0, [&] {
+            QMessageBox *box = nullptr;
+            for (QWidget *widget : QApplication::topLevelWidgets()) {
+                box = qobject_cast<QMessageBox *>(widget);
+                if (box) {
+                    break;
+                }
+            }
+            if (!box) {
+                box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            }
+            if (!box) {
+                return;
+            }
+            boxText = box->text();
+            box->accept();
+        });
+        window.close();
+
+        QVERIFY(boxText.contains(explanation));
+        QVERIFY(window.isVisible());
+        QVERIFY(dialog->isVisible());
+        QCOMPARE(dialog->windowTitle(), QStringLiteral("Restoring USB drive"));
+        if (outcome == 2) {
+            dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->click();
+            QTRY_COMPARE(dialog->windowTitle(), QStringLiteral("Restore cancelled"));
+        } else {
+            QTRY_COMPARE(dialog->windowTitle(), QStringLiteral("Restore failed"));
+            QCOMPARE(
+                dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(),
+                QStringLiteral("Example stopped after writing started"));
+        }
+        dialog->accept();
         window.close();
     }
 
