@@ -2,19 +2,28 @@
 
 ## Next
 
-### Release preparation
-
-1. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
-   Windows builds. Require passing tests and packaging/startup checks, verify
-   versions and checksums, and record any remaining validation limits before
-   approving a release. Use only disposable media for manual restore checks.
-
-### Other follow-ups
-
+- Merge [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11), tag
+  `v1.8.0` and verify the published release assets and checksums.
 - Measure restore times on disposable media using the setup and step durations
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-31: Completed the 1.8.0 pre-release review on
+  [CI run 79](https://github.com/KaroqDave/USB-Restoration-Tool/actions/runs/41144616037)
+  (`f81d369`). All five jobs pass: Windows (`build-windows`), Ubuntu 22.04
+  AppImage (`build-linux`), Ubuntu 24.04 Debian (`build-deb`), Fedora 43 RPM
+  (`build-rpm`) and Ubuntu 24.04 ASan/UBSan + libFuzzer (`sanitizers`). All four
+  ctest suites pass in every job (including `usb-gui-tests` on Windows, under
+  ASan/UBSan, and at 200% scaling with 79 checks on Fedora 43), and all 37
+  privileged Linux loop cases pass with no skips in both `build-deb` and
+  `sanitizers`. Downloaded and verified the four CI artifacts: AppImage, `.deb`
+  and `.rpm` match their `.sha256` files, all 20 files in the Windows ZIP match
+  `SHA256SUMS.txt`, the Windows executable and `README.txt` report `1.8.0`, both
+  packaged helpers report `version 4 app 1.8.0 steps 10 destructive 5`, and the
+  extracted CI AppImage passes a four-second headless startup check. Interactive
+  desktop polkit authentication and physical-media restores remain manual checks
+  for disposable media.
 
 - 2026-10-30: Finished the release cleanup. Removed the unused
   `restoredLocationNoun()` from `DiskService` and both backends. The README
