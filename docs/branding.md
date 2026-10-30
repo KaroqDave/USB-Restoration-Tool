@@ -12,7 +12,8 @@ stays descriptive; the tagline is **A fresh start for your USB drive.**
 - [readme-banner.svg](../resources/branding/readme-banner.svg) is the editable
   project banner; the README uses its PNG export for consistent text rendering.
 - `docs/images/app-light.png` and `app-dark.png` show the actual widgets with an
-  example drive, rather than a physical device.
+  example drive, rather than a physical device. `usb-gui-tests` writes them; see
+  [Development](development.md#test).
 
 Use the same icon for the executable, taskbar, Linux launcher, header and About
 dialog. Do not stretch it or put text inside the tile.

@@ -669,6 +669,34 @@ class GuiTests : public QObject {
         dialog.finishCancelled(QStringLiteral("Preview ended"));
     }
 
+    void rendersTheMainWindow_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    // Saves the README's interface preview: USBRESTORE_GUI_SNAPSHOTS=docs/images.
+    void rendersTheMainWindow()
+    {
+        QFETCH(bool, dark);
+        // Earlier tests save their own selection; the preview must show first-run defaults.
+        QSettings(QStringLiteral("KaroqDave"), QStringLiteral("USB Restoration Tool")).clear();
+        applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
+        ExampleService service;
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        QTest::qWait(80);
+
+        const QString output = qEnvironmentVariable("USBRESTORE_GUI_SNAPSHOTS");
+        if (!output.isEmpty()) {
+            QVERIFY(QDir().mkpath(output));
+            QVERIFY(
+                window.grab().save(QDir(output).filePath(QStringLiteral("app-%1.png").arg(dark ? "dark" : "light"))));
+        }
+        window.close();
+    }
+
     void describesTheReleaseAndProjectVersion_data()
     {
         QTest::addColumn<bool>("dark");

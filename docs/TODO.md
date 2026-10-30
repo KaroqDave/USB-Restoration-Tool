@@ -2,17 +2,9 @@
 
 ## Next
 
-### Tomorrow
+### Release preparation
 
-1. Add native Fedora packaging (`.rpm`), including dependencies, the privileged
-   helper and polkit policy. Add CI/release integration and check installation,
-   upgrade and removal.
-
-2. Finish release cleanup: remove obsolete UI/code, update documentation and
-   screenshots, revise the previous Debian/AppImage-only packaging guidance,
-   and check build scripts, workflows and release notes for consistency.
-
-3. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
+1. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
    Windows builds. Require passing tests and packaging/startup checks, verify
    versions and checksums, and record any remaining validation limits before
    approving a release. Use only disposable media for manual restore checks.
@@ -23,6 +15,15 @@
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-30: Finished the release cleanup. Removed the unused
+  `restoredLocationNoun()` from `DiskService` and both backends. The README
+  screenshots now come from a new `rendersTheMainWindow` GUI test that writes
+  `app-light.png` and `app-dark.png` with first-run settings, so they show 1.8.0,
+  GPT default and the current interface. Updated `AGENTS.md` for the restore
+  dialog and the AppImage probe, the helper protocol example, and the screenshot
+  instructions. Linux build and all four ctest suites pass at 100% and 200%
+  scaling. No physical drive accessed.
 
 - 2026-10-30: Fixed the local AppImage startup crash by rebuilding with upstream
   patchelf commit `3e996db`; linuxdeploy's bundled version moved Qt plugin code

@@ -130,6 +130,9 @@ application data when that directory is not writable.
   clears signatures in larger writes without changing the erased range.
 - Linux and Windows drive errors explain the failed operation and what to try
   next. The log now records setup, step and total restore durations.
+- The About dialog covers the one-window restore flow and the published
+  packages. Closing the window during a restore explains that the disk is
+  unchanged until writing starts.
 - A native Fedora RPM installs the unprivileged app, restore helper and polkit
   policy, with dependencies on the system Qt and all four formatters.
 - AppImage packaging checks bundled Qt platform and SVG loading to catch a

@@ -39,6 +39,12 @@ clearer drive errors.
 - Linux and Windows drive failures name the operation and provide next steps,
   while retaining OS error details. Formatter failures preserve their output
   without assuming that the drive is damaged.
+- The About dialog describes the single restore window, the filesystem choices
+  and the Windows, Debian, Fedora and AppImage builds, with the version taken
+  from the project version.
+- Closing the main window during a restore now says the disk is unchanged until
+  writing starts, and the explanation appears on the restore dialog rather than
+  behind it.
 
 ### Fixed
 

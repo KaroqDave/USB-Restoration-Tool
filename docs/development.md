@@ -57,6 +57,15 @@ errors. To save previews on Linux:
 USBRESTORE_GUI_SNAPSHOTS=build-linux/ui-previews ./build-linux/usb-gui-tests rendersBothPlansAndThemes -platform offscreen
 ```
 
+The README's interface previews come from the same test binary:
+
+```bash
+USBRESTORE_GUI_SNAPSHOTS=docs/images ./build-linux/usb-gui-tests rendersTheMainWindow -platform offscreen
+```
+
+That writes `app-light.png` and `app-dark.png` with first-run settings. Review
+both, and regenerate them whenever the main window changes.
+
 Set `QT_SCALE_FACTOR=2` to check 200% scaling.
 
 Linux also checks partition tables with `sgdisk` and `fdisk`:
