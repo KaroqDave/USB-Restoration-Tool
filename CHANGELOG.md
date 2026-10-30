@@ -20,6 +20,8 @@ clearer drive errors.
 - A native Fedora RPM built with CPack, including the restore helper, polkit
   action, system Qt and formatter dependencies. CI and release builds check
   installation, upgrade and removal in a disposable Fedora environment.
+- A backend-free AppImage packaging probe for bundled Qt platform and SVG
+  loading, detecting plugin corruption before a bundle is published.
 
 ### Changed
 
@@ -42,6 +44,9 @@ clearer drive errors.
 
 - Windows no longer retries permanent physical-drive lock errors for five
   seconds.
+- The local AppImage startup crash caused by patchelf rewriting Qt plugins was
+  resolved with a corrected patchelf build. Packaging supports selecting that
+  build through `PATCHELF` and rejects bundles that fail the loading probe.
 
 ## 1.7.2 - 2026-10-24
 

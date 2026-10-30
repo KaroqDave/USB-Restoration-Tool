@@ -148,6 +148,13 @@ The AppImage script needs `curl` and FUSE support for its build tools. It disabl
 the installed helper; the resulting app runs as root. Windows signing options
 remain available in the packaging script's help.
 
+AppImage packaging also runs a backend-free probe against the bundled Qt
+libraries, platform plugin and SVG support. It never enumerates or restores
+disks. Some patchelf versions corrupt tightly packed Qt plugins while rewriting
+their library paths ([upstream issue](https://github.com/NixOS/patchelf/issues/639)).
+If the probe fails for that reason, set `PATCHELF=/path/to/a/fixed/patchelf` when
+rebuilding; linuxdeploy uses that instead of its bundled version.
+
 The `.deb` is built by CPack from the `install()` rules, with the prefix fixed at
 `/usr`. Build it on the oldest release it should install on (CI uses Ubuntu 24.04),
 against the distribution's Qt:

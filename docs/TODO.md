@@ -24,6 +24,13 @@
 
 ## Recently completed
 
+- 2026-10-30: Fixed the local AppImage startup crash by rebuilding with upstream
+  patchelf commit `3e996db`; linuxdeploy's bundled version moved Qt plugin code
+  without preserving its startup address. Packaging now checks bundled platform
+  and SVG loading with a backend-free probe, which reproduces the old crash and
+  passes on the rebuilt bundle. The actual AppImage passes a four-second
+  unprivileged, headless startup check and checksum verification. No restore performed.
+
 - 2026-10-30: Added CPack Fedora RPM packaging with system Qt, formatter
   dependencies, the helper, polkit policy and license. Shared CI/release
   integration builds on Fedora 43 and publishes the RPM and checksum. Fedora 43

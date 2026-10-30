@@ -132,6 +132,8 @@ application data when that directory is not writable.
   next. The log now records setup, step and total restore durations.
 - A native Fedora RPM installs the unprivileged app, restore helper and polkit
   policy, with dependencies on the system Qt and all four formatters.
+- AppImage packaging checks bundled Qt platform and SVG loading to catch a
+  plugin-rewriting fault that caused startup crashes.
 
 Linux requirements are unchanged. Upgrade the installed app and helper together.
 
