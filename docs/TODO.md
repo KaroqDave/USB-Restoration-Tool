@@ -12,23 +12,17 @@
    helper and polkit policy. Add CI/release integration and check installation,
    upgrade and removal.
 
-3. Update PR #11's title and description to reflect the UI, performance,
-   packaging and version changes, with current test results and validation gaps.
-
-4. Refresh the About dialog for the updated release, interface and supported
-   packages; keep its displayed version derived from the project version.
-
-5. Review Linux/Windows integration: confirmation-to-progress transitions,
+3. Review Linux/Windows integration: confirmation-to-progress transitions,
    worker signals, cancellation, errors, completion and closing behavior. Check
    both themes and display scaling without weakening the erase or identity
    gates. Run the new dialog's Windows and sanitizer CI checks; local sanitizer
    linking remains blocked by the missing ASan runtime.
 
-6. Finish release cleanup: remove obsolete UI/code, update documentation and
+4. Finish release cleanup: remove obsolete UI/code, update documentation and
    screenshots, revise the previous Debian/AppImage-only packaging guidance,
    and check build scripts, workflows and release notes for consistency.
 
-7. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
+5. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
    Windows builds. Require passing tests and packaging/startup checks, verify
    versions and checksums, and record any remaining validation limits before
    approving a release. Use only disposable media for manual restore checks.
@@ -39,6 +33,21 @@
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-30: Refreshed the About dialog for the single restore window, the
+  filesystem choices and the Windows, Debian, Fedora and AppImage builds. The
+  displayed version still comes from the project version. GUI tests receive that
+  version and fail if it falls back to `0.0.0-dev`. Linux build and all four
+  ctest suites pass. The new check passes in both themes at 100% and 200%
+  scaling, and the GUI suite reports 67 passed at both scales. Windows and
+  sanitizer checks remain pending. No physical drive accessed.
+
+- 2026-10-30: Updated [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11)
+  to describe the restore dialog, faster setup, clearer drive errors, the
+  AppImage startup probe, the Fedora RPM and version 1.8.0. The description
+  keeps CI run 78 on `9c9037d` separate from later local results. Windows and
+  sanitizer jobs have not rerun for the dialog, the Fedora workflow has not run
+  on GitHub, and no physical drive was restored.
 
 - 2026-10-30: Removed the main window's old progress bar and duplicate restore
   outcomes. Progress, cancellation, stall notices and results stay in the restore

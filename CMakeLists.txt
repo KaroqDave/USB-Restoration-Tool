@@ -607,6 +607,9 @@ if(USBRESTORE_BUILD_TESTS)
         tests/test_gui.cpp
     )
     target_include_directories(usb-gui-tests PRIVATE src)
+    target_compile_definitions(usb-gui-tests PRIVATE
+        USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
+    )
     target_link_libraries(usb-gui-tests PRIVATE Qt6::Widgets Qt6::Test)
     if(WIN32)
         target_sources(usb-gui-tests PRIVATE src/win/windows_util.cpp)

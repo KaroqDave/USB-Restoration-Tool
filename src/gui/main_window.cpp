@@ -268,6 +268,7 @@ QLayout *MainWindow::buildHeaderLayout()
     m_themeButton = styledButton(themeButtonText(m_theme), "text");
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
     auto *aboutButton = styledButton(QStringLiteral("About"), "text");
+    aboutButton->setObjectName(QStringLiteral("about"));
     connect(aboutButton, &QPushButton::clicked, this, &MainWindow::showAbout);
     headerButtons->addWidget(m_activityButton);
     headerButtons->addWidget(m_themeButton);
@@ -936,15 +937,22 @@ void MainWindow::applyCurrentTheme()
 void MainWindow::showAbout()
 {
     QMessageBox about(this);
+    about.setObjectName(QStringLiteral("aboutDialog"));
     about.setWindowTitle(QStringLiteral("About USB Restoration Tool"));
     about.setIconPixmap(QIcon(QStringLiteral(":/icons/app.svg")).pixmap(QSize(64, 64), devicePixelRatioF()));
     about.setText(QStringLiteral("USB Restoration Tool %1").arg(QString::fromLatin1(USBRESTORE_APP_VERSION)));
-    about.setInformativeText(QStringLiteral("A fresh start for your USB drive.\n\n"
-                                            "Created by %1\n\n"
-                                            "Restores a USB drive written by an ISO writer, Linux installer, or boot "
-                                            "media tool back to one GPT or MBR partition formatted as you choose.\n\n"
-                                            "Only USB disks are listed, and boot, system, offline, and read-only "
-                                            "disks are refused.")
+    about.setInformativeText(QStringLiteral(
+                                 "A fresh start for your USB drive.\n\n"
+                                 "Created by %1\n\n"
+                                 "Restores a USB drive written by an ISO writer, Linux installer, or boot "
+                                 "media tool to one GPT or MBR partition labelled USB. Choose exFAT, "
+                                 "FAT32, or NTFS; Linux can also format ext4.\n\n"
+                                 "Confirmation, progress and the result stay in one window. Nothing is "
+                                 "erased until you tick the acknowledgement and confirm.\n\n"
+                                 "Only USB disks are listed, and boot, system, offline, and read-only "
+                                 "disks are refused.\n\n"
+                                 "Published builds are a Windows portable package, a Debian package, a "
+                                 "Fedora RPM, and a Linux AppImage.")
                                  .arg(QString::fromLatin1(AppAuthor)));
     about.setStandardButtons(QMessageBox::Ok);
     QPushButton *githubButton = about.addButton(QStringLiteral("Open GitHub"), QMessageBox::ActionRole);

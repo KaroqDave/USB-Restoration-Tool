@@ -9,6 +9,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
@@ -648,6 +649,54 @@ class GuiTests : public QObject {
             QVERIFY(dialog.grab().save(QDir(output).filePath(QString::fromLatin1(QTest::currentDataTag()) + ".png")));
         }
         dialog.finishCancelled(QStringLiteral("Preview ended"));
+    }
+
+    void describesTheReleaseAndProjectVersion_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    void describesTheReleaseAndProjectVersion()
+    {
+        QFETCH(bool, dark);
+        ExampleService service;
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        const QString version = QString::fromLatin1(USBRESTORE_APP_VERSION);
+        QCOMPARE(window.findChild<QLabel *>(QStringLiteral("version"))->text(), QStringLiteral("v%1").arg(version));
+
+        QString title;
+        QString details;
+        bool hasGithub = false;
+        QTimer::singleShot(0, [&] {
+            auto *box = window.findChild<QMessageBox *>(QStringLiteral("aboutDialog"));
+            if (!box) {
+                return;
+            }
+            title = box->text();
+            details = box->informativeText();
+            for (auto *button : box->findChildren<QPushButton *>()) {
+                hasGithub = hasGithub || button->text() == QStringLiteral("Open GitHub");
+            }
+            box->accept();
+        });
+        window.findChild<QPushButton *>(QStringLiteral("about"))->click();
+
+        QCOMPARE(title, QStringLiteral("USB Restoration Tool %1").arg(version));
+        QVERIFY(version != QStringLiteral("0.0.0-dev"));
+        QVERIFY(details.contains(QStringLiteral("Created by KaroqDave")));
+        QVERIFY(details.contains(QStringLiteral("one window")));
+        QVERIFY(details.contains(QStringLiteral("tick the acknowledgement and confirm")));
+        QVERIFY(details.contains(QStringLiteral("boot, system, offline, and read-only")));
+        QVERIFY(details.contains(QStringLiteral("Windows portable package")));
+        QVERIFY(details.contains(QStringLiteral("Debian package")));
+        QVERIFY(details.contains(QStringLiteral("Fedora RPM")));
+        QVERIFY(details.contains(QStringLiteral("Linux AppImage")));
+        QVERIFY(details.contains(QStringLiteral("ext4")));
+        QVERIFY(hasGithub);
+        window.close();
     }
 
   private:
