@@ -4,19 +4,15 @@
 
 ### Tomorrow
 
-1. Choose and apply the next release version in `CMakeLists.txt`, the single
-   source of truth. Align release notes, changelog, package metadata and artifact
-   names with that version.
-
-2. Add native Fedora packaging (`.rpm`), including dependencies, the privileged
+1. Add native Fedora packaging (`.rpm`), including dependencies, the privileged
    helper and polkit policy. Add CI/release integration and check installation,
    upgrade and removal.
 
-3. Finish release cleanup: remove obsolete UI/code, update documentation and
+2. Finish release cleanup: remove obsolete UI/code, update documentation and
    screenshots, revise the previous Debian/AppImage-only packaging guidance,
    and check build scripts, workflows and release notes for consistency.
 
-4. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
+3. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
    Windows builds. Require passing tests and packaging/startup checks, verify
    versions and checksums, and record any remaining validation limits before
    approving a release. Use only disposable media for manual restore checks.
@@ -27,6 +23,16 @@
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-30: Prepared 1.8.0 in `CMakeLists.txt` with unreleased README notes and
+  changelog entries for the restore dialog, setup improvements, clearer errors
+  and the About dialog. Package metadata and artifact naming derive from the
+  project version. Linux build and all four ctest suites pass; production
+  main-window and About widgets show 1.8.0 in both themes using an example
+  service. The helper announces app 1.8.0 with protocol 4 unchanged. Release
+  preflight accepts v1.8.0, extracts its notes and rejects a mismatched tag.
+  Windows builds, package rebuilds and final release validation remain pending;
+  privileged loop tests skip locally. No physical drive accessed.
 
 - 2026-10-30: Reviewed the restore dialog against both backends. Confirmation still
   freezes the request shown, and dismissal cannot start a restore. Progress,

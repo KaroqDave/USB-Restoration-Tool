@@ -110,7 +110,24 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.7.2
+## What's New in 1.8.0 (unreleased)
+
+- Confirmation, restore progress and the result now share one themed dialog,
+  with animated steps, completed-step timings, elapsed time and stall guidance.
+  The erase acknowledgement is still required, and cancellation is disabled
+  once destructive work starts.
+- After a restore, the main window rescans the drives and shows whether the
+  selected drive is eligible for another restore. Retrying requires a fresh
+  erase acknowledgement.
+- Restore setup avoids unnecessary filesystem-detail reads. Windows reuses its
+  storage connection and stops retrying permanent drive-lock errors; Linux
+  clears signatures in larger writes without changing the erased range.
+- Linux and Windows drive errors explain the failed operation and what to try
+  next. The log now records setup, step and total restore durations.
+
+Linux requirements are unchanged. Upgrade the installed app and helper together.
+
+### Previously, in 1.7.2
 
 - On Linux, a restore whose formatting step fails no longer leaves the old
   partitions showing over the new partition table.

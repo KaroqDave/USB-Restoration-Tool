@@ -4,7 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.8.0 - Unreleased
+
+A single confirmation-to-result restore dialog, reduced restore setup work and
+clearer drive errors.
+
+### Added
+
+- A themed restore dialog with animated active steps, completed-step durations,
+  elapsed time, stall guidance and inline success, cancellation and error results.
+- Application log timings for restore setup, each numbered step and the entire
+  attempt, including failed and cancelled attempts.
+- GUI regressions for restore outcomes, fresh acknowledgement on retry and
+  missing, unsafe or unscannable drives after a restore.
+
+### Changed
+
+- Erase confirmation and progress share one dialog. The disk summary,
+  large-drive warning and acknowledgement gate remain in place; cancellation
+  stops being available when destructive work starts, and a running restore
+  cannot be dismissed.
+- The main window rescans after a restore and shows current drive eligibility
+  instead of duplicating the restore dialog's progress and result.
+- Preflight and Linux open-handle checks omit filesystem display details while
+  still checking fresh identity, disk state and mount points.
+- Windows storage operations reuse one WMI connection per restore.
+- Linux signature clearing uses 4 MiB writes without changing the cleared range
+  or flushes.
+- Linux and Windows drive failures name the operation and provide next steps,
+  while retaining OS error details. Formatter failures preserve their output
+  without assuming that the drive is damaged.
+
+### Fixed
+
+- Windows no longer retries permanent physical-drive lock errors for five
+  seconds.
 
 ## 1.7.2 - 2026-10-24
 
