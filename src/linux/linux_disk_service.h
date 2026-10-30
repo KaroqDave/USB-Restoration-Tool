@@ -15,6 +15,7 @@ class LinuxDiskService : public DiskService {
     RestoreGuard restoreGuard() const override;
     QVector<FileSystemType> supportedFileSystems() const override;
     bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const override;
+    const QVector<RestoreStep> &restorePlan() const override;
     int totalRestoreSteps() const override;
     int firstDestructiveStep() const override;
     bool

@@ -27,6 +27,7 @@ QString tokenReplace(QString tpl, const Palette &p)
     tpl.replace(QStringLiteral("@dangerHover"), hex(p.dangerHover));
     tpl.replace(QStringLiteral("@dangerPressed"), hex(p.dangerPressed));
     tpl.replace(QStringLiteral("@danger"), hex(p.danger));
+    tpl.replace(QStringLiteral("@statusError"), hex(p.statusError));
     tpl.replace(
         QStringLiteral("@chevron"),
         p.isDark ? QStringLiteral(":/icons/chevron-down-dark.svg") : QStringLiteral(":/icons/chevron-down-light.svg"));
@@ -159,6 +160,32 @@ QLabel#detailTitle { color: @text; font-weight: 600; font-size: 11pt; }
 QLabel#fieldLabel { color: @mutedText; font-weight: 600; }
 QLabel#fieldValue { color: @text; }
 QLabel#footnote { color: @mutedText; }
+QLabel#restoreEyebrow { color: @accent; font-size: 8pt; font-weight: 700; }
+QLabel#restoreTitle { font-size: 20pt; font-weight: 700; }
+QLabel#restoreMessage { font-size: 11pt; font-weight: 600; }
+QLabel#restoreCounter { color: @accent; font-weight: 600; }
+QLabel#restoreCounter[state="error"] { color: @statusError; }
+QWidget#restoreStepIndicator { background: transparent; }
+QLabel#restoreClock, QLabel#restoreStepState, QLabel#restoreNotice { color: @mutedText; font-size: 9pt; }
+QFrame#restoreTarget {
+    background: @surface;
+    border: 1px solid @border;
+    border-radius: 12px;
+}
+QFrame#restoreStepRow { border: 1px solid transparent; border-radius: 8px; }
+QFrame#restoreStepRow[state="active"] { background: @accentSoft; border: 1px solid @accent; }
+QFrame#restoreStepRow[state="active"] QLabel#restoreStepTitle { font-weight: 700; }
+QFrame#restoreStepRow[state="active"] QLabel#restoreStepState { color: @accent; font-weight: 600; }
+QFrame#restoreStepRow[state="complete"] QLabel#restoreStepState { color: @accent; }
+QFrame#restoreStepRow[state="error"] QLabel#restoreStepState { color: @statusError; font-weight: 700; }
+QProgressBar#restoreStepProgress {
+    background: @surfaceAlt;
+    min-height: 6px;
+    max-height: 6px;
+    border: none;
+    border-radius: 3px;
+}
+QProgressBar#restoreStepProgress::chunk { background: @accent; border: none; border-radius: 3px; }
 QFrame#warningBanner {
     background: @warningSurface;
     border: 1px solid @border;
@@ -332,20 +359,6 @@ QPushButton[variant="text"] {
 QPushButton[variant="text"]:hover { color: @accent; background: @surfaceAlt; }
 QPushButton[variant="text"]:pressed { background: @border; }
 
-QProgressBar {
-    background: @surfaceAlt;
-    border: 1px solid @border;
-    border-radius: 7px;
-    min-height: 28px;
-    text-align: center;
-    color: @text;
-}
-QProgressBar::chunk {
-    background: @accentSoft;
-    border: 1px solid @accent;
-    border-radius: 6px;
-}
-
 QLabel#statusBadge {
     border-radius: 8px;
     padding: 8px 12px;
@@ -391,6 +404,8 @@ void applyTheme(QApplication &app, Theme theme)
     qpal.setColor(QPalette::ToolTipBase, p.surface);
     qpal.setColor(QPalette::ToolTipText, p.text);
     qpal.setColor(QPalette::PlaceholderText, p.mutedText);
+    qpal.setColor(QPalette::Mid, p.border);
+    qpal.setColor(QPalette::LinkVisited, p.statusError);
     qpal.setColor(QPalette::Disabled, QPalette::Text, p.mutedText);
     qpal.setColor(QPalette::Disabled, QPalette::ButtonText, p.mutedText);
     app.setPalette(qpal);

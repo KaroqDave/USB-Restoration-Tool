@@ -84,6 +84,7 @@ class DiskService {
     // Windows imposes FAT32 size limits that Linux does not.
     virtual bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const = 0;
 
+    virtual const QVector<RestoreStep> &restorePlan() const = 0;
     virtual int totalRestoreSteps() const = 0;
 
     // 1-based, from the backend's plan in core/restore_steps.cpp. The GUI tells the user

@@ -118,6 +118,11 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
     return refuse(QStringLiteral("That filesystem is not supported."));
 }
 
+const QVector<RestoreStep> &WindowsDiskService::restorePlan() const
+{
+    return windowsRestorePlan();
+}
+
 int WindowsDiskService::totalRestoreSteps() const
 {
     return static_cast<int>(windowsRestorePlan().size());

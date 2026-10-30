@@ -44,6 +44,21 @@ On Windows, `usb-wmi-tests` also checks numeric method parameters against
 in-memory WMI objects. These tests use no storage provider and access no disks;
 they run with the core tests through ctest.
 
+`usb-gui-tests` runs offscreen through ctest. An example `DiskService` checks the
+single-window erase acknowledgement, worker progress and all three outcomes
+without accessing disks. It checks that dismissal cannot start a restore,
+the worker uses the request shown in the confirmation, and each outcome leaves
+the main window reflecting a fresh scan. Retrying requires a new erase
+acknowledgement. Widget checks cover both
+step plans and themes, cancellation, elapsed time, window dismissal and long
+errors. To save previews on Linux:
+
+```bash
+USBRESTORE_GUI_SNAPSHOTS=build-linux/ui-previews ./build-linux/usb-gui-tests rendersBothPlansAndThemes -platform offscreen
+```
+
+Set `QT_SCALE_FACTOR=2` to check 200% scaling.
+
 Linux also checks partition tables with `sgdisk` and `fdisk`:
 
 ```bash

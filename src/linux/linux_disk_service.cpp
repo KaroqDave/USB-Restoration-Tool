@@ -73,6 +73,11 @@ bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &
     return canCreateFileSystemOn(type, disk, reason);
 }
 
+const QVector<RestoreStep> &LinuxDiskService::restorePlan() const
+{
+    return linuxRestorePlan();
+}
+
 int LinuxDiskService::totalRestoreSteps() const
 {
     return static_cast<int>(linuxRestorePlan().size());

@@ -329,6 +329,7 @@ function(usbrestore_export_clangd_compile_commands)
         list(APPEND _includes
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool-tests_autogen/include${_suffix}"
+            "${CMAKE_CURRENT_BINARY_DIR}/usb-gui-tests_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-partition-dump_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-core-fuzz_autogen/include${_suffix}"
         )
@@ -396,6 +397,7 @@ function(usbrestore_export_clangd_compile_commands)
         ${USBRESTORE_PLATFORM_SOURCES}
         ${USBRESTORE_GUI_SOURCES}
         tests/test_core.cpp
+        tests/test_gui.cpp
         tests/fuzz_core.cpp
         tools/partition_dump.cpp
     )
@@ -472,6 +474,8 @@ set(USBRESTORE_GUI_SOURCES
     src/gui/main.cpp
     src/gui/main_window.cpp
     src/gui/main_window.h
+    src/gui/restore_dialog.cpp
+    src/gui/restore_dialog.h
     src/gui/theme.cpp
     src/gui/theme.h
     resources/resources.qrc
@@ -586,7 +590,38 @@ if(USBRESTORE_BUILD_TESTS)
     endif()
 
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
+
+    add_executable(usb-gui-tests
+        ${USBRESTORE_CORE_SOURCES}
+        src/platform/logger.cpp
+        src/platform/logger.h
+        src/platform/restore_worker.cpp
+        src/platform/restore_worker.h
+        src/gui/app_settings.cpp
+        src/gui/main_window.cpp
+        src/gui/main_window.h
+        src/gui/restore_dialog.cpp
+        src/gui/restore_dialog.h
+        src/gui/theme.cpp
+        resources/resources.qrc
+        tests/test_gui.cpp
+    )
+    target_include_directories(usb-gui-tests PRIVATE src)
+    target_link_libraries(usb-gui-tests PRIVATE Qt6::Widgets Qt6::Test)
     if(WIN32)
+        target_sources(usb-gui-tests PRIVATE src/win/windows_util.cpp)
+        target_compile_definitions(usb-gui-tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(usb-gui-tests PRIVATE shell32 advapi32)
+        if(MSVC)
+            target_compile_options(usb-gui-tests PRIVATE /utf-8)
+        endif()
+    endif()
+    usbrestore_sanitize(usb-gui-tests)
+    add_dependencies(usb-restoration-tool-tests usb-gui-tests)
+    add_test(NAME usb-gui-tests COMMAND usb-gui-tests -platform offscreen)
+    if(WIN32)
+        set_tests_properties(usb-gui-tests PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
 

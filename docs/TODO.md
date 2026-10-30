@@ -2,10 +2,62 @@
 
 ## Next
 
+### Tomorrow
+
+1. Choose and apply the next release version in `CMakeLists.txt`, the single
+   source of truth. Align release notes, changelog, package metadata and artifact
+   names with that version.
+
+2. Add native Fedora packaging (`.rpm`), including dependencies, the privileged
+   helper and polkit policy. Add CI/release integration and check installation,
+   upgrade and removal.
+
+3. Update PR #11's title and description to reflect the UI, performance,
+   packaging and version changes, with current test results and validation gaps.
+
+4. Refresh the About dialog for the updated release, interface and supported
+   packages; keep its displayed version derived from the project version.
+
+5. Review Linux/Windows integration: confirmation-to-progress transitions,
+   worker signals, cancellation, errors, completion and closing behavior. Check
+   both themes and display scaling without weakening the erase or identity
+   gates. Run the new dialog's Windows and sanitizer CI checks; local sanitizer
+   linking remains blocked by the missing ASan runtime.
+
+6. Finish release cleanup: remove obsolete UI/code, update documentation and
+   screenshots, revise the previous Debian/AppImage-only packaging guidance,
+   and check build scripts, workflows and release notes for consistency.
+
+7. Perform the final pre-release review across Fedora RPM, Debian, AppImage and
+   Windows builds. Require passing tests and packaging/startup checks, verify
+   versions and checksums, and record any remaining validation limits before
+   approving a release. Use only disposable media for manual restore checks.
+
+### Other follow-ups
+
 - Measure restore times on disposable media using the setup and step durations
   now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-30: Removed the main window's old progress bar and duplicate restore
+  outcomes. Progress, cancellation, stall notices and results stay in the restore
+  dialog; the main window rescans and shows current disk eligibility for the next
+  restore. Added regressions for all outcomes, a fresh acknowledgement on retry,
+  and missing, unsafe or unscannable disks after a restore. Linux build and all
+  four ctest suites pass; 65 GUI checks pass at 100% and 200% scaling, covering
+  both themes. Windows and sanitizer checks remain pending; privileged loop tests
+  are skipped locally. No physical drive accessed.
+
+- 2026-10-29: Added a themed, single-window confirmation and restore flow,
+  with animated active steps, completed-step checks and durations, elapsed time,
+  stall notices and inline results. Confirmation retains the disk details,
+  large-drive warning and checkbox gate; dismissal cannot start a restore, and
+  the worker receives the exact request shown. It displays the backend's plan and disables
+  cancellation once writing starts; Escape and closing cannot dismiss a running
+  restore. Linux build and all four ctest suites pass, including 50 GUI checks
+  using an example service. Checked both themes and plans at 100% and 200%
+  scaling. Windows and sanitizer validation remain pending. No physical disk accessed.
 
 - 2026-10-29: Fixed the Ubuntu 22.04 test build by including glibc's mount header
   before the kernel filesystem header, whose macros otherwise replace the mount

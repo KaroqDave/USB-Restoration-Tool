@@ -28,7 +28,8 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
   trusted. See `docs/polkit-helper.md`.
 - `src/gui/` — `main.cpp`, `main_window.*`, `theme.*`, `app_settings.*`.
 
-Tests live in `tests/test_core.cpp` (`src/core`), `tests/test_wmi.cpp` (Windows WMI
+Tests live in `tests/test_gui.cpp` (offscreen widgets and an example disk service),
+`tests/test_core.cpp` (`src/core`), `tests/test_wmi.cpp` (Windows WMI
 encoding and job monitoring) and `tests/test_linux.cpp` (Linux formatter mappings and
 partition re-reads on loop images); `tests/fuzz_core.cpp` fuzzes the parsers and
 partition tables and replays `tests/fuzz-corpus`. `tools/partition_dump.cpp` backs
@@ -73,7 +74,8 @@ comment or the docs already say.
 ## Testing Guidelines
 
 Tests use `QtTest`, are named after the behaviour they pin down, and go in the
-file for the code they cover: `test_core.cpp`, `test_wmi.cpp` or `test_linux.cpp`. Every change to a safety rule needs a test, including the case it
+file for the code they cover: `test_core.cpp`, `test_wmi.cpp`, `test_linux.cpp` or
+`test_gui.cpp`. Every change to a safety rule needs a test, including the case it
 now refuses that it previously allowed — several existing tests exist purely to
 document a rule that used to be too permissive, and their comments say so.
 
