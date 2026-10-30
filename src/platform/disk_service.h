@@ -93,9 +93,6 @@ class DiskService {
 
     virtual bool
     restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) = 0;
-
-    // "drive letter" on Windows, "device" on Linux.
-    virtual QString restoredLocationNoun() const = 0;
 };
 
 } // namespace usbrestore

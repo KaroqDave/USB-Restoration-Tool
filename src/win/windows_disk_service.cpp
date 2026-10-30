@@ -133,11 +133,6 @@ int WindowsDiskService::firstDestructiveStep() const
     return firstDestructiveStepOf(windowsRestorePlan());
 }
 
-QString WindowsDiskService::restoredLocationNoun() const
-{
-    return QStringLiteral("drive letter");
-}
-
 bool WindowsDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {

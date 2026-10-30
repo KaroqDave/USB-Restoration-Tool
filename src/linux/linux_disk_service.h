@@ -20,7 +20,6 @@ class LinuxDiskService : public DiskService {
     int firstDestructiveStep() const override;
     bool
     restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) override;
-    QString restoredLocationNoun() const override;
 };
 
 } // namespace usbrestore

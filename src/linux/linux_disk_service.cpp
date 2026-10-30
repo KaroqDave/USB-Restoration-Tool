@@ -88,11 +88,6 @@ int LinuxDiskService::firstDestructiveStep() const
     return firstDestructiveStepOf(linuxRestorePlan());
 }
 
-QString LinuxDiskService::restoredLocationNoun() const
-{
-    return QStringLiteral("device");
-}
-
 bool LinuxDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
