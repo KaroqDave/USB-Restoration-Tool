@@ -101,6 +101,8 @@ PartitionTableRequest mbrTable(qint64 diskSize, int sectorSize, const GptLayout 
 class LinuxTests : public QObject {
     Q_OBJECT
   private slots:
+    void initTestCase() { QLocale::setDefault(QLocale::c()); }
+
     void clearsOnlyRequestedImageRange_data()
     {
         QTest::addColumn<int>("sectorSize");

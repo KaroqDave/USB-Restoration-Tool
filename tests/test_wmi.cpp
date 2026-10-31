@@ -81,6 +81,7 @@ class WmiTests : public QObject {
   private slots:
     void initTestCase()
     {
+        QLocale::setDefault(QLocale::c());
         m_comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         QVERIFY(m_comInitialized);
     }

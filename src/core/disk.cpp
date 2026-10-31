@@ -1,5 +1,6 @@
 #include "core/disk.h"
 
+#include <QCoreApplication>
 #include <QtGlobal>
 
 namespace usbrestore {
@@ -115,15 +116,15 @@ QString fileSystemTypeLabel(FileSystemType type)
 {
     switch (type) {
     case FileSystemType::ExFat:
-        return QStringLiteral("exFAT (recommended)");
+        return QCoreApplication::translate("usbrestore::Disk", "exFAT (recommended)");
     case FileSystemType::Fat32:
-        return QStringLiteral("FAT32 (older devices)");
+        return QCoreApplication::translate("usbrestore::Disk", "FAT32 (older devices)");
     case FileSystemType::Ntfs:
-        return QStringLiteral("NTFS");
+        return QCoreApplication::translate("usbrestore::Disk", "NTFS");
     case FileSystemType::Ext4:
-        return QStringLiteral("ext4 (Linux)");
+        return QCoreApplication::translate("usbrestore::Disk", "ext4 (Linux)");
     }
-    return QStringLiteral("Unknown");
+    return QCoreApplication::translate("usbrestore::Disk", "Unknown");
 }
 
 QString fileSystemTypeToken(FileSystemType type)

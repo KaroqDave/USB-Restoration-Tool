@@ -146,7 +146,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake clang libclang-rt-18-dev qt6-base-dev gdisk fdisk exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
+          sudo apt-get install -y cmake clang libclang-rt-18-dev qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-translations-l10n gdisk fdisk exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
 
       - name: Configure
         run: >
@@ -197,7 +197,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ qt6-base-dev dpkg-dev file exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
+          sudo apt-get install -y cmake g++ qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-translations-l10n dpkg-dev file exfatprogs dosfstools ntfs-3g e2fsprogs util-linux
 
       - name: Build .deb
         run: ./scripts/build-deb.sh

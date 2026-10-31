@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Added
+
+- Translation groundwork for 1.9.0: saved system/English/German preference,
+  embedded application and Qt base catalogs, and German text for the main window,
+  About and activity dialog controls, theme/filesystem labels, restore dialog,
+  step titles and restore notices/results. Language selection is not activated
+  in the application yet.
+- English and German restore-dialog rendering tests for both themes and step
+  plans, including a separate 200% scaling check through ctest.
+
+### Fixed
+
+- Long restore errors can scroll in compact dialogs without forcing the progress
+  details to overlap them.
+
 ## 1.8.0 - 2026-10-31
 
 A single confirmation-to-result restore dialog, reduced restore setup work and

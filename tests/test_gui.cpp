@@ -1,11 +1,14 @@
 #include "gui/main_window.h"
 #include "gui/restore_dialog.h"
 #include "gui/theme.h"
+#include "platform/translations.h"
+#include "platform/restore_worker.h"
 
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -21,11 +24,13 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
+#include <QTextEdit>
 #include <QTimer>
 
 #include <atomic>
@@ -159,9 +164,69 @@ class GuiTests : public QObject {
   private slots:
     void initTestCase()
     {
+        QLocale::setDefault(QLocale::c());
         QVERIFY(m_settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settings.path());
+    }
+
+    void remembersTheLanguagePreference()
+    {
+        const AppSettings original = loadAppSettings();
+        const auto restore = qScopeGuard([original]() { saveAppSettings(original); });
+        QSettings store(QStringLiteral("KaroqDave"), QStringLiteral("USB Restoration Tool"));
+        store.remove(QStringLiteral("language"));
+        QCOMPARE(loadAppSettings().language, Language::System);
+        for (const auto language : {Language::System, Language::English, Language::German}) {
+            AppSettings settings = original;
+            settings.language = language;
+            saveAppSettings(settings);
+            const AppSettings loaded = loadAppSettings();
+            QCOMPARE(loaded.language, language);
+            QCOMPARE(loaded.theme, original.theme);
+            QCOMPARE(loaded.partitionStyle, original.partitionStyle);
+            QCOMPARE(loaded.fileSystem, original.fileSystem);
+        }
+        store.setValue(QStringLiteral("language"), QStringLiteral("unsupported"));
+        QCOMPARE(loadAppSettings().language, Language::System);
+    }
+
+    void loadsOnlyEmbeddedTranslationsWithoutChangingTheLocale()
+    {
+        const QLocale locale;
+        const QString englishTitle = RestoreDialog::tr("Confirm USB restore");
+        {
+            Translations translations;
+            QVERIFY(translations.load(Language::German));
+            QCOMPARE(translations.language(), Language::German);
+            QCOMPARE(RestoreDialog::tr("Confirm USB restore"), QStringLiteral("USB-Wiederherstellung bestätigen"));
+            QDialogButtonBox buttons(QDialogButtonBox::Cancel);
+            QCOMPARE(buttons.button(QDialogButtonBox::Cancel)->text(), QStringLiteral("Abbrechen"));
+            QCOMPARE(QLocale(), locale);
+            QVERIFY(translations.load(Language::English));
+            QCOMPARE(translations.language(), Language::English);
+            QCOMPARE(RestoreDialog::tr("Confirm USB restore"), englishTitle);
+            QVERIFY(translations.load(Language::German));
+        }
+        QCOMPARE(RestoreDialog::tr("Confirm USB restore"), englishTitle);
+        QCOMPARE(QLocale(), locale);
+    }
+
+    void keepsBackendErrorsInEnglishWhileTheDialogIsGerman()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        ExampleService service;
+        service.outcome = 1;
+        RestoreWorker worker(service, exampleRequest());
+        QSignalSpy logs(&worker, &RestoreWorker::logMessage);
+        QSignalSpy failed(&worker, &RestoreWorker::failed);
+        worker.run();
+        QCOMPARE(logs.size(), 1);
+        QCOMPARE(logs.first().first().toString(), QStringLiteral("ERROR: Example restore failure"));
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().first().toString(), QStringLiteral("Example restore failure"));
+        QCOMPARE(RestoreDialog::tr("Restore failed"), QStringLiteral("Wiederherstellung fehlgeschlagen"));
     }
 
 #ifdef Q_OS_LINUX
@@ -751,6 +816,7 @@ class GuiTests : public QObject {
         QTest::addColumn<bool>("dark");
         QTest::addColumn<bool>("windowsPlan");
         QTest::addColumn<QString>("outcome");
+        QTest::addColumn<Language>("language");
         for (bool dark : {false, true}) {
             for (bool windowsPlan : {false, true}) {
                 for (const QString &outcome :
@@ -762,7 +828,9 @@ class GuiTests : public QObject {
                       QStringLiteral("cancelled")}) {
                     const QString name = QStringLiteral("%1-%2-%3")
                                              .arg(dark ? "dark" : "light", windowsPlan ? "windows" : "linux", outcome);
-                    QTest::newRow(qPrintable(name)) << dark << windowsPlan << outcome;
+                    QTest::newRow(qPrintable(name)) << dark << windowsPlan << outcome << Language::English;
+                    QTest::newRow(qPrintable(name + QStringLiteral("-de")))
+                        << dark << windowsPlan << outcome << Language::German;
                 }
             }
         }
@@ -773,10 +841,26 @@ class GuiTests : public QObject {
         QFETCH(bool, dark);
         QFETCH(bool, windowsPlan);
         QFETCH(QString, outcome);
+        QFETCH(Language, language);
+        Translations translations;
+        QVERIFY(translations.load(language));
         applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
         const auto &plan = windowsPlan ? windowsRestorePlan() : linuxRestorePlan();
         RestoreDialog dialog(exampleRequest(), plan);
         dialog.show();
+        auto *acknowledgement = dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"));
+        auto *erase = dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"));
+        QVERIFY(!acknowledgement->isChecked());
+        QVERIFY(!erase->isEnabled());
+        if (language == Language::German) {
+            QCOMPARE(dialog.windowTitle(), QStringLiteral("USB-Wiederherstellung bestätigen"));
+            QCOMPARE(erase->text(), QStringLiteral("Löschen und wiederherstellen"));
+            QCOMPARE(
+                dialog.findChild<QLabel *>(QStringLiteral("restoreStepTitle"))->text(),
+                QStringLiteral("Laufwerkssicherheit prüfen"));
+            QVERIFY(acknowledgement->text().contains(QStringLiteral("USB drive 2")));
+            QVERIFY(acknowledgement->text().contains(QStringLiteral("unwiderruflich gelöscht")));
+        }
         const bool confirming = outcome == QStringLiteral("confirmation") || outcome == QStringLiteral("acknowledged");
         if (!confirming) {
             confirmErase(dialog);
@@ -786,19 +870,48 @@ class GuiTests : public QObject {
         const int lastStep = confirming ? 0 : outcome == QStringLiteral("success") ? static_cast<int>(plan.size()) : 3;
         for (int step = 1; step <= lastStep; ++step) {
             dialog.setProgress(
-                step, static_cast<int>(plan.size()), QStringLiteral("Preparing the drive for a fresh start…"));
+                step,
+                static_cast<int>(plan.size()),
+                language == Language::German ? QStringLiteral("Das Laufwerk wird für einen Neuanfang vorbereitet…")
+                                             : QStringLiteral("Preparing the drive for a fresh start…"));
         }
         if (outcome == QStringLiteral("success")) {
-            dialog.finishSuccess(QStringLiteral("The disk is now one exFAT volume labelled USB at /dev/example1."));
+            dialog.finishSuccess(
+                language == Language::German
+                    ? QStringLiteral("Der Datenträger enthält jetzt ein exFAT-Volume namens USB unter /dev/example1.")
+                    : QStringLiteral("The disk is now one exFAT volume labelled USB at /dev/example1."));
         } else if (outcome == QStringLiteral("failed")) {
-            dialog.finishFailure(QStringLiteral(
-                "Could not write to USB drive 2: the drive stopped responding (error 5). "
-                "Unplug the drive, plug it back in and try again. If it keeps failing, "
-                "try another USB port or replace the drive."));
+            dialog.finishFailure(
+                language == Language::German
+                    ? QStringLiteral(
+                          "USB drive 2 konnte nicht beschrieben werden: Das Laufwerk reagiert nicht mehr (Fehler 5). "
+                          "Ziehen Sie das Laufwerk ab, schließen Sie es wieder an und versuchen Sie es erneut. "
+                          "Versuchen Sie bei weiteren Fehlern einen anderen USB-Anschluss oder ersetzen Sie das "
+                          "Laufwerk.")
+                    : QStringLiteral(
+                          "Could not write to USB drive 2: the drive stopped responding (error 5). "
+                          "Unplug the drive, plug it back in and try again. If it keeps failing, "
+                          "try another USB port or replace the drive."));
         } else if (outcome == QStringLiteral("cancelled")) {
-            dialog.finishCancelled(QStringLiteral("The restore stopped before erasing the disk."));
+            dialog.finishCancelled(
+                language == Language::German ? QStringLiteral("Die Wiederherstellung wurde vor dem Löschen angehalten.")
+                                             : QStringLiteral("The restore stopped before erasing the disk."));
         }
         QTest::qWait(80);
+        if (!confirming) {
+            const auto *messageArea = dialog.findChild<QScrollArea *>(QStringLiteral("restoreMessageArea"));
+            const auto *counter = dialog.findChild<QLabel *>(QStringLiteral("restoreCounter"));
+            const int messageBottom = messageArea->mapTo(&dialog, messageArea->rect().bottomLeft()).y();
+            const int counterTop = counter->mapTo(&dialog, QPoint()).y();
+            QVERIFY(messageBottom < counterTop);
+        }
+        for (auto *button : dialog.findChildren<QPushButton *>()) {
+            if (button->isVisible()) {
+                QVERIFY2(
+                    button->fontMetrics().horizontalAdvance(button->text()) < button->width(),
+                    qPrintable(button->text()));
+            }
+        }
         QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))->geometry().bottom() < dialog.height());
         QVERIFY(
             dialog.findChild<QLabel *>(QStringLiteral("restoreTitle"))->height() >=
@@ -814,28 +927,149 @@ class GuiTests : public QObject {
     void rendersTheMainWindow_data()
     {
         QTest::addColumn<bool>("dark");
-        QTest::newRow("light") << false;
-        QTest::newRow("dark") << true;
+        QTest::addColumn<Language>("language");
+        QTest::newRow("light") << false << Language::English;
+        QTest::newRow("dark") << true << Language::English;
+        QTest::newRow("light-de") << false << Language::German;
+        QTest::newRow("dark-de") << true << Language::German;
     }
 
     // Saves the README's interface preview: USBRESTORE_GUI_SNAPSHOTS=docs/images.
     void rendersTheMainWindow()
     {
         QFETCH(bool, dark);
-        // Earlier tests save their own selection; the preview must show first-run defaults.
+        QFETCH(Language, language);
+        Translations translations;
+        QVERIFY(translations.load(language));
         QSettings(QStringLiteral("KaroqDave"), QStringLiteral("USB Restoration Tool")).clear();
         applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
         ExampleService service;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
         window.show();
         QTest::qWait(80);
-
+        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        QVERIFY(restore);
+        QVERIFY(restore->isEnabled());
+        QCOMPARE(
+            restore->text(),
+            language == Language::German ? QStringLiteral("USB wiederherstellen") : QStringLiteral("Restore USB"));
+        QCOMPARE(
+            window.findChild<QLabel *>(QStringLiteral("warningTitle"))->text(),
+            language == Language::German
+                ? QStringLiteral(
+                      "Die Wiederherstellung löscht alle Partitionen und Dateien auf dem ausgewählten Laufwerk.")
+                : QStringLiteral("Restoring erases every partition and file on the selected drive."));
+        QCOMPARE(
+            themeButtonText(Theme::System),
+            language == Language::German ? QStringLiteral("Design: Automatisch") : QStringLiteral("Theme: Auto"));
         const QString output = qEnvironmentVariable("USBRESTORE_GUI_SNAPSHOTS");
         if (!output.isEmpty()) {
             QVERIFY(QDir().mkpath(output));
-            QVERIFY(
-                window.grab().save(QDir(output).filePath(QStringLiteral("app-%1.png").arg(dark ? "dark" : "light"))));
+            QVERIFY(window.grab().save(
+                QDir(output).filePath(QStringLiteral("app-%1.png").arg(QString::fromLatin1(QTest::currentDataTag())))));
         }
+        window.close();
+    }
+
+    void translatesMainWindowDialogsAndErrors_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    void translatesMainWindowDialogsAndErrors()
+    {
+        QFETCH(bool, dark);
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        ExampleService service;
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        QVERIFY(QMetaObject::invokeMethod(&window, "showActivity"));
+        QDialog *activity = nullptr;
+        for (auto *dialog : window.findChildren<QDialog *>()) {
+            if (dialog->windowTitle() == QStringLiteral("Aktivität")) {
+                activity = dialog;
+            }
+        }
+        QVERIFY(activity);
+        QVERIFY(activity->isVisible());
+        bool hasOpenLog = false;
+        for (auto *button : activity->findChildren<QPushButton *>()) {
+            hasOpenLog = hasOpenLog || button->text() == QStringLiteral("Protokolldatei öffnen");
+        }
+        QVERIFY(hasOpenLog);
+        activity->hide();
+
+        QString aboutTitle;
+        QString aboutDetails;
+        QTimer::singleShot(0, &window, [&] {
+            if (auto *box = window.findChild<QMessageBox *>(QStringLiteral("aboutDialog"))) {
+                aboutTitle = box->windowTitle();
+                aboutDetails = box->informativeText();
+                box->accept();
+            }
+        });
+        window.findChild<QPushButton *>(QStringLiteral("about"))->click();
+        QCOMPARE(aboutTitle, QStringLiteral("Über USB Restoration Tool"));
+        QVERIFY(aboutDetails.contains(QStringLiteral("Entwickelt von KaroqDave")));
+        QVERIFY(aboutDetails.contains(QStringLiteral("Kontrollkästchen aktivieren und bestätigen")));
+
+        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        auto *dialog = window.findChild<RestoreDialog *>();
+        QVERIFY(dialog);
+        QVERIFY(!dialog->findChild<QPushButton *>(QStringLiteral("confirmErase"))->isEnabled());
+        dialog->reject();
+        QCOMPARE(service.restores.load(), 0);
+
+        service.scanError = QStringLiteral("Example scan failure: errno 5");
+        QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
+        QVERIFY(window.findChild<QLabel *>(QStringLiteral("statusBadge"))
+                    ->text()
+                    .contains(QStringLiteral("Die Suche nach USB-Laufwerken ist fehlgeschlagen.")));
+        QVERIFY(window.findChild<QTextEdit *>(QStringLiteral("activityLog"))
+                    ->toPlainText()
+                    .contains(QStringLiteral("Scan failed: Example scan failure: errno 5")));
+        QVERIFY(!window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->isEnabled());
+        QCOMPARE(service.restores.load(), 0);
+        window.close();
+    }
+
+    void translatesRestoreResultsSuppliedByMainWindow_data()
+    {
+        QTest::addColumn<int>("outcome");
+        QTest::newRow("success") << 0;
+        QTest::newRow("cancelled") << 2;
+    }
+
+    void translatesRestoreResultsSuppliedByMainWindow()
+    {
+        QFETCH(int, outcome);
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        ExampleService service;
+        service.outcome = outcome;
+        MainWindow window(service, Theme::Light);
+        window.show();
+        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        auto *dialog = window.findChild<RestoreDialog *>();
+        QVERIFY(dialog);
+        confirmErase(*dialog);
+        if (outcome == 2) {
+            dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->click();
+        }
+        QTRY_COMPARE(
+            dialog->windowTitle(),
+            outcome == 0 ? QStringLiteral("Wiederherstellung abgeschlossen")
+                         : QStringLiteral("Wiederherstellung abgebrochen"));
+        QCOMPARE(
+            dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(),
+            outcome == 0
+                ? QStringLiteral("Das Laufwerk enthält jetzt ein exFAT-Volume mit dem Namen USB unter /dev/example1.")
+                : QStringLiteral("Die Wiederherstellung wurde vor dem Löschen des Laufwerks angehalten."));
+        QCOMPARE(service.restores.load(), 1);
+        dialog->accept();
         window.close();
     }
 

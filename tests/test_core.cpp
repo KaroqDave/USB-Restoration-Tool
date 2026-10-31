@@ -1,4 +1,5 @@
 #include "core/disk.h"
+#include "core/language.h"
 #include "core/partition_table.h"
 #include "core/restore_protocol.h"
 #include "core/restore_steps.h"
@@ -91,6 +92,45 @@ PartitionTableRequest tableRequestFor(std::uint64_t diskSize, quint32 sectorSize
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void initTestCase() { QLocale::setDefault(QLocale::c()); }
+
+    void resolvesTheDisplayLanguage_data()
+    {
+        QTest::addColumn<Language>("preference");
+        QTest::addColumn<QStringList>("languages");
+        QTest::addColumn<Language>("expected");
+        QTest::newRow("german-system") << Language::System << QStringList{"de-DE"} << Language::German;
+        QTest::newRow("austrian-system") << Language::System << QStringList{"de-AT"} << Language::German;
+        QTest::newRow("swiss-system") << Language::System << QStringList{"de_CH"} << Language::German;
+        QTest::newRow("english-system") << Language::System << QStringList{"en-GB", "de-DE"} << Language::English;
+        QTest::newRow("second-choice") << Language::System << QStringList{"fr-FR", "de-DE"} << Language::German;
+        QTest::newRow("unsupported") << Language::System << QStringList{"fr-FR"} << Language::English;
+        QTest::newRow("empty") << Language::System << QStringList{} << Language::English;
+        QTest::newRow("invalid") << Language::System << QStringList{"not-a-locale"} << Language::English;
+        QTest::newRow("english-override") << Language::English << QStringList{"de-DE"} << Language::English;
+        QTest::newRow("german-override") << Language::German << QStringList{"en-US"} << Language::German;
+    }
+
+    void resolvesTheDisplayLanguage()
+    {
+        QFETCH(Language, preference);
+        QFETCH(QStringList, languages);
+        QFETCH(Language, expected);
+        QCOMPARE(resolveLanguage(preference, languages), expected);
+    }
+
+    void storesStableLanguageTokens()
+    {
+        for (const auto language : {Language::System, Language::English, Language::German}) {
+            QCOMPARE(languageFromSettings(languageToSettings(language)), language);
+        }
+        QCOMPARE(languageFromSettings(QString()), Language::System);
+        QCOMPARE(languageFromSettings(QStringLiteral("fr")), Language::System);
+        QCOMPARE(languageFromSettings(QStringLiteral("42")), Language::System);
+        QCOMPARE(languageToSettings(Language::English), QStringLiteral("en"));
+        QCOMPARE(languageToSettings(Language::German), QStringLiteral("de"));
+    }
+
     void refusesImpossibleLayoutsBeforeRestore()
     {
         DiskInfo disk = healthyUsbDisk();

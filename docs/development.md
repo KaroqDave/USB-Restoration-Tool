@@ -2,8 +2,9 @@
 
 ## Build
 
-Requirements: CMake 3.21+, Qt 6.4+ (`Core`, `Widgets`, and `Test` for tests), and a
-C++20 compiler. Use MSVC / Visual Studio 2022+ on Windows or GCC / Clang on Linux.
+Requirements: CMake 3.21+, Qt 6.4+ (`Core`, `Widgets`, `LinguistTools`, and `Test`
+for tests), the German Qt base translation catalog, and a C++20 compiler. Use
+MSVC / Visual Studio 2022+ on Windows or GCC / Clang on Linux.
 
 Set `CMAKE_PREFIX_PATH` to your Qt kit if CMake cannot find it. Windows builds
 also look for an MSVC kit under `C:\Qt` when no Qt location is configured.
@@ -78,6 +79,13 @@ It takes about 25 seconds. Regenerate it whenever the restore dialog changes.
 
 Set `QT_SCALE_FACTOR=2` to check 200% scaling.
 
+The restore-dialog rendering matrix covers English and German, both step plans,
+both themes and every outcome. Main-window previews also cover both languages
+and themes. ctest runs these and the German About/activity/scan-error checks at
+200% scaling as `usb-gui-tests-scaled`. German snapshots have a `-de` filename suffix. The German
+error and progress examples in this matrix are supplied by the test, not by a
+translated backend. Other wording tests fix their default locale to C.
+
 Linux also checks partition tables with `sgdisk` and `fdisk`:
 
 ```bash
@@ -136,6 +144,29 @@ attempt time in milliseconds, including failed or cancelled attempts. Use these
 to identify slow stages when checking performance on disposable media. Helper
 setup includes the time spent approving the authentication prompt.
 
+## Translations
+
+German support is being prepared for 1.9.0 and is not activated at startup yet.
+`AppSettings::language` stores `system`, `en` or `de`; missing and unknown values
+follow the system's preferred UI languages, falling back to English.
+`Translations` owns the Qt translators without changing the default locale.
+
+`qt_add_translations` compiles `translations/usbrestore_de.ts`. The application
+catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI and GUI tests;
+loading never searches user-writable directories or environment-supplied paths.
+The helper will need its own embedded catalogs when its display protocol is
+extended. Update the catalog after marking more UI text for translation:
+
+```bash
+cmake --build build-linux --target update_translations
+```
+
+Review the new translations before building; unfinished entries fall back to
+English. Extend the extraction sources as translation coverage grows. Backend
+messages currently also feed the log, so they need separate display and English
+log representations before being translated. Language must never decide whether
+a restore is allowed or which device is opened.
+
 ## Install and package
 
 For an installed Linux build, configure the final prefix before building:
@@ -185,7 +216,7 @@ The `.deb` is built by CPack from the `install()` rules, with the prefix fixed a
 against the distribution's Qt:
 
 ```bash
-sudo apt install cmake g++ qt6-base-dev dpkg-dev
+sudo apt install cmake g++ qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-translations-l10n dpkg-dev
 ./scripts/build-deb.sh
 ```
 
@@ -202,7 +233,7 @@ Build the RPM on Fedora 43 or later against the distribution's Qt (CI and
 releases use Fedora 43):
 
 ```bash
-sudo dnf install cmake gcc-c++ make qt6-qtbase-devel rpm-build binutils cpio
+sudo dnf install cmake gcc-c++ make qt6-qtbase-devel qt6-qttools-devel qt6-linguist qt6-qttranslations rpm-build binutils cpio
 ./scripts/build-rpm.sh
 ctest --test-dir build-rpm --output-on-failure
 ```

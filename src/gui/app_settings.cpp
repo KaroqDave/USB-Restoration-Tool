@@ -17,6 +17,7 @@ AppSettings loadAppSettings()
 {
     QSettings settings(QString::fromLatin1(SettingsOrganization), QString::fromLatin1(SettingsApplication));
     AppSettings result;
+    result.language = languageFromSettings(settings.value(QStringLiteral("language")).toString());
     if (settings.contains(QStringLiteral("theme"))) {
         result.theme = themeFromSettings(settings.value(QStringLiteral("theme")).toInt());
     }
@@ -44,6 +45,7 @@ void saveAppSettings(const AppSettings &settings)
 {
     QSettings store(QString::fromLatin1(SettingsOrganization), QString::fromLatin1(SettingsApplication));
     store.setValue(QStringLiteral("theme"), themeToSettings(settings.theme));
+    store.setValue(QStringLiteral("language"), languageToSettings(settings.language));
     store.setValue(QStringLiteral("geometry"), settings.geometry);
     store.setValue(QStringLiteral("partitionStyle"), static_cast<int>(settings.partitionStyle));
     store.setValue(QStringLiteral("fileSystem"), static_cast<int>(settings.fileSystem));

@@ -2,17 +2,55 @@
 
 ## Next
 
-- 1.9.0: Add German to everything the user sees: the GUI, step names, refusal
-  reasons and the restore errors shown in the dialog, including those raised by
-  the Linux helper and Windows backend. The log stays English. Use
-  `qt_add_translations` with `usbrestore_de.ts` and the Qt base translations.
-  Follow the system language, with a manual override in `AppSettings` and the
-  interface. The helper needs the language as a display-only argument, since
-  pkexec clears the environment; it must never affect a safety decision. Ship
-  translations in every package, render German in GUI tests at 100% and 200%
-  scaling in both themes, and keep English wording tests on a fixed locale.
+### 1.9.0 — German support (in progress)
+
+- Translate shared disk descriptions, size/duration formatting, safety refusals
+  and layout warnings while preserving English logs. The main window, About and
+  activity dialog controls, theme/filesystem labels, restore dialog and both
+  plans' step titles are translated, including caller-supplied stall notices and
+  success/cancellation summaries. Backend-supplied messages remain English.
+- Separate translated display messages from English logging, including Linux
+  helper and Windows backend errors and progress. Do not simply translate the
+  shared backend strings: `RestoreWorker` currently logs and displays the same
+  text. Preserve formatter and OS details alongside translated explanations.
+- Wire `Translations` into startup and add the interface's system/English/German
+  override using the saved `AppSettings::language`. Keep activation disabled
+  until the remaining text is covered. Do not change language during a restore.
+- Pass the resolved language to the helper as a strictly validated, display-only
+  argument because pkexec clears the environment. Never use it for safety or
+  device identity decisions. Test missing, invalid and repeated arguments and
+  unchanged safety refusals; update the protocol version when its arguments or
+  output change.
+- Embed the catalogs in the helper as well as the GUI, verify all four package
+  formats, and extend German rendering checks to the main window and real error
+  paths. Keep both themes at 100% and 200% scaling and English wording tests on a
+  fixed locale. Windows, Qt 6.4 and sanitizer validation remain to be run in CI.
+- Prepare the 1.9.0 version bump, README release notes and changelog after the
+  feature and validation are complete; no release or tag yet.
 
 ## Recently completed
+
+- 2026-10-31: Added 72 German display strings for the main window, About and
+  activity dialog controls, theme/filesystem labels and caller-supplied restore
+  notices and results (138 catalog entries total). English logs and protocol
+  tokens remain unchanged; startup activation is still disabled. Added main
+  window rendering and dialog/scan-error checks in both themes at 100% and 200%,
+  plus German success/cancellation checks through the example service. Linux
+  build and all five ctest checks pass; German main-window previews reviewed at
+  both scales. Privileged loop tests skipped. Shared descriptions, safety
+  messages, backend translations and package/CI validation remain open. No
+  physical drive accessed.
+
+- 2026-10-31: Started 1.9.0 translation groundwork: stable language preferences,
+  embedded application/Qt base catalogs through `qt_add_translations`, and 66
+  German restore-dialog strings including both plans' step titles. Startup
+  activation, the selector and backend translations remain open above. Fixed
+  long errors overlapping progress details in compact dialogs. Linux build and
+  all five ctest checks pass, including English/German rendering in both themes
+  and plans at 100% and 200%; reviewed German previews at both scales. Catalog
+  extraction, placeholders, formatting and diff checks pass. Privileged loop
+  tests skipped; packages, Windows and sanitizers were not run. No physical
+  drive accessed.
 
 - 2026-10-31: Published 1.8.0 as the latest stable release. Squash-merged
   [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11) as

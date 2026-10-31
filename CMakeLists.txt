@@ -112,7 +112,7 @@ if(NOT WIN32)
     set(USBRESTORE_HELPER_PATH "${CMAKE_INSTALL_FULL_LIBEXECDIR}/usb-restoration-helper")
 endif()
 
-set(_usbrestore_qt_components Core Widgets)
+set(_usbrestore_qt_components Core Widgets LinguistTools)
 if(USBRESTORE_BUILD_TESTS)
     list(APPEND _usbrestore_qt_components Test)
 endif()
@@ -126,6 +126,8 @@ get_filename_component(QT_INSTALL_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 set(USBRESTORE_CORE_SOURCES
     src/core/disk.cpp
     src/core/disk.h
+    src/core/language.cpp
+    src/core/language.h
     src/core/partition_table.cpp
     src/core/partition_table.h
     src/core/restore_protocol.cpp
@@ -145,6 +147,8 @@ set(USBRESTORE_PLATFORM_SOURCES
     src/platform/restore_worker.cpp
     src/platform/restore_worker.h
     src/platform/startup.h
+    src/platform/translations.cpp
+    src/platform/translations.h
 )
 
 set(USBRESTORE_WIN_SOURCES
@@ -526,6 +530,39 @@ if(NOT WIN32)
 endif()
 target_link_libraries(usb-restoration-tool PRIVATE Qt6::Core Qt6::Widgets)
 
+if(Qt6_VERSION VERSION_GREATER_EQUAL "6.7")
+    set(_usbrestore_translation_source_targets SOURCE_TARGETS usb-restoration-tool)
+endif()
+qt_add_translations(usb-restoration-tool
+    ${_usbrestore_translation_source_targets}
+    TS_FILES translations/usbrestore_de.ts
+    SOURCES src/gui/restore_dialog.cpp src/gui/restore_dialog.h
+        src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/core/disk.cpp
+    INCLUDE_DIRECTORIES src
+    LUPDATE_OPTIONS -locations none -no-obsolete
+    LRELEASE_OPTIONS -nounfinished
+    QM_FILES_OUTPUT_VARIABLE USBRESTORE_QM_FILES)
+unset(_usbrestore_translation_source_targets)
+
+find_file(USBRESTORE_QTBASE_DE_QM qtbase_de.qm
+    HINTS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}"
+          "${QT_INSTALL_PREFIX}/translations" "${QT_INSTALL_PREFIX}/share/qt6/translations"
+    NO_DEFAULT_PATH REQUIRED)
+
+function(usbrestore_embed_translations target)
+    qt_add_resources(${target} "${target}_translations"
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES ${USBRESTORE_QM_FILES})
+    get_filename_component(_qt_translations_dir "${USBRESTORE_QTBASE_DE_QM}" DIRECTORY)
+    qt_add_resources(${target} "${target}_qt_translations"
+        PREFIX "/i18n"
+        BASE "${_qt_translations_dir}"
+        FILES "${USBRESTORE_QTBASE_DE_QM}")
+endfunction()
+
+usbrestore_embed_translations(usb-restoration-tool)
+
 if(WIN32)
     target_compile_definitions(usb-restoration-tool PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(usb-restoration-tool PRIVATE ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
@@ -605,6 +642,8 @@ if(USBRESTORE_BUILD_TESTS)
         src/platform/logger.h
         src/platform/restore_worker.cpp
         src/platform/restore_worker.h
+        src/platform/translations.cpp
+        src/platform/translations.h
         src/gui/app_settings.cpp
         src/gui/main_window.cpp
         src/gui/main_window.h
@@ -619,6 +658,7 @@ if(USBRESTORE_BUILD_TESTS)
         USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
     )
     target_link_libraries(usb-gui-tests PRIVATE Qt6::Widgets Qt6::Test)
+    usbrestore_embed_translations(usb-gui-tests)
     if(WIN32)
         target_sources(usb-gui-tests PRIVATE src/win/windows_util.cpp)
         target_compile_definitions(usb-gui-tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -632,8 +672,12 @@ if(USBRESTORE_BUILD_TESTS)
     usbrestore_sanitize(usb-gui-tests)
     add_dependencies(usb-restoration-tool-tests usb-gui-tests)
     add_test(NAME usb-gui-tests COMMAND usb-gui-tests -platform offscreen)
+    add_test(NAME usb-gui-tests-scaled COMMAND usb-gui-tests rendersBothPlansAndThemes rendersTheMainWindow translatesMainWindowDialogsAndErrors -platform offscreen)
+    set_tests_properties(usb-gui-tests-scaled PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
     if(WIN32)
         set_tests_properties(usb-gui-tests PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+        set_property(TEST usb-gui-tests-scaled APPEND PROPERTY
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
