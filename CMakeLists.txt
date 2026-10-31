@@ -486,7 +486,10 @@ target_link_libraries(usb-branding-export PRIVATE Qt6::Gui)
 
 if(NOT WIN32)
     add_executable(usb-qt-bundle-probe EXCLUDE_FROM_ALL tools/qt_bundle_probe.cpp)
-    target_link_libraries(usb-qt-bundle-probe PRIVATE Qt6::Widgets)
+    # No build rpath: the AppImage check selects bundled Qt with LD_LIBRARY_PATH,
+    # and a DT_RPATH would be searched first and hide a damaged bundle.
+    set_target_properties(usb-qt-bundle-probe PROPERTIES SKIP_BUILD_RPATH TRUE)
+    target_link_libraries(usb-qt-bundle-probe PRIVATE Qt6::Widgets ${CMAKE_DL_LIBS})
 endif()
 
 if(WIN32)
@@ -732,6 +735,11 @@ else()
     # with none of the AppImage's portability, so there is none.
     if(USBRESTORE_INSTALL_HELPER)
         install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/licenses/usb-restoration-tool")
+        # Debian looks for the license at this path. The RPM keeps the copy above,
+        # marked %license; one install tree feeds both packages.
+        install(FILES LICENSE
+                DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/usb-restoration-tool"
+                RENAME copyright)
 
         set(CPACK_GENERATOR DEB)
         set(CPACK_PACKAGE_NAME usb-restoration-tool)

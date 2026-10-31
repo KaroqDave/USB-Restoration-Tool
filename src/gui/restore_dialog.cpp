@@ -1,5 +1,7 @@
 #include "gui/restore_dialog.h"
 
+#include "gui/theme.h"
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QFrame>
@@ -116,9 +118,9 @@ class RestoreStepIndicator : public QWidget {
         const bool large = width() > 40;
         const qreal stroke = large ? 4.0 : 2.0;
         const QRectF circle = QRectF(rect()).adjusted(stroke + 1, stroke + 1, -stroke - 1, -stroke - 1);
-        const QColor color =
-            palette().color(state == QStringLiteral("pending") ? QPalette::PlaceholderText : QPalette::Highlight);
-        painter.setPen(QPen(palette().color(QPalette::Mid), stroke));
+        const Palette &colors = appliedPalette();
+        const QColor color = state == QStringLiteral("pending") ? colors.mutedText : colors.accent;
+        painter.setPen(QPen(colors.border, stroke));
         painter.drawEllipse(circle);
         painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         if (state == QStringLiteral("active")) {
@@ -131,12 +133,12 @@ class RestoreStepIndicator : public QWidget {
             check.lineTo(width() * 0.71, height() * 0.36);
             painter.drawPath(check);
         } else if (state == QStringLiteral("confirmation")) {
-            painter.setPen(QPen(palette().color(QPalette::LinkVisited), stroke, Qt::SolidLine, Qt::RoundCap));
+            painter.setPen(QPen(colors.statusError, stroke, Qt::SolidLine, Qt::RoundCap));
             painter.drawEllipse(circle);
             painter.drawLine(QPointF(width() * 0.5, height() * 0.28), QPointF(width() * 0.5, height() * 0.55));
             painter.drawPoint(QPointF(width() * 0.5, height() * 0.71));
         } else if (state == QStringLiteral("error")) {
-            painter.setPen(QPen(palette().color(QPalette::LinkVisited), stroke, Qt::SolidLine, Qt::RoundCap));
+            painter.setPen(QPen(colors.statusError, stroke, Qt::SolidLine, Qt::RoundCap));
             painter.drawEllipse(circle);
             painter.drawLine(QPointF(width() * 0.37, height() * 0.37), QPointF(width() * 0.63, height() * 0.63));
             painter.drawLine(QPointF(width() * 0.63, height() * 0.37), QPointF(width() * 0.37, height() * 0.63));
@@ -430,7 +432,9 @@ void RestoreDialog::setProgress(int step, int totalSteps, const QString &message
 
 void RestoreDialog::setNotice(const QString &message)
 {
-    if (m_stage == Stage::Running) {
+    // Stall and recovery text must not replace the cancellation sentence:
+    // later progress updates leave it in place while cancellation is pending.
+    if (m_stage == Stage::Running && !m_cancelling) {
         m_notice->setText(message);
     }
 }

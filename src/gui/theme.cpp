@@ -102,6 +102,15 @@ const Palette &paletteFor(ColorScheme scheme)
     return scheme == ColorScheme::Dark ? dark : light;
 }
 
+namespace {
+ColorScheme appliedScheme = ColorScheme::Light;
+}
+
+const Palette &appliedPalette()
+{
+    return paletteFor(appliedScheme);
+}
+
 ColorScheme resolveColorScheme(Theme theme)
 {
     switch (theme) {
@@ -389,6 +398,7 @@ void applyTheme(QApplication &app, Theme theme)
     }
 
     const ColorScheme scheme = resolveColorScheme(theme);
+    appliedScheme = scheme;
     const Palette &p = paletteFor(scheme);
 
     QPalette qpal;
@@ -404,8 +414,6 @@ void applyTheme(QApplication &app, Theme theme)
     qpal.setColor(QPalette::ToolTipBase, p.surface);
     qpal.setColor(QPalette::ToolTipText, p.text);
     qpal.setColor(QPalette::PlaceholderText, p.mutedText);
-    qpal.setColor(QPalette::Mid, p.border);
-    qpal.setColor(QPalette::LinkVisited, p.statusError);
     qpal.setColor(QPalette::Disabled, QPalette::Text, p.mutedText);
     qpal.setColor(QPalette::Disabled, QPalette::ButtonText, p.mutedText);
     app.setPalette(qpal);

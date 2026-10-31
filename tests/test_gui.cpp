@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPalette>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
@@ -220,6 +221,31 @@ class GuiTests : public QObject {
             static_cast<int>(linuxRestorePlan().size()),
             QStringLiteral("Writing"));
         QVERIFY(!writingCancel->isEnabled());
+    }
+
+    void keepsCancellationNoticeThroughStallNotices()
+    {
+        RestoreDialog dialog(exampleRequest(), linuxRestorePlan());
+        confirmErase(dialog);
+        dialog.setProgress(1, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Checking"));
+        auto *notice = dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"));
+        const QString stall =
+            QStringLiteral("No response from the device for 0:20. Keep it connected while the system waits.");
+        dialog.setNotice(stall);
+        QCOMPARE(notice->text(), stall);
+
+        dialog.setCancelling();
+        const QString cancellation = notice->text();
+        QVERIFY(cancellation.contains(QStringLiteral("checkpoint")));
+        QCOMPARE(dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"))->text(), QStringLiteral("Stopping…"));
+
+        dialog.setNotice(
+            QStringLiteral("No response from the device for 1:05. Keep it connected while the system waits."));
+        QCOMPARE(notice->text(), cancellation);
+        dialog.setNotice(
+            QStringLiteral("The device is responding again. Keep it connected until the restore finishes."));
+        QCOMPARE(notice->text(), cancellation);
+        QVERIFY(!notice->text().contains(QStringLiteral("until the restore finishes")));
     }
 
     void keepsElapsedTimeAndStopsAnimationAtTheResult()
@@ -602,6 +628,19 @@ class GuiTests : public QObject {
         dialog->accept();
         QVERIFY(!restore->isEnabled());
         window.close();
+    }
+
+    void doesNotRepurposePaletteRolesForTheStepIndicator()
+    {
+        for (const Theme theme : {Theme::Light, Theme::Dark}) {
+            applyTheme(*qApp, theme);
+            const Palette &colors = paletteFor(resolveColorScheme(theme));
+            QCOMPARE(appliedPalette().border, colors.border);
+            QCOMPARE(appliedPalette().statusError, colors.statusError);
+            QCOMPARE(appliedPalette().accent, colors.accent);
+            QVERIFY(qApp->palette().color(QPalette::Mid) != colors.border);
+            QVERIFY(qApp->palette().color(QPalette::LinkVisited) != colors.statusError);
+        }
     }
 
     void rendersBothPlansAndThemes_data()

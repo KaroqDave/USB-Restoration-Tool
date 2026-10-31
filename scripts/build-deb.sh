@@ -29,6 +29,7 @@ readonly ExpectedFiles=(
     /usr/share/applications/usb-restoration-tool.desktop
     /usr/share/icons/hicolor/scalable/apps/usb-restoration-tool.svg
     /usr/share/icons/hicolor/256x256/apps/usb-restoration-tool.png
+    /usr/share/doc/usb-restoration-tool/copyright
 )
 
 step() {

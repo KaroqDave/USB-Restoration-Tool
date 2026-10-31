@@ -158,11 +158,15 @@ the installed helper; the resulting app runs as root. Windows signing options
 remain available in the packaging script's help.
 
 AppImage packaging also runs a backend-free probe against the bundled Qt
-libraries, platform plugin and SVG support. It never enumerates or restores
-disks. Some patchelf versions corrupt tightly packed Qt plugins while rewriting
-their library paths ([upstream issue](https://github.com/NixOS/patchelf/issues/639)).
-If the probe fails for that reason, set `PATCHELF=/path/to/a/fixed/patchelf` when
-rebuilding; linuxdeploy uses that instead of its bundled version.
+libraries, platform plugin and SVG support. The probe is linked without an
+RPATH or RUNPATH, and the script refuses to run it if either is present. It
+accepts the run only when the loaded QtCore library is inside the AppDir, so a
+missing or damaged library cannot fall back to the Qt the probe was built
+against. It never enumerates or restores disks. Some patchelf versions corrupt
+tightly packed Qt plugins while rewriting their library paths
+([upstream issue](https://github.com/NixOS/patchelf/issues/639)). If the probe
+fails for that reason, set `PATCHELF=/path/to/a/fixed/patchelf` when rebuilding;
+linuxdeploy uses that instead of its bundled version.
 
 The `.deb` is built by CPack from the `install()` rules, with the prefix fixed at
 `/usr`. Build it on the oldest release it should install on (CI uses Ubuntu 24.04),
@@ -175,8 +179,10 @@ sudo apt install cmake g++ qt6-base-dev dpkg-dev
 
 Leave `CMAKE_PREFIX_PATH` unset so CMake finds the system Qt; `dpkg-shlibdeps`
 fails on a Qt kit no package owns. The script checks that the package contains
-the helper at `/usr/libexec/usb-restoration-helper` and a polkit action naming
-that path. `cpack` refuses any prefix other than `/usr`, since polkit reads
+the helper at `/usr/libexec/usb-restoration-helper`, a polkit action naming that
+path, and the license at `/usr/share/doc/usb-restoration-tool/copyright`. The
+same install also ships `/usr/share/licenses/usb-restoration-tool/LICENSE` for
+the RPM. `cpack` refuses any prefix other than `/usr`, since polkit reads
 actions only from `/usr/share/polkit-1/actions`. Both native package formats are
 non-relocatable for the same reason.
 

@@ -6,24 +6,20 @@
   `v1.8.0` and verify the published release assets and checksums.
 - Measure restore times on disposable media using the setup and step durations
   now recorded in the application log.
-- Keep the cancellation notice in the restore dialog through stall notices.
-  `RestoreDialog::setNotice` overwrites "Cancellation requested…", and on
-  recovery says to wait "until the restore finishes" while the button reads
-  "Stopping…"; `setProgress` does not restore it while cancelling. Add a GUI
-  test for a stall after cancellation.
-- Colour `RestoreStepIndicator` without repurposing app-wide palette roles.
-  `applyTheme` sets `QPalette::LinkVisited` to the error colour and
-  `QPalette::Mid` to the border colour for the whole application; pass the
-  colours to the indicator instead.
-- Make the AppImage Qt probe prove it loads the bundled Qt libraries. It relies
-  on `LD_LIBRARY_PATH`, which an old-style `DT_RPATH` on `usb-qt-bundle-probe`
-  would override, letting damaged bundled libraries pass. Fail the check if the
-  probe has an `RPATH`, or build it without one.
-- Decide where the `.deb` ships the license. The `LICENSE` install added for the
-  RPM also puts `/usr/share/licenses/usb-restoration-tool/LICENSE` in the Debian
-  package, where `/usr/share/doc/<pkg>/copyright` is expected.
 
 ## Recently completed
+
+- 2026-10-31: Kept the cancellation notice through stall and recovery text, and
+  pinned that with a GUI test. The step indicator now paints from the applied
+  theme palette, so `applyTheme` no longer sets `Mid` to the border colour or
+  `LinkVisited` to the error colour. The AppImage probe is linked without an
+  RPATH or RUNPATH; the packaging script refuses either and accepts the run only
+  when the loaded QtCore library is inside the AppDir. The `.deb` now includes
+  the license at `/usr/share/doc/usb-restoration-tool/copyright` as well as the
+  RPM's `/usr/share/licenses/usb-restoration-tool/LICENSE`. Linux build and all
+  four ctest suites pass, including 81 GUI checks. The probe reports
+  `/lib64/libQt6Core.so.6` and `readelf` shows no RPATH or RUNPATH. AppImage,
+  `.deb` and RPM packages were not rebuilt. No physical drive accessed.
 
 - 2026-10-31: Completed the 1.8.0 pre-release review on
   [CI run 79](https://github.com/KaroqDave/USB-Restoration-Tool/actions/runs/41144616037)
