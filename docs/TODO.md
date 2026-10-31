@@ -7,6 +7,15 @@
 
 ## Recently completed
 
+- 2026-10-31: Closed the branch review findings. Windows write protection is
+  reported as such instead of as refused access. Wrapped storage failures label
+  the inner text "Details" rather than attributing it to Windows, and the detach
+  and drive-letter steps give their own advice instead of the generic replug
+  advice; the volume-lock message no longer repeats it. The restore window
+  reports when it ignores an out-of-order progress step, and the log records it.
+  Linux build and all four ctest suites pass; Windows tests were updated but not
+  run, and no physical drive was accessed.
+
 - 2026-10-31: Measured two restores with the current Linux build, run as root, on
   an Intenso Basic Line stick (7.47 GB, 512-byte sectors, GPT). exFAT finished
   in 2101 ms and FAT32 in 4913 ms. Setup was 0 ms and 4 ms. Clearing signatures

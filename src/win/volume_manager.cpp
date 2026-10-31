@@ -89,10 +89,8 @@ bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error)
     if (!DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
         const DWORD code = GetLastError();
         if (error) {
-            *error = windowsErrorMessage(
-                QStringLiteral("Could not lock volume %1 before restore. Close any window or program using it")
-                    .arg(volumePath),
-                code);
+            *error =
+                windowsErrorMessage(QStringLiteral("Could not lock volume %1 before restore").arg(volumePath), code);
         }
         return false;
     }

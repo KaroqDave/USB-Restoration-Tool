@@ -55,8 +55,13 @@ QString windowsDeviceErrorText(const QString &context, DWORD error)
         reason = QStringLiteral("another program is still using the drive");
         advice = QStringLiteral("Close any files, File Explorer windows and programs using the drive and try again");
         break;
-    case ERROR_ACCESS_DENIED:
     case ERROR_WRITE_PROTECT:
+        reason = QStringLiteral("the drive is write-protected");
+        advice = QStringLiteral(
+            "If it has a write-protect switch, turn it off and try again. If it has none, the drive may have made "
+            "itself read-only and need replacing");
+        break;
+    case ERROR_ACCESS_DENIED:
         reason = QStringLiteral("Windows refused access to the drive");
         advice = QStringLiteral(
             "Close any programs using the drive. If it has a write-protect switch, turn it off and try again. "
@@ -94,14 +99,15 @@ QString windowsDeviceErrorText(const QString &context, DWORD error)
     return QStringLiteral("%1: %2 (Windows error %3). %4.").arg(context, reason).arg(error).arg(advice);
 }
 
-QString windowsRestoreErrorText(const QString &context, const QString &detail)
+QString windowsRestoreErrorText(const QString &context, const QString &detail, const QString &advice)
 {
-    QString message = QStringLiteral(
-                          "%1. Close any programs using the drive, unplug it, plug it back in and run "
-                          "the restore again.")
-                          .arg(context);
+    const QString nextStep =
+        advice.isEmpty()
+            ? QStringLiteral("Close any programs using the drive, unplug it, plug it back in and run the restore again")
+            : advice;
+    QString message = QStringLiteral("%1. %2.").arg(context, nextStep);
     if (!detail.isEmpty()) {
-        message += QStringLiteral("\n\nWindows reported: %1").arg(detail);
+        message += QStringLiteral("\n\nDetails: %1").arg(detail);
     }
     return message;
 }

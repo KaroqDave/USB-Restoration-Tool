@@ -137,10 +137,11 @@ bool WindowsDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     DiskInfo disk = request.disk;
-    const auto failOperation = [&disk, error](const QString &operation, const QString &detail) {
+    const auto failOperation = [&disk,
+                                error](const QString &operation, const QString &detail, const QString &advice = {}) {
         if (error) {
             *error = windowsRestoreErrorText(
-                QStringLiteral("Could not %1 on disk %2").arg(operation).arg(disk.number), detail);
+                QStringLiteral("Could not %1 on disk %2").arg(operation).arg(disk.number), detail, advice);
         }
         return false;
     };
@@ -206,7 +207,11 @@ bool WindowsDiskService::restore(
     // Letterless volumes first, so a volume whose letter is about to be removed is not counted twice.
     if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, &reason, &reporter) ||
         !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, &reason)) {
-        return failOperation(QStringLiteral("detach the existing volumes and drive letters"), reason);
+        return failOperation(
+            QStringLiteral("detach the existing volumes and drive letters"),
+            reason,
+            QStringLiteral(
+                "Close any files, File Explorer windows and programs using the drive and run the restore again"));
     }
 
     // Last harmless stop: deleting the partition records is the first change to the disk itself.
@@ -309,7 +314,12 @@ bool WindowsDiskService::restore(
     reportPlannedStep(steps, reporter, RestoreStep::AssignDriveLetter, QStringLiteral("Assigning a drive letter"));
     const QString driveRoot = volumes.mountVolume(volumeName, &reason);
     if (driveRoot.isEmpty()) {
-        return failOperation(QStringLiteral("assign a drive letter"), reason);
+        return failOperation(
+            QStringLiteral("assign a drive letter"),
+            reason,
+            QStringLiteral(
+                "If every drive letter is in use, eject another drive to free one. Then unplug this drive, plug it "
+                "back in and run the restore again"));
     }
 
     reportPlannedStep(

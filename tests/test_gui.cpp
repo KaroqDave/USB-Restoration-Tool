@@ -240,8 +240,12 @@ class GuiTests : public QObject {
         auto *progress = dialog.findChild<QProgressBar *>();
         QCOMPARE(progress->value(), 0);
         QCOMPARE(dialog.findChildren<QFrame *>(QStringLiteral("restoreStepRow")).size(), linuxRestorePlan().size());
-        for (int step = 1; step <= linuxRestorePlan().size(); ++step) {
-            dialog.setProgress(step, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Working"));
+        const int total = static_cast<int>(linuxRestorePlan().size());
+        QVERIFY(!dialog.setProgress(2, total, QStringLiteral("Skipped ahead")));
+        QCOMPARE(stepRow(dialog, 2)->property("state").toString(), QStringLiteral("pending"));
+        for (int step = 1; step <= total; ++step) {
+            QVERIFY(dialog.setProgress(step, total, QStringLiteral("Working")));
+            QVERIFY(!dialog.setProgress(step, total, QStringLiteral("Repeated")));
             QCOMPARE(progress->value(), step - 1);
             QCOMPARE(stepRow(dialog, step)->property("state").toString(), QStringLiteral("active"));
             if (step > 1) {
@@ -251,7 +255,7 @@ class GuiTests : public QObject {
         dialog.finishSuccess(QStringLiteral("Ready at /dev/example1"));
         QCOMPARE(progress->value(), progress->maximum());
         QCOMPARE(stepRow(dialog, progress->maximum())->property("state").toString(), QStringLiteral("complete"));
-        dialog.setProgress(1, progress->maximum(), QStringLiteral("Late progress"));
+        QVERIFY(!dialog.setProgress(1, progress->maximum(), QStringLiteral("Late progress")));
         QCOMPARE(progress->value(), progress->maximum());
     }
 

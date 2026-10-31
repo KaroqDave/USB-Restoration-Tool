@@ -23,7 +23,8 @@ class RestoreDialog : public QDialog {
   public:
     RestoreDialog(const RestoreRequest &request, const QVector<RestoreStep> &plan, QWidget *parent = nullptr);
 
-    void setProgress(int step, int totalSteps, const QString &message);
+    // False when the update is not the next step of this plan; the dialog is left unchanged.
+    bool setProgress(int step, int totalSteps, const QString &message);
     void setNotice(const QString &message);
     void setCancelling();
     void finishSuccess(const QString &message);

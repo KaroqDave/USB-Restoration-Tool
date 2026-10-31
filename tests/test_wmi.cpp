@@ -127,6 +127,10 @@ class WmiTests : public QObject {
             QVERIFY(text.contains(QStringLiteral("write-protect switch")));
             QVERIFY(text.contains(QStringLiteral("read-only")));
         }
+        // Write protection used to share access denied's "Windows refused access" and lose its plain cause.
+        QVERIFY(windowsDeviceErrorText(context, ERROR_WRITE_PROTECT).contains(QStringLiteral("is write-protected")));
+        QVERIFY(!windowsDeviceErrorText(context, ERROR_WRITE_PROTECT).contains(QStringLiteral("refused access")));
+        QVERIFY(windowsDeviceErrorText(context, ERROR_ACCESS_DENIED).contains(QStringLiteral("refused access")));
         for (const DWORD code :
              {ERROR_DEV_NOT_EXIST,
               ERROR_DEVICE_NOT_CONNECTED,
@@ -188,11 +192,24 @@ class WmiTests : public QObject {
             QVERIFY(text.contains(QStringLiteral("run the restore again")));
             QVERIFY(!text.contains(QStringLiteral("damaged")));
             if (detail.isEmpty()) {
-                QVERIFY(!text.contains(QStringLiteral("Windows reported:")));
+                QVERIFY(!text.contains(QStringLiteral("Details:")));
             } else {
                 QVERIFY(text.endsWith(detail));
             }
         }
+
+        // Some details are the tool's own wording, so they must not be attributed to Windows.
+        const QString ownWords = QStringLiteral("Windows did not report a new volume for disk 7 within 30 seconds.");
+        QVERIFY(!windowsRestoreErrorText(context, ownWords).contains(QStringLiteral("Windows reported")));
+
+        // A step with its own remedy replaces the replug advice instead of adding to it.
+        const QString advice = QStringLiteral("Eject another drive to free a drive letter");
+        const QString letter = windowsRestoreErrorText(
+            QStringLiteral("Could not assign a drive letter on disk 7"),
+            QStringLiteral("No available drive letter was found."),
+            advice);
+        QVERIFY(letter.contains(advice));
+        QVERIFY(!letter.contains(QStringLiteral("Close any programs using the drive")));
     }
 
     void identifiesDiskAndOperationWhenRawHandleIsInvalid()

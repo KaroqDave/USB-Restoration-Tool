@@ -403,10 +403,10 @@ void RestoreDialog::completeCurrentStep()
     row.state->setText(QStringLiteral("Done · %1 s").arg((m_elapsed.elapsed() - m_stepStartedMs) / 1000.0, 0, 'f', 1));
 }
 
-void RestoreDialog::setProgress(int step, int totalSteps, const QString &message)
+bool RestoreDialog::setProgress(int step, int totalSteps, const QString &message)
 {
     if (m_stage != Stage::Running || totalSteps != m_rows.size() || step != m_step + 1 || step > m_rows.size()) {
-        return;
+        return false;
     }
     completeCurrentStep();
     m_step = step;
@@ -428,6 +428,7 @@ void RestoreDialog::setProgress(int step, int totalSteps, const QString &message
     } else if (!m_cancelling) {
         m_notice->setText(QStringLiteral("Keep the drive connected. Cancellation stops at the next safe checkpoint."));
     }
+    return true;
 }
 
 void RestoreDialog::setNotice(const QString &message)

@@ -763,8 +763,13 @@ void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &mess
     m_restoreStep = step;
     noteRestoreActivity();
     m_stallNoticeShown = false;
-    if (m_restoreDialog) {
-        m_restoreDialog->setProgress(step, totalSteps, message);
+    if (m_restoreDialog && !m_restoreDialog->setProgress(step, totalSteps, message)) {
+        m_logger.logFileOnly(QStringLiteral(
+                                 "Restore window ignored progress step %1 of %2 (\"%3\"); it does not "
+                                 "follow the step it is showing.")
+                                 .arg(step)
+                                 .arg(totalSteps)
+                                 .arg(message));
     }
 }
 
