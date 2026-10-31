@@ -44,8 +44,11 @@ void writeLine(const QString &line)
 
 void announceVersion()
 {
-    writeLine(usbrestore::encodeVersionLine(usbrestore::RestoreProtocolVersion,
-                                            QStringLiteral(USBRESTORE_APP_VERSION), usbrestore::linuxRestorePlan()));
+    writeLine(
+        usbrestore::encodeVersionLine(
+            usbrestore::RestoreProtocolVersion,
+            QStringLiteral(USBRESTORE_APP_VERSION),
+            usbrestore::linuxRestorePlan()));
 }
 
 void writeError(const QString &message)
@@ -137,8 +140,9 @@ int main(int argc, char *argv[])
     announceVersion();
 
     if (::geteuid() != 0) {
-        writeError(QStringLiteral("usb-restoration-helper must run as root. It is started by USB Restoration Tool "
-                                  "through pkexec, not on its own."));
+        writeError(QStringLiteral(
+            "usb-restoration-helper must run as root. It is started by USB Restoration Tool "
+            "through pkexec, not on its own."));
         return usbrestore::RestoreExitUsage;
     }
 

@@ -13,14 +13,14 @@ namespace usbrestore {
 QString windowsErrorMessage(DWORD error)
 {
     wchar_t *buffer = nullptr;
-    const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                            FORMAT_MESSAGE_IGNORE_INSERTS,
-                                        nullptr,
-                                        error,
-                                        0,
-                                        reinterpret_cast<LPWSTR>(&buffer),
-                                        0,
-                                        nullptr);
+    const DWORD length = FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        error,
+        0,
+        reinterpret_cast<LPWSTR>(&buffer),
+        0,
+        nullptr);
     QString message;
     if (length > 0 && buffer) {
         message = QString::fromWCharArray(buffer, static_cast<int>(length)).trimmed();
@@ -132,14 +132,15 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
     QByteArray buffer(static_cast<int>(sizeof(VOLUME_DISK_EXTENTS)), '\0');
     for (int attempt = 0; attempt < 5; ++attempt) {
         DWORD returned = 0;
-        const BOOL ok = DeviceIoControl(volumeHandle,
-                                        IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
-                                        nullptr,
-                                        0,
-                                        buffer.data(),
-                                        static_cast<DWORD>(buffer.size()),
-                                        &returned,
-                                        nullptr);
+        const BOOL ok = DeviceIoControl(
+            volumeHandle,
+            IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+            nullptr,
+            0,
+            buffer.data(),
+            static_cast<DWORD>(buffer.size()),
+            &returned,
+            nullptr);
         if (ok) {
             constexpr DWORD headerSize = offsetof(VOLUME_DISK_EXTENTS, Extents);
             if (returned < headerSize) {
@@ -171,13 +172,14 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
 HANDLE openVolumeForQuery(QChar driveLetter)
 {
     const QString path = QStringLiteral("\\\\.\\%1:").arg(driveLetter);
-    return CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()),
-                       0,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE,
-                       nullptr,
-                       OPEN_EXISTING,
-                       0,
-                       nullptr);
+    return CreateFileW(
+        reinterpret_cast<LPCWSTR>(path.utf16()),
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr);
 }
 
 QStringList protectedSystemDriveLetters()

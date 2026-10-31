@@ -24,8 +24,7 @@ QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error) const
         return disks;
     }
 
-    const auto objects =
-        storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE BusType = %1").arg(UsbBusType));
+    const auto objects = storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE BusType = %1").arg(UsbBusType));
     if (objects.isEmpty() && !storage.lastError().isEmpty()) {
         if (error) {
             *error = storage.lastError();
@@ -55,14 +54,14 @@ bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *e
     }
 
     // BusType in the query means a number reused by a non-USB device returns nothing.
-    const auto objects = storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2")
-                                           .arg(diskNumber)
-                                           .arg(UsbBusType));
+    const auto objects = storage.query(
+        QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (objects.isEmpty()) {
         if (error) {
             const QString detail = storage.lastError();
-            *error = detail.isEmpty() ? QStringLiteral("Disk %1 is no longer reported as a USB disk. Refresh and "
-                                                       "select the USB again.")
+            *error = detail.isEmpty() ? QStringLiteral(
+                                            "Disk %1 is no longer reported as a USB disk. Refresh and "
+                                            "select the USB again.")
                                             .arg(diskNumber)
                                       : detail;
         }
@@ -126,22 +125,22 @@ QStringList DiskEnumerator::driveLettersForDisk(quint32 diskNumber) const
     return result;
 }
 
-void DiskEnumerator::volumeInfoForLetters(const QStringList &letters,
-                                          QStringList *labels,
-                                          QStringList *fileSystems) const
+void DiskEnumerator::volumeInfoForLetters(
+    const QStringList &letters, QStringList *labels, QStringList *fileSystems) const
 {
     for (const QString &letter : letters) {
         const QString root = letter.left(1) + QStringLiteral(":\\");
         wchar_t volumeName[MAX_PATH + 1] = {};
         wchar_t fileSystemName[MAX_PATH + 1] = {};
-        if (GetVolumeInformationW(reinterpret_cast<LPCWSTR>(root.utf16()),
-                                  volumeName,
-                                  MAX_PATH,
-                                  nullptr,
-                                  nullptr,
-                                  nullptr,
-                                  fileSystemName,
-                                  MAX_PATH)) {
+        if (GetVolumeInformationW(
+                reinterpret_cast<LPCWSTR>(root.utf16()),
+                volumeName,
+                MAX_PATH,
+                nullptr,
+                nullptr,
+                nullptr,
+                fileSystemName,
+                MAX_PATH)) {
             const QString label = QString::fromWCharArray(volumeName).trimmed();
             if (labels && !label.isEmpty()) {
                 *labels << label;

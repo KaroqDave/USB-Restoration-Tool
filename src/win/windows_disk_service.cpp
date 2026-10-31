@@ -34,9 +34,10 @@ bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error
         return true;
     }
     if (error) {
-        *error = QStringLiteral("Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
-                                "partition table has already been rewritten. Plug it back in and run the restore on "
-                                "it again.")
+        *error = QStringLiteral(
+                     "Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
+                     "partition table has already been rewritten. Plug it back in and run the restore on "
+                     "it again.")
                      .arg(disk.number)
                      .arg(reason);
     }
@@ -58,8 +59,9 @@ PrivilegeMode WindowsDiskService::privilegeMode() const
 
 QString WindowsDiskService::privilegeHint() const
 {
-    return QStringLiteral("USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
-                          "window and start the app again, approving the Windows permission prompt.");
+    return QStringLiteral(
+        "USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
+        "window and start the app again, approving the Windows permission prompt.");
 }
 
 QVector<DiskInfo> WindowsDiskService::listUsbDisks(QString *error) const
@@ -103,12 +105,14 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
     case FileSystemType::Fat32:
         // MSFT_Volume.Format refuses FAT32 above 32 GiB; the partition is smaller than the disk.
         if (calculateGptLayout(disk.size, disk.sectorSize).length > MaximumWindowsFat32VolumeBytes) {
-            return refuse(QStringLiteral("Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
-                                         "NTFS."));
+            return refuse(QStringLiteral(
+                "Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
+                "NTFS."));
         }
         if (windowsFat32AllocationUnitSize(disk) == 0) {
-            return refuse(QStringLiteral("Windows cannot format FAT32 on a volume this small with %1-byte sectors. "
-                                         "Choose exFAT or NTFS.")
+            return refuse(QStringLiteral(
+                              "Windows cannot format FAT32 on a volume this small with %1-byte sectors. "
+                              "Choose exFAT or NTFS.")
                               .arg(disk.sectorSize));
         }
         return true;
@@ -231,8 +235,9 @@ bool WindowsDiskService::restore(
         return failOperation(QStringLiteral("delete the existing partitions"), reason);
     }
     if (partitionAtDiskStart) {
-        reporter.detail(QStringLiteral("Disk %1 has a partition at its very start that Windows cannot delete, as on "
-                                       "a disk with no partition table; the empty table written next replaces it.")
+        reporter.detail(QStringLiteral(
+                            "Disk %1 has a partition at its very start that Windows cannot delete, as on "
+                            "a disk with no partition table; the empty table written next replaces it.")
                             .arg(disk.number));
     }
 
@@ -243,8 +248,9 @@ bool WindowsDiskService::restore(
         return false;
     }
     if (!volumes.waitForVolumesToLeaveDisk(oldVolumes, disk.number, OldVolumeTimeoutMs, &reporter)) {
-        reporter.detail(QStringLiteral("Windows had not removed the old volume on disk %1 after %2 seconds; "
-                                       "continuing.")
+        reporter.detail(QStringLiteral(
+                            "Windows had not removed the old volume on disk %1 after %2 seconds; "
+                            "continuing.")
                             .arg(disk.number)
                             .arg(OldVolumeTimeoutMs / 1000));
     }
@@ -268,8 +274,9 @@ bool WindowsDiskService::restore(
         steps, reporter, RestoreStep::ClearSignatures, QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     const bool cleared = rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error);
     if (rawDisk.notReadyRetries() > 0) {
-        reporter.detail(QStringLiteral("Retried the first write to disk %1 %2 time(s) after Windows refused it as not "
-                                       "ready while removing the old volume.")
+        reporter.detail(QStringLiteral(
+                            "Retried the first write to disk %1 %2 time(s) after Windows refused it as not "
+                            "ready while removing the old volume.")
                             .arg(disk.number)
                             .arg(rawDisk.notReadyRetries()));
     }

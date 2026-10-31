@@ -65,8 +65,8 @@ bool helperSpeaksOurProtocol(const QString &helper, QString *error)
         return false;
     }
 
-    return acceptAnnouncement(parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed()),
-                              error);
+    return acceptAnnouncement(
+        parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed()), error);
 }
 
 // Leaves a partial last line in the buffer for the next read.
@@ -100,17 +100,15 @@ bool isHelperAvailable()
     return helper.exists() && helper.isExecutable() && !helper.isDir() && !findPkexec().isEmpty();
 }
 
-bool runHelperRestore(const RestoreRequest &request,
-                      RestoreReporter &reporter,
-                      RestoreResult *result,
-                      QString *error)
+bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     const QString helper = helperExecutablePath();
     const QFileInfo helperInfo(helper);
     if (!helperInfo.exists() || !helperInfo.isExecutable() || helperInfo.isDir()) {
         if (error) {
-            *error = QStringLiteral("The restore helper was not found at %1. USB Restoration Tool has to be "
-                                    "installed to restore a drive without running the whole application as root.")
+            *error = QStringLiteral(
+                         "The restore helper was not found at %1. USB Restoration Tool has to be "
+                         "installed to restore a drive without running the whole application as root.")
                          .arg(helper);
         }
         return false;
@@ -119,8 +117,9 @@ bool runHelperRestore(const RestoreRequest &request,
     const QString pkexec = findPkexec();
     if (pkexec.isEmpty()) {
         if (error) {
-            *error = QStringLiteral("pkexec was not found, so permission to restore the drive cannot be "
-                                    "requested. Install polkit, or run USB Restoration Tool with sudo.");
+            *error = QStringLiteral(
+                "pkexec was not found, so permission to restore the drive cannot be "
+                "requested. Install polkit, or run USB Restoration Tool with sudo.");
         }
         return false;
     }
@@ -131,15 +130,17 @@ bool runHelperRestore(const RestoreRequest &request,
 
     QProcess process;
     process.setProgram(pkexec);
-    process.setArguments(QStringList{helper} +
-                         buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
+    process.setArguments(
+        QStringList{helper} +
+        buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
     // Merged channels would let mkfs output be read as a protocol line.
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start();
     if (!process.waitForStarted(ProcessStartTimeoutMs)) {
         if (error) {
-            *error = QStringLiteral("pkexec could not be started, so permission to restore the drive could not be "
-                                    "requested.");
+            *error = QStringLiteral(
+                "pkexec could not be started, so permission to restore the drive could not be "
+                "requested.");
         }
         return false;
     }

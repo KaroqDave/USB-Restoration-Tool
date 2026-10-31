@@ -22,12 +22,11 @@ AppSettings loadAppSettings()
     }
     result.geometry = settings.value(QStringLiteral("geometry")).toByteArray();
 
-    const int style = settings.value(QStringLiteral("partitionStyle"),
-                                     static_cast<int>(PartitionStyle::Gpt))
-                          .toInt();
+    const int style = settings.value(QStringLiteral("partitionStyle"), static_cast<int>(PartitionStyle::Gpt)).toInt();
     result.partitionStyle = style == static_cast<int>(PartitionStyle::Mbr) ? PartitionStyle::Mbr : PartitionStyle::Gpt;
 
-    const int fileSystem = settings.value(QStringLiteral("fileSystem"), static_cast<int>(FileSystemType::ExFat)).toInt();
+    const int fileSystem =
+        settings.value(QStringLiteral("fileSystem"), static_cast<int>(FileSystemType::ExFat)).toInt();
     FileSystemType parsed = FileSystemType::ExFat;
     switch (static_cast<FileSystemType>(fileSystem)) {
     case FileSystemType::ExFat:

@@ -11,9 +11,6 @@ QString helperExecutablePath();
 
 bool isHelperAvailable();
 
-bool runHelperRestore(const RestoreRequest &request,
-                      RestoreReporter &reporter,
-                      RestoreResult *result,
-                      QString *error);
+bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error);
 
 } // namespace usbrestore

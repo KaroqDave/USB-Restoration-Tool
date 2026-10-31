@@ -43,15 +43,16 @@ class RawDisk {
     int notReadyRetries() const { return m_notReadyRetries; }
 
     // Windows writes the table itself, so unlike on Linux no table bytes are built here.
-    bool createSinglePartition(PartitionStyle style,
-                               FileSystemType fileSystem,
-                               std::uint64_t diskSize,
-                               quint32 sectorSize,
-                               QString *error = nullptr);
+    bool createSinglePartition(
+        PartitionStyle style,
+        FileSystemType fileSystem,
+        std::uint64_t diskSize,
+        quint32 sectorSize,
+        QString *error = nullptr);
 
   private:
-    bool createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
-                                  QString *error);
+    bool
+    createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize, QString *error);
     bool createGptDisk(GUID *diskId, QString *error);
     bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
     bool layoutHasPartitions(bool *hasPartitions, QString *error) const;

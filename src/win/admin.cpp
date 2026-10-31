@@ -24,8 +24,8 @@ bool isProcessElevated()
 void hardenProcessStartup()
 {
     // Excludes the current directory and %PATH%, the easiest for an unprivileged user to plant in.
-    if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
-                                  LOAD_LIBRARY_SEARCH_USER_DIRS)) {
+    if (!SetDefaultDllDirectories(
+            LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS)) {
         // Fallback for older systems: at least drops the current directory.
         SetDllDirectoryW(L"");
     }

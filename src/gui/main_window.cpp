@@ -249,9 +249,9 @@ QLayout *MainWindow::buildHeaderLayout()
         break;
     case PrivilegeMode::Helper:
         badge->setText(QStringLiteral("USER"));
-        badge->setToolTip(
-            QStringLiteral("The app runs as an ordinary user. When a restore starts, the system asks for permission "
-                           "and a separate root helper does the writing."));
+        badge->setToolTip(QStringLiteral(
+            "The app runs as an ordinary user. When a restore starts, the system asks for permission "
+            "and a separate root helper does the writing."));
         break;
     case PrivilegeMode::None:
         // Unreachable: main() refuses to open this window without a route to privilege.
@@ -350,20 +350,21 @@ QWidget *MainWindow::buildRestoreSection()
     m_styleCombo->addItem(QStringLiteral("MBR (older devices)"), static_cast<int>(PartitionStyle::Mbr));
     m_styleCombo->setCursor(Qt::PointingHandCursor);
     m_styleCombo->setAccessibleName(QStringLiteral("Partition style"));
-    m_styleCombo->setToolTip(QStringLiteral("GPT is what current systems expect and what Windows itself writes.\n"
-                                            "MBR is for devices that predate it and refuse to read a GPT stick:\n"
-                                            "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
+    m_styleCombo->setToolTip(QStringLiteral(
+        "GPT is what current systems expect and what Windows itself writes.\n"
+        "MBR is for devices that predate it and refuse to read a GPT stick:\n"
+        "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
     styleComboPopup(m_styleCombo);
     connect(m_styleCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
 
     m_fileSystemCombo = new QComboBox;
     m_fileSystemCombo->setCursor(Qt::PointingHandCursor);
     m_fileSystemCombo->setAccessibleName(QStringLiteral("Filesystem"));
-    m_fileSystemCombo->setToolTip(
-        QStringLiteral("exFAT (recommended) works on Windows, Linux and macOS.\n"
-                       "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
-                       "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
-                       "ext4 is Linux-only; Windows will not mount it without extra software."));
+    m_fileSystemCombo->setToolTip(QStringLiteral(
+        "exFAT (recommended) works on Windows, Linux and macOS.\n"
+        "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
+        "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
+        "ext4 is Linux-only; Windows will not mount it without extra software."));
     for (const FileSystemType type : m_service.supportedFileSystems()) {
         m_fileSystemCombo->addItem(fileSystemTypeLabel(type), static_cast<int>(type));
     }
@@ -439,8 +440,9 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    auto *caption = new QLabel(QStringLiteral("Every step of this session. The same lines are written to the log "
-                                              "file, which survives a restart."));
+    auto *caption = new QLabel(QStringLiteral(
+        "Every step of this session. The same lines are written to the log "
+        "file, which survives a restart."));
     caption->setObjectName(QStringLiteral("footnote"));
     caption->setWordWrap(true);
     layout->addWidget(caption);
@@ -594,10 +596,11 @@ void MainWindow::renderSelectedDisk()
 
     m_detailTitle->setText(describeDisk(*disk));
     m_detailValues->setText(
-        QStringLiteral("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
-                       "Filesystems: %4\n"
-                       "Mounted at: %5\n"
-                       "Volume labels: %6")
+        QStringLiteral(
+            "Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
+            "Filesystems: %4\n"
+            "Mounted at: %5\n"
+            "Volume labels: %6")
             .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
             .arg(disk->sectorSize)
             .arg(joinOrDash(disk->fileSystems), joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
@@ -709,11 +712,12 @@ void MainWindow::beginRestore(const RestoreRequest &request)
         return;
     }
     const DiskInfo &disk = request.disk;
-    m_logger.log(QStringLiteral("Restore requested for %1 as %2 %3")
-                     .arg(
-                         describeDisk(disk), partitionStyleLabel(request.style), fileSystemTypeName(request.fileSystem)));
-    m_logger.logFileOnly(QStringLiteral("Target details — device %1, bus %2, sector size %3, mounted at [%4], "
-                                        "labels [%5]")
+    m_logger.log(
+        QStringLiteral("Restore requested for %1 as %2 %3")
+            .arg(describeDisk(disk), partitionStyleLabel(request.style), fileSystemTypeName(request.fileSystem)));
+    m_logger.logFileOnly(QStringLiteral(
+                             "Target details — device %1, bus %2, sector size %3, mounted at [%4], "
+                             "labels [%5]")
                              .arg(disk.deviceId, busTypeName(disk.busType))
                              .arg(disk.sectorSize)
                              .arg(disk.mountPoints.join(QStringLiteral(", ")), disk.labels.join(QStringLiteral(", "))));
@@ -897,8 +901,9 @@ void MainWindow::refreshStatusBadge()
     const QColor bg = statusBadgeBackground(m_status, palette);
     const QColor fg = statusBadgeText(m_status, palette);
 
-    m_statusLabel->setStyleSheet(QStringLiteral("QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
-                                                "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
+    m_statusLabel->setStyleSheet(QStringLiteral(
+                                     "QLabel#statusBadge { background: rgba(%1, %2, %3, %4); color: %5; "
+                                     "border-radius: 8px; padding: 8px 12px; font-weight: 700; }")
                                      .arg(bg.red())
                                      .arg(bg.green())
                                      .arg(bg.blue())

@@ -17,10 +17,7 @@ namespace usbrestore {
 namespace {
 
 // GPT Basic Data Partition: EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
-constexpr GUID BasicDataPartitionGuid = {0xebd0a0a2,
-                                         0xb9e5,
-                                         0x4433,
-                                         {0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99, 0xc7}};
+constexpr GUID BasicDataPartitionGuid = {0xebd0a0a2, 0xb9e5, 0x4433, {0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99, 0xc7}};
 
 // Zeroed at each end: covers GPT (first/last 33 sectors), MBR and hybrid-ISO
 // signatures in the first megabyte, with room to spare.
@@ -88,14 +85,8 @@ bool readStorageDeviceDescriptor(HANDLE handle, QByteArray *buffer)
 
     STORAGE_DESCRIPTOR_HEADER header = {};
     DWORD returned = 0;
-    if (!DeviceIoControl(handle,
-                         IOCTL_STORAGE_QUERY_PROPERTY,
-                         &query,
-                         sizeof(query),
-                         &header,
-                         sizeof(header),
-                         &returned,
-                         nullptr)) {
+    if (!DeviceIoControl(
+            handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &header, sizeof(header), &returned, nullptr)) {
         return false;
     }
     if (returned < sizeof(header) || header.Size < sizeof(STORAGE_DEVICE_DESCRIPTOR) || header.Size > 64 * 1024) {
@@ -105,14 +96,15 @@ bool readStorageDeviceDescriptor(HANDLE handle, QByteArray *buffer)
 
     QByteArray full(static_cast<int>(header.Size), '\0');
     returned = 0;
-    if (!DeviceIoControl(handle,
-                         IOCTL_STORAGE_QUERY_PROPERTY,
-                         &query,
-                         sizeof(query),
-                         full.data(),
-                         static_cast<DWORD>(full.size()),
-                         &returned,
-                         nullptr)) {
+    if (!DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            &query,
+            sizeof(query),
+            full.data(),
+            static_cast<DWORD>(full.size()),
+            &returned,
+            nullptr)) {
         return false;
     }
     if (returned < sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
@@ -143,13 +135,14 @@ RawDisk::~RawDisk()
 bool RawDisk::open(QString *error)
 {
     const QString path = QStringLiteral("\\\\.\\PhysicalDrive%1").arg(m_diskNumber);
-    m_handle = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()),
-                           GENERIC_READ | GENERIC_WRITE,
-                           FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr,
-                           OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
+    m_handle = CreateFileW(
+        reinterpret_cast<LPCWSTR>(path.utf16()),
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
     if (m_handle == INVALID_HANDLE_VALUE) {
         if (error) {
             *error = lastError(QStringLiteral("open the drive"));
@@ -235,14 +228,8 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
     }
 
     DISK_GEOMETRY_EX geometry = {};
-    if (DeviceIoControl(m_handle,
-                        IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
-                        nullptr,
-                        0,
-                        &geometry,
-                        sizeof(geometry),
-                        &returned,
-                        nullptr)) {
+    if (DeviceIoControl(
+            m_handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geometry, sizeof(geometry), &returned, nullptr)) {
         const auto reportedSectorSize = static_cast<quint32>(geometry.Geometry.BytesPerSector);
         if (reportedSectorSize != 0 && expected.sectorSize != 0 && reportedSectorSize != expected.sectorSize) {
             return refuse(QStringLiteral(
@@ -386,8 +373,9 @@ bool RawDisk::createGptDisk(GUID *diskId, QString *error)
 {
     if (FAILED(CoCreateGuid(diskId))) {
         if (error) {
-            *error = QStringLiteral("Could not generate an identifier for a partition table on disk %1. Run the "
-                                    "restore again.")
+            *error = QStringLiteral(
+                         "Could not generate an identifier for a partition table on disk %1. Run the "
+                         "restore again.")
                          .arg(m_diskNumber);
         }
         return false;
@@ -451,11 +439,8 @@ bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error) const
     return true;
 }
 
-bool RawDisk::createSinglePartition(PartitionStyle style,
-                                    FileSystemType fileSystem,
-                                    std::uint64_t diskSize,
-                                    quint32 sectorSize,
-                                    QString *error)
+bool RawDisk::createSinglePartition(
+    PartitionStyle style, FileSystemType fileSystem, std::uint64_t diskSize, quint32 sectorSize, QString *error)
 {
     const GptLayout layout = calculateGptLayout(diskSize, sectorSize);
     if (const QString failure = partitionLayoutError(style, layout, sectorSize); !failure.isEmpty()) {
@@ -504,14 +489,15 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     wcscpy_s(partition.Gpt.Name, L"USB");
 
     DWORD unused = 0;
-    if (!DeviceIoControl(m_handle,
-                         IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
-                         &driveLayout,
-                         sizeof(driveLayout),
-                         nullptr,
-                         0,
-                         &unused,
-                         nullptr)) {
+    if (!DeviceIoControl(
+            m_handle,
+            IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
+            &driveLayout,
+            sizeof(driveLayout),
+            nullptr,
+            0,
+            &unused,
+            nullptr)) {
         if (error) {
             *error = lastError(QStringLiteral("create the GPT partition"));
         }
@@ -521,8 +507,8 @@ bool RawDisk::createSinglePartition(PartitionStyle style,
     return refreshLayout(error);
 }
 
-bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize,
-                                       QString *error)
+bool RawDisk::createSingleMbrPartition(
+    const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize, QString *error)
 {
     const std::uint64_t sector = sectorSize;
 
@@ -554,9 +540,8 @@ bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType f
     // IOCTL_DISK_SET_DRIVE_LAYOUT_EX rejects any MBR count but four; the unused
     // slots are rewritten empty so nothing of the old table survives.
     constexpr int MbrPartitionCount = 4;
-    const int layoutBytes =
-        static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) +
-        static_cast<int>(sizeof(PARTITION_INFORMATION_EX)) * MbrPartitionCount;
+    const int layoutBytes = static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) +
+                            static_cast<int>(sizeof(PARTITION_INFORMATION_EX)) * MbrPartitionCount;
     QByteArray buffer(layoutBytes, '\0');
 
     auto *driveLayout = reinterpret_cast<DRIVE_LAYOUT_INFORMATION_EX *>(buffer.data());
@@ -581,14 +566,15 @@ bool RawDisk::createSingleMbrPartition(const GptLayout &layout, FileSystemType f
         driveLayout->PartitionEntry[i].RewritePartition = TRUE;
     }
 
-    if (!DeviceIoControl(m_handle,
-                         IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
-                         buffer.data(),
-                         static_cast<DWORD>(buffer.size()),
-                         nullptr,
-                         0,
-                         &unused,
-                         nullptr)) {
+    if (!DeviceIoControl(
+            m_handle,
+            IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
+            buffer.data(),
+            static_cast<DWORD>(buffer.size()),
+            nullptr,
+            0,
+            &unused,
+            nullptr)) {
         if (error) {
             *error = lastError(QStringLiteral("create the MBR partition"));
         }

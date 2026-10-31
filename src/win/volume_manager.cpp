@@ -419,10 +419,8 @@ QString VolumeManager::findVolumeNameForDisk(quint32 diskNumber) const
     return result;
 }
 
-QString VolumeManager::waitForVolumeOnDisk(quint32 diskNumber,
-                                           int timeoutMs,
-                                           QString *error,
-                                           RestoreReporter *reporter) const
+QString
+VolumeManager::waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QString *error, RestoreReporter *reporter) const
 {
     QElapsedTimer timer;
     timer.start();

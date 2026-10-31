@@ -41,10 +41,8 @@ class VolumeManager {
 
     // Returns the \\?\Volume{...}\ name, empty on timeout. The reporter gets periodic
     // notes because slow media can take most of a minute and silence looks like a stall.
-    QString waitForVolumeOnDisk(quint32 diskNumber,
-                                int timeoutMs,
-                                QString *error = nullptr,
-                                RestoreReporter *reporter = nullptr) const;
+    QString waitForVolumeOnDisk(
+        quint32 diskNumber, int timeoutMs, QString *error = nullptr, RestoreReporter *reporter = nullptr) const;
 
     QString mountVolume(const QString &volumeName, QString *error = nullptr) const;
 

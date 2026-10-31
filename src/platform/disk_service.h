@@ -41,8 +41,8 @@ class RestoreReporter {
 };
 
 // Backends report steps through this so a call that drifts from the plan shows up.
-inline void reportPlannedStep(RestoreStepCounter &counter, RestoreReporter &reporter, RestoreStep step,
-                              const QString &message)
+inline void
+reportPlannedStep(RestoreStepCounter &counter, RestoreReporter &reporter, RestoreStep step, const QString &message)
 {
     if (counter.advance(step) == 0) {
         Q_ASSERT_X(false, "reportPlannedStep", "restore step out of plan order");
