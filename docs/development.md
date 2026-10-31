@@ -160,10 +160,12 @@ remain available in the packaging script's help.
 AppImage packaging also runs a backend-free probe against the bundled Qt
 libraries, platform plugin and SVG support. The probe is linked without an
 RPATH or RUNPATH, and the script refuses to run it if either is present. It
-accepts the run only when the loaded QtCore library is inside the AppDir, so a
-missing or damaged library cannot fall back to the Qt the probe was built
-against. It never enumerates or restores disks. Some patchelf versions corrupt
-tightly packed Qt plugins while rewriting their library paths
+accepts the run only when every loaded `libQt6*` library resolves inside the
+AppDir's library directory, including libraries loaded by plugins. A missing
+library or a symlink to host Qt fails validation. Linux GUI tests check a complete
+bundle, missing QtGui and QtWidgets, and a symlink to a host library in disposable
+directories. The probe never enumerates or restores disks. Some patchelf versions
+corrupt tightly packed Qt plugins while rewriting their library paths
 ([upstream issue](https://github.com/NixOS/patchelf/issues/639)). If the probe
 fails for that reason, set `PATCHELF=/path/to/a/fixed/patchelf` when rebuilding;
 linuxdeploy uses that instead of its bundled version.

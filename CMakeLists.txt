@@ -489,7 +489,7 @@ if(NOT WIN32)
     # No build rpath: the AppImage check selects bundled Qt with LD_LIBRARY_PATH,
     # and a DT_RPATH would be searched first and hide a damaged bundle.
     set_target_properties(usb-qt-bundle-probe PROPERTIES SKIP_BUILD_RPATH TRUE)
-    target_link_libraries(usb-qt-bundle-probe PRIVATE Qt6::Widgets ${CMAKE_DL_LIBS})
+    target_link_libraries(usb-qt-bundle-probe PRIVATE Qt6::Widgets)
 endif()
 
 if(WIN32)
@@ -626,6 +626,8 @@ if(USBRESTORE_BUILD_TESTS)
         if(MSVC)
             target_compile_options(usb-gui-tests PRIVATE /utf-8)
         endif()
+    else()
+        add_dependencies(usb-gui-tests usb-qt-bundle-probe)
     endif()
     usbrestore_sanitize(usb-gui-tests)
     add_dependencies(usb-restoration-tool-tests usb-gui-tests)

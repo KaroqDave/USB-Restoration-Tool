@@ -1,15 +1,19 @@
 #include <QApplication>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QIcon>
 #include <QPixmap>
+#include <QStringList>
 #include <QTextStream>
 
-#include <dlfcn.h>
+#include <link.h>
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
-        QTextStream(stderr) << "Usage: usb-qt-bundle-probe <bundled-plugin-directory> <svg-icon>" << Qt::endl;
+    if (argc != 3 && argc != 4) {
+        QTextStream(stderr) << "Usage: usb-qt-bundle-probe <plugin-directory> <svg-icon> [bundled-library-directory]"
+                            << Qt::endl;
         return 1;
     }
 
@@ -27,17 +31,40 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // instance() is inline, and the address of an imported function can be a PLT
-    // stub in this executable. qVersion lives in the QtCore that was actually mapped.
-    void *qtCore = dlopen("libQt6Core.so.6", RTLD_LAZY | RTLD_NOLOAD);
-    void *qtCoreSymbol = qtCore == nullptr ? nullptr : dlsym(qtCore, "qVersion");
-    Dl_info loadedQtCore{};
-    if (qtCoreSymbol == nullptr || dladdr(qtCoreSymbol, &loadedQtCore) == 0 || loadedQtCore.dli_fname == nullptr) {
-        QTextStream(stderr) << "Could not locate the loaded QtCore library." << Qt::endl;
+    // Plugins can load more Qt libraries, so inspect the mappings after rendering.
+    QStringList libraries;
+    dl_iterate_phdr(
+        [](dl_phdr_info *info, size_t, void *data) {
+            const QString path = QString::fromLocal8Bit(info->dlpi_name);
+            if (QFileInfo(path).fileName().startsWith(QStringLiteral("libQt6"))) {
+                static_cast<QStringList *>(data)->append(path);
+            }
+            return 0;
+        },
+        &libraries);
+    if (libraries.isEmpty()) {
+        QTextStream(stderr) << "Could not locate the loaded Qt libraries." << Qt::endl;
         return 1;
     }
 
-    QTextStream(stdout) << "Loaded QtCore: " << QString::fromLocal8Bit(loadedQtCore.dli_fname) << Qt::endl;
-    QTextStream(stdout) << "Bundled Qt platform and SVG loading passed." << Qt::endl;
+    QString libraryDirectory;
+    if (argc == 4) {
+        libraryDirectory = QFileInfo(QString::fromLocal8Bit(argv[3])).canonicalFilePath();
+        if (libraryDirectory.isEmpty() || !QFileInfo(libraryDirectory).isDir()) {
+            QTextStream(stderr) << "The bundled Qt library directory does not exist: " << argv[3] << Qt::endl;
+            return 1;
+        }
+    }
+    for (const QString &library : libraries) {
+        const QString path = QFileInfo(library).canonicalFilePath();
+        QTextStream(stdout) << "Loaded Qt library: " << path << Qt::endl;
+        if (path.isEmpty() || (!libraryDirectory.isEmpty() && !path.startsWith(libraryDirectory + QDir::separator()))) {
+            QTextStream(stderr) << "Qt library loaded outside the bundle: " << library << " (expected inside "
+                                << libraryDirectory << ")." << Qt::endl;
+            return 1;
+        }
+    }
+
+    QTextStream(stdout) << "Qt platform and SVG loading passed." << Qt::endl;
     return 0;
 }

@@ -229,29 +229,17 @@ if readelf -d "$ProbePath" | grep -qE '\(RPATH\)|\(RUNPATH\)'; then
     popd > /dev/null
     exit 1
 fi
-if ! ProbeOutput="$(
+if ! (
     ulimit -c 0
     export LD_LIBRARY_PATH="$AppDir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     "$ProbePath" "$AppDir/usr/plugins" \
-        "$AppDir/usr/share/icons/hicolor/scalable/apps/usb-restoration-tool.svg"
-)"; then
+        "$AppDir/usr/share/icons/hicolor/scalable/apps/usb-restoration-tool.svg" "$AppDir/usr/lib"
+); then
     echo "error: bundled Qt could not start; the AppImage has not passed validation." >&2
     echo "If patchelf corrupted a Qt plugin, rebuild with PATCHELF pointing to a fixed version." >&2
     popd > /dev/null
     exit 1
 fi
-echo "$ProbeOutput"
-LoadedQtCore="$(sed -n 's/^Loaded QtCore: //p' <<< "$ProbeOutput")"
-LoadedQtCore="$(readlink -f "$LoadedQtCore" 2>/dev/null || true)"
-AppLib="$(readlink -f "$AppDir/usr/lib")"
-case "$LoadedQtCore" in
-    "$AppLib"/*) ;;
-    *)
-        echo "error: loaded QtCore is not inside the AppDir: ${LoadedQtCore:-missing}" >&2
-        popd > /dev/null
-        exit 1
-        ;;
-esac
 
 GeneratedAppImage="$(find "$BuildOutputDir" -maxdepth 1 -name '*.AppImage' -type f | head -1)"
 if [[ -z "$GeneratedAppImage" ]]; then

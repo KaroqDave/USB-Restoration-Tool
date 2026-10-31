@@ -6,11 +6,17 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QFrame>
+#include <QImage>
 #include <QLabel>
+#include <QLibraryInfo>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPalette>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
@@ -145,6 +151,87 @@ class GuiTests : public QObject {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settings.path());
     }
+
+#ifdef Q_OS_LINUX
+    void refusesHostQtLibrariesInABundle_data()
+    {
+        QTest::addColumn<QString>("hostLibrary");
+        QTest::addColumn<bool>("symlink");
+        QTest::newRow("complete") << QString() << false;
+        QTest::newRow("missing-gui") << QStringLiteral("libQt6Gui.so.6") << false;
+        QTest::newRow("missing-widgets") << QStringLiteral("libQt6Widgets.so.6") << false;
+        QTest::newRow("symlink-to-host") << QStringLiteral("libQt6Gui.so.6") << true;
+    }
+
+    void refusesHostQtLibrariesInABundle()
+    {
+        QFETCH(QString, hostLibrary);
+        QFETCH(bool, symlink);
+        QTemporaryDir bundle;
+        QVERIFY(bundle.isValid());
+        const QString libraryDirectory = bundle.filePath(QStringLiteral("lib"));
+        QVERIFY(QDir().mkdir(libraryDirectory));
+        const QString iconPath = bundle.filePath(QStringLiteral("icon.png"));
+        QImage icon(32, 32, QImage::Format_ARGB32);
+        icon.fill(Qt::green);
+        QVERIFY(icon.save(iconPath));
+
+        const QString probe = QCoreApplication::applicationDirPath() + QStringLiteral("/usb-qt-bundle-probe");
+        const QStringList arguments{QLibraryInfo::path(QLibraryInfo::PluginsPath), iconPath};
+        auto environment = QProcessEnvironment::systemEnvironment();
+        const QString inheritedPath = environment.value(QStringLiteral("LD_LIBRARY_PATH"));
+        environment.insert(
+            QStringLiteral("LD_LIBRARY_PATH"),
+            QLibraryInfo::path(QLibraryInfo::LibrariesPath) +
+                (inheritedPath.isEmpty() ? QString() : QLatin1Char(':') + inheritedPath));
+        QProcess reference;
+        reference.setProcessEnvironment(environment);
+        reference.start(probe, arguments);
+        QVERIFY(reference.waitForFinished(10000));
+        const QByteArray referenceError = reference.readAllStandardError();
+        QCOMPARE(reference.exitStatus(), QProcess::NormalExit);
+        QVERIFY2(reference.exitCode() == 0, referenceError.constData());
+        const QStringList lines = QString::fromLocal8Bit(reference.readAllStandardOutput()).split(QLatin1Char('\n'));
+        bool foundCore = false;
+        bool foundHostLibrary = hostLibrary.isEmpty();
+        for (const QString &line : lines) {
+            const QString prefix = QStringLiteral("Loaded Qt library: ");
+            if (!line.startsWith(prefix)) {
+                continue;
+            }
+            const QString path = line.mid(prefix.size());
+            const QString name =
+                QFileInfo(path).fileName().section(QStringLiteral(".so"), 0, 0) + QStringLiteral(".so.6");
+            const QString destination = QDir(libraryDirectory).filePath(name);
+            foundCore |= name == QStringLiteral("libQt6Core.so.6");
+            if (name == hostLibrary) {
+                foundHostLibrary = true;
+                if (symlink) {
+                    QVERIFY(QFile::link(path, destination));
+                }
+            } else {
+                QVERIFY2(QFile::copy(path, destination), qPrintable(path));
+            }
+        }
+        QVERIFY(foundCore);
+        QVERIFY(foundHostLibrary);
+
+        environment.insert(
+            QStringLiteral("LD_LIBRARY_PATH"),
+            libraryDirectory + QLatin1Char(':') + environment.value(QStringLiteral("LD_LIBRARY_PATH")));
+        QProcess bundled;
+        bundled.setProcessEnvironment(environment);
+        bundled.start(probe, arguments + QStringList{libraryDirectory});
+        QVERIFY(bundled.waitForFinished(10000));
+        const QByteArray error = bundled.readAllStandardError();
+        QCOMPARE(bundled.exitStatus(), QProcess::NormalExit);
+        QVERIFY2(bundled.exitCode() == (hostLibrary.isEmpty() ? 0 : 1), error.constData());
+        if (!hostLibrary.isEmpty()) {
+            QVERIFY2(error.contains("Qt library loaded outside the bundle:"), error.constData());
+            QVERIFY2(error.contains(hostLibrary.toLocal8Bit()), error.constData());
+        }
+    }
+#endif
 
     void reportsStartedStepsWithoutClaimingSuccess()
     {

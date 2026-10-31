@@ -9,6 +9,14 @@
 
 ## Recently completed
 
+- 2026-10-31: The AppImage probe now checks every loaded `libQt6*` library after
+  rendering, including plugin dependencies, and rejects host libraries and
+  symlinks outside the bundle. Linux GUI regressions cover complete bundles,
+  missing QtGui/QtWidgets and a host symlink. Linux build and all four ctest
+  suites pass. The packaging check rejects an incomplete SVG bundle and accepts
+  a complete one, including QtSvg. The AppImage was not rebuilt. No physical
+  drive accessed.
+
 - 2026-10-31: Kept the cancellation notice through stall and recovery text, and
   pinned that with a GUI test. The step indicator now paints from the applied
   theme palette, so `applyTheme` no longer sets `Mid` to the border colour or
