@@ -4,10 +4,15 @@
 
 - Merge [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11), tag
   `v1.8.0` and verify the published release assets and checksums.
-- Measure restore times on disposable media using the setup and step durations
-  now recorded in the application log.
 
 ## Recently completed
+
+- 2026-10-31: Measured two restores with the current Linux build, run as root, on
+  an Intenso Basic Line stick (7.47 GB, 512-byte sectors, GPT). exFAT finished
+  in 2101 ms and FAT32 in 4913 ms. Setup was 0 ms and 4 ms. Clearing signatures
+  took 1952 ms and 1878 ms; formatting took 90 ms for exFAT and 3001 ms for
+  FAT32. Every other step was under 25 ms. Both completed. NTFS and ext4 were
+  not run, and no package was installed.
 
 - 2026-10-31: The AppImage probe now checks every loaded `libQt6*` library after
   rendering, including plugin dependencies, and rejects host libraries and
