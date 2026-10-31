@@ -11,8 +11,9 @@ All notable changes to this project are documented here. The format follows
 - Translation groundwork for 1.9.0: saved system/English/German preference,
   embedded application and Qt base catalogs, and German text for the main window,
   About and activity dialog controls, theme/filesystem labels, restore dialog,
-  step titles and restore notices/results. Language selection is not activated
-  in the application yet.
+  step titles, shared descriptions, safety/layout messages and restore
+  notices/results. German sizes and step durations use decimal commas while logs
+  remain English. Language selection is not activated in the application yet.
 - English and German restore-dialog rendering tests for both themes and step
   plans, including a separate 200% scaling check through ctest.
 

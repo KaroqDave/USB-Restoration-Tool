@@ -538,6 +538,7 @@ qt_add_translations(usb-restoration-tool
     TS_FILES translations/usbrestore_de.ts
     SOURCES src/gui/restore_dialog.cpp src/gui/restore_dialog.h
         src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/core/disk.cpp
+        src/core/language.cpp src/core/safety.cpp
     INCLUDE_DIRECTORIES src
     LUPDATE_OPTIONS -locations none -no-obsolete
     LRELEASE_OPTIONS -nounfinished
@@ -672,7 +673,8 @@ if(USBRESTORE_BUILD_TESTS)
     usbrestore_sanitize(usb-gui-tests)
     add_dependencies(usb-restoration-tool-tests usb-gui-tests)
     add_test(NAME usb-gui-tests COMMAND usb-gui-tests -platform offscreen)
-    add_test(NAME usb-gui-tests-scaled COMMAND usb-gui-tests rendersBothPlansAndThemes rendersTheMainWindow translatesMainWindowDialogsAndErrors -platform offscreen)
+    add_test(NAME usb-gui-tests-scaled COMMAND usb-gui-tests rendersBothPlansAndThemes rendersTheMainWindow translatesMainWindowDialogsAndErrors
+                showsTranslatedSafetyRefusalsWithoutStartingARestore -platform offscreen)
     set_tests_properties(usb-gui-tests-scaled PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
     if(WIN32)
         set_tests_properties(usb-gui-tests PROPERTIES

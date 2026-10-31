@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/language.h"
+
 #include <QString>
 #include <QStringList>
 
@@ -72,16 +74,16 @@ struct DiskInfo {
     bool isOffline = false;
 };
 
-QString formatByteSize(std::uint64_t bytes);
-QString partitionStyleName(quint16 style);
-QString partitionStyleLabel(PartitionStyle style);
+QString formatByteSize(std::uint64_t bytes, TextMode mode = TextMode::English);
+QString partitionStyleName(quint16 style, TextMode mode = TextMode::English);
+QString partitionStyleLabel(PartitionStyle style, TextMode mode = TextMode::English);
 QString fileSystemTypeName(FileSystemType type);
 QString fileSystemTypeLabel(FileSystemType type);
 QString fileSystemTypeToken(FileSystemType type);
 bool parseFileSystemType(const QString &token, FileSystemType *type = nullptr);
-QString healthStatusName(quint16 status);
-QString busTypeName(quint32 busType);
+QString healthStatusName(quint16 status, TextMode mode = TextMode::English);
+QString busTypeName(quint32 busType, TextMode mode = TextMode::English);
 
-QString describeDisk(const DiskInfo &disk);
+QString describeDisk(const DiskInfo &disk, TextMode mode = TextMode::English);
 
 } // namespace usbrestore

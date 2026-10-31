@@ -147,13 +147,17 @@ bool isSupportedSectorSize(quint32 sectorSize)
     }
 }
 
-QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize)
+QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, TextMode mode)
 {
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
     if (offset % sector == 0 && bytes % sector == 0) {
         return {};
     }
-    return QStringLiteral("Refusing to zero %1 bytes at offset %2: not a multiple of the %3-byte sector size.")
+    return coreText(
+               QT_TRANSLATE_NOOP(
+                   "usbrestore::Core",
+                   "Refusing to zero %1 bytes at offset %2: not a multiple of the %3-byte sector size."),
+               mode)
         .arg(bytes)
         .arg(offset)
         .arg(sector);
@@ -174,7 +178,7 @@ std::uint32_t boundedEntryCount(
     return static_cast<std::uint32_t>(qMin<std::uint64_t>(reportedCount, fits));
 }
 
-bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QString *reason)
+bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QString *reason, TextMode mode)
 {
     const auto refuse = [reason](const QString &text) {
         if (reason) {
@@ -186,143 +190,172 @@ bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QStrin
     const QString name = disk.displayId.isEmpty() ? disk.deviceId : disk.displayId;
 
     if (disk.deviceId.trimmed().isEmpty()) {
-        return refuse(QStringLiteral("This disk reports no device path to restore."));
+        return refuse(
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "This disk reports no device path to restore."), mode));
     }
 
     // No "unknown is fine" escape: an unreadable bus is a reason to stop.
     if (disk.busType != UsbBusType) {
-        return refuse(QStringLiteral("%1 is on the %2 bus, not USB.").arg(name, busTypeName(disk.busType)));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is on the %2 bus, not USB."), mode)
+                          .arg(name, busTypeName(disk.busType, mode)));
     }
 
     for (const QString &protectedDevice : guard.deviceIds) {
         if (bothKnownAndEqual(disk.deviceId, protectedDevice)) {
-            return refuse(QStringLiteral("%1 is a disk the running system depends on.").arg(name));
+            return refuse(
+                coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is a disk the running system depends on."), mode)
+                    .arg(name));
         }
     }
 
     if (disk.isBoot || disk.isSystem) {
-        return refuse(QStringLiteral("%1 is marked as a boot or system disk.").arg(name));
+        return refuse(
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is marked as a boot or system disk."), mode).arg(name));
     }
 
     if (containsProtectedMountPoint(disk, guard)) {
-        return refuse(QStringLiteral("%1 holds a protected system location.").arg(name));
+        return refuse(
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 holds a protected system location."), mode).arg(name));
     }
 
     if (disk.isOffline) {
-        return refuse(QStringLiteral("%1 is offline.").arg(name));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is offline."), mode).arg(name));
     }
 
     if (disk.isReadOnly) {
-        return refuse(QStringLiteral("%1 is read-only.").arg(name));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is read-only."), mode).arg(name));
     }
 
     if (disk.size == 0) {
-        return refuse(QStringLiteral("%1 reports no usable media.").arg(name));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 reports no usable media."), mode).arg(name));
     }
 
     if (disk.size < MinimumRestoreTargetBytes) {
         return refuse(
-            QStringLiteral("%1 reports only %2, which is too small to restore.").arg(name, formatByteSize(disk.size)));
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 reports only %2, which is too small to restore."), mode)
+                .arg(name, formatByteSize(disk.size, mode)));
     }
 
     if (!isSupportedSectorSize(disk.sectorSize)) {
         return refuse(
-            QStringLiteral("%1 reports an unsupported sector size of %2 bytes.").arg(name).arg(disk.sectorSize));
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 reports an unsupported sector size of %2 bytes."), mode)
+                .arg(name)
+                .arg(disk.sectorSize));
     }
 
     if (calculateGptLayout(disk.size, disk.sectorSize).length == 0) {
-        return refuse(QStringLiteral("%1 is too small for a safe partition layout.").arg(name));
+        return refuse(
+            coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 is too small for a safe partition layout."), mode)
+                .arg(name));
     }
 
     return true;
 }
 
-bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QString *reason)
+bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QString *reason, TextMode mode)
 {
     const QString name = selected.displayId.isEmpty() ? selected.deviceId : selected.displayId;
 
-    const auto refuse = [reason, &name](const QString &what) {
+    const auto refuse = [reason, &name, mode](const QString &what) {
         if (reason) {
             *reason =
-                QStringLiteral("%1 no longer reports the same %2. Refresh and select the USB again.").arg(name, what);
+                coreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Core", "%1 no longer reports the same %2. Refresh and select the USB again."),
+                    mode)
+                    .arg(name, what);
         }
         return false;
     };
 
     if (normalizedIdentity(selected.deviceId) != normalizedIdentity(current.deviceId)) {
         if (reason) {
-            *reason = QStringLiteral("The selected disk moved from %1 to %2. Refresh and select the USB again.")
-                          .arg(selected.deviceId, current.deviceId);
+            *reason =
+                coreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Core", "The selected disk moved from %1 to %2. Refresh and select the USB again."),
+                    mode)
+                    .arg(selected.deviceId, current.deviceId);
         }
         return false;
     }
 
     if (selected.size != current.size) {
-        return refuse(QStringLiteral("size"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "size"), mode));
     }
 
     if (selected.deviceSequence && !isSameDeviceSequence(name, selected.deviceSequence, current.deviceSequence)) {
-        return refuse(QStringLiteral("device instance"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "device instance"), mode));
     }
 
     if (selected.sectorSize != 0 && current.sectorSize != 0 && selected.sectorSize != current.sectorSize) {
-        return refuse(QStringLiteral("sector size"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "sector size"), mode));
     }
 
     // Check all of them: a device can keep its serial while changing its path.
     if (bothKnownAndDifferent(selected.serialNumber, current.serialNumber)) {
-        return refuse(QStringLiteral("serial number"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "serial number"), mode));
     }
     if (bothKnownAndDifferent(selected.uniqueId, current.uniqueId)) {
-        return refuse(QStringLiteral("unique ID"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "unique ID"), mode));
     }
     if (bothKnownAndDifferent(selected.path, current.path)) {
-        return refuse(QStringLiteral("device path"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "device path"), mode));
     }
     if (bothKnownAndDifferent(selected.name, current.name)) {
-        return refuse(QStringLiteral("device name"));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "device name"), mode));
     }
 
     return true;
 }
 
 bool isSameDeviceSequence(
-    const QString &device, std::optional<std::uint64_t> expected, std::optional<std::uint64_t> current, QString *reason)
+    const QString &device,
+    std::optional<std::uint64_t> expected,
+    std::optional<std::uint64_t> current,
+    QString *reason,
+    TextMode mode)
 {
     if (expected && current && *expected != 0 && *expected == *current) {
         return true;
     }
     if (reason) {
-        *reason = QStringLiteral(
-                      "Could not confirm that %1 is still the disk that was selected. Refresh and select "
-                      "the USB again.")
+        *reason = coreText(
+                      QT_TRANSLATE_NOOP(
+                          "usbrestore::Core",
+                          "Could not confirm that %1 is still the disk that was selected. Refresh and select "
+                          "the USB again."),
+                      mode)
                       .arg(device);
     }
     return false;
 }
 
-QString partitionLayoutError(PartitionStyle style, const GptLayout &layout, quint32 sectorSize)
+QString partitionLayoutError(PartitionStyle style, const GptLayout &layout, quint32 sectorSize, TextMode mode)
 {
     if (!isSupportedSectorSize(sectorSize)) {
-        return QStringLiteral("Unsupported sector size of %1 bytes.").arg(sectorSize);
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unsupported sector size of %1 bytes."), mode)
+            .arg(sectorSize);
     }
     if (layout.length == 0) {
-        return QStringLiteral("The disk is too small for a partition layout.");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "The disk is too small for a partition layout."), mode);
     }
     if (style != PartitionStyle::Mbr && style != PartitionStyle::Gpt) {
-        return QStringLiteral("No partition style was chosen.");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "No partition style was chosen."), mode);
     }
     // 32-bit sector addresses: 2 TiB at 512 bytes, which an external drive can exceed.
     if (style == PartitionStyle::Mbr && (layout.startOffset + layout.length) / sectorSize > 0xFFFFFFFFull) {
-        return QStringLiteral("MBR cannot address a partition this far into the disk. Choose GPT.");
+        return coreText(
+            QT_TRANSLATE_NOOP("usbrestore::Core", "MBR cannot address a partition this far into the disk. Choose GPT."),
+            mode);
     }
     return {};
 }
 
-bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason)
+bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason, TextMode mode)
 {
     const QString failure =
-        partitionLayoutError(style, calculateGptLayout(disk.size, disk.sectorSize), disk.sectorSize);
+        partitionLayoutError(style, calculateGptLayout(disk.size, disk.sectorSize), disk.sectorSize, mode);
     if (!failure.isEmpty() && reason) {
         *reason = failure;
     }
@@ -363,14 +396,18 @@ bool isLargeRestoreTarget(const DiskInfo &disk)
     return disk.size >= LargeRestoreTargetBytes;
 }
 
-QString largeRestoreTargetWarning(const DiskInfo &disk)
+QString largeRestoreTargetWarning(const DiskInfo &disk, TextMode mode)
 {
     if (!isLargeRestoreTarget(disk)) {
         return {};
     }
 
-    return QStringLiteral("Large USB disk: %1. Make sure this is not an external SSD or HDD with data you need.")
-        .arg(formatByteSize(disk.size));
+    return coreText(
+               QT_TRANSLATE_NOOP(
+                   "usbrestore::Core",
+                   "Large USB disk: %1. Make sure this is not an external SSD or HDD with data you need."),
+               mode)
+        .arg(formatByteSize(disk.size, mode));
 }
 
 quint32 gptEntryArraySectors(quint32 sectorSize)

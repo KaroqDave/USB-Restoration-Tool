@@ -255,6 +255,44 @@ class CoreTests : public QObject {
         QVERIFY(isSafeRestoreTarget(healthyWindowsDisk(), windowsGuard()));
     }
 
+    void keepsSafetyDecisionsIndependentOfTextMode()
+    {
+        const DiskInfo healthy = healthyUsbDisk();
+        QVector<DiskInfo> cases{healthy};
+        auto add = [&](auto change) {
+            DiskInfo disk = healthy;
+            change(disk);
+            cases.append(disk);
+        };
+        add([](DiskInfo &d) { d.deviceId.clear(); });
+        add([](DiskInfo &d) { d.busType = 0; });
+        add([](DiskInfo &d) { d.busType = 11; });
+        add([](DiskInfo &d) { d.deviceId = QStringLiteral("/dev/nvme0n1"); });
+        add([](DiskInfo &d) { d.isBoot = true; });
+        add([](DiskInfo &d) { d.isSystem = true; });
+        add([](DiskInfo &d) { d.mountPoints = {QStringLiteral("/")}; });
+        add([](DiskInfo &d) { d.isOffline = true; });
+        add([](DiskInfo &d) { d.isReadOnly = true; });
+        add([](DiskInfo &d) { d.size = 0; });
+        add([](DiskInfo &d) { d.size = MinimumRestoreTargetBytes - 1; });
+        add([](DiskInfo &d) { d.sectorSize = 520; });
+        for (qsizetype index = 0; index < cases.size(); ++index) {
+            for (const TextMode mode : {TextMode::English, TextMode::Display}) {
+                QString reason;
+                QCOMPARE(isSafeRestoreTarget(cases[index], linuxGuard(), &reason, mode), index == 0);
+                QCOMPARE(reason.isEmpty(), index == 0);
+                QCOMPARE(
+                    isSameRestoreTarget(healthy, cases[index], nullptr, mode),
+                    isSameRestoreTarget(healthy, cases[index]));
+                for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr, PartitionStyle::Unknown}) {
+                    QCOMPARE(
+                        canCreatePartitionLayout(style, cases[index], nullptr, mode),
+                        canCreatePartitionLayout(style, cases[index]));
+                }
+            }
+        }
+    }
+
     void refusesNonUsbBus()
     {
         DiskInfo disk = healthyUsbDisk();

@@ -108,8 +108,8 @@ QString diskListEntry(const DiskInfo &disk)
         .arg(
             disk.displayId.isEmpty() ? disk.deviceId : disk.displayId,
             name,
-            formatByteSize(disk.size),
-            partitionStyleName(disk.partitionStyle),
+            formatByteSize(disk.size, TextMode::Display),
+            partitionStyleName(disk.partitionStyle, TextMode::Display),
             mounts);
 }
 
@@ -554,7 +554,7 @@ void MainWindow::renderDisks()
     for (const DiskInfo &disk : m_disks) {
         auto *item = new QListWidgetItem(diskListEntry(disk), m_diskList);
         QString reason;
-        if (!isSafeRestoreTarget(disk, m_guard, &reason)) {
+        if (!isSafeRestoreTarget(disk, m_guard, &reason, TextMode::Display)) {
             item->setToolTip(reason);
         }
     }
@@ -595,13 +595,15 @@ void MainWindow::renderSelectedDisk()
         return;
     }
 
-    m_detailTitle->setText(describeDisk(*disk));
+    m_detailTitle->setText(describeDisk(*disk, TextMode::Display));
     m_detailValues->setText(
         tr("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
            "Filesystems: %4\n"
            "Mounted at: %5\n"
            "Volume labels: %6")
-            .arg(busTypeName(disk->busType), partitionStyleName(disk->partitionStyle))
+            .arg(
+                busTypeName(disk->busType, TextMode::Display),
+                partitionStyleName(disk->partitionStyle, TextMode::Display))
             .arg(disk->sectorSize)
             .arg(joinOrDash(disk->fileSystems), joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
 }
@@ -633,13 +635,13 @@ void MainWindow::updateRestoreState()
     m_fileSystemCombo->setEnabled(true);
 
     QString reason;
-    if (!isSafeRestoreTarget(*disk, m_guard, &reason)) {
+    if (!isSafeRestoreTarget(*disk, m_guard, &reason, TextMode::Display)) {
         m_restoreButton->setEnabled(false);
         setStatus(StatusKind::Blocked, tr("This disk will not be restored."), reason);
         return;
     }
 
-    if (!canCreatePartitionLayout(selectedPartitionStyle(), *disk, &reason) ||
+    if (!canCreatePartitionLayout(selectedPartitionStyle(), *disk, &reason, TextMode::Display) ||
         !m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
         m_restoreButton->setEnabled(false);
         setStatus(StatusKind::Blocked, tr("This restore configuration cannot be used on this disk."), reason);
@@ -648,14 +650,14 @@ void MainWindow::updateRestoreState()
 
     m_restoreButton->setEnabled(true);
 
-    const QString warning = largeRestoreTargetWarning(*disk);
+    const QString warning = largeRestoreTargetWarning(*disk, TextMode::Display);
     if (!warning.isEmpty()) {
         setStatus(StatusKind::Warning, tr("Check this is the right disk."), warning);
         return;
     }
     setStatus(
         StatusKind::Ready,
-        tr("Ready to restore %1 as %2 %3.").arg(describeDisk(*disk), style, fileSystem),
+        tr("Ready to restore %1 as %2 %3.").arg(describeDisk(*disk, TextMode::Display), style, fileSystem),
         tr("Contents: %1").arg(joinOrDash(disk->labels)));
 }
 
@@ -675,7 +677,7 @@ void MainWindow::startRestore()
     }
 
     QString reason;
-    if (!isSafeRestoreTarget(*selected, m_guard, &reason)) {
+    if (!isSafeRestoreTarget(*selected, m_guard, &reason, TextMode::Display)) {
         QMessageBox::critical(this, tr("Restore refused"), reason);
         updateRestoreState();
         return;
@@ -684,7 +686,8 @@ void MainWindow::startRestore()
     const DiskInfo disk = *selected;
     const PartitionStyle style = selectedPartitionStyle();
     const FileSystemType fileSystem = selectedFileSystem();
-    if (!canCreatePartitionLayout(style, disk, &reason) || !m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
+    if (!canCreatePartitionLayout(style, disk, &reason, TextMode::Display) ||
+        !m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
         QMessageBox::critical(this, tr("Restore refused"), reason);
         updateRestoreState();
         return;

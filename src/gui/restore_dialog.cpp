@@ -187,7 +187,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     auto *targetLayout = new QVBoxLayout(target);
     targetLayout->setContentsMargins(14, 12, 14, 12);
     targetLayout->setSpacing(4);
-    targetLayout->addWidget(label(describeDisk(disk), "detailTitle"));
+    targetLayout->addWidget(label(describeDisk(disk, TextMode::Display), "detailTitle"));
     targetLayout->addWidget(label(
         tr("%1  /  %2  /  Label: %3")
             .arg(partitionStyleLabel(request.style), fileSystemTypeName(request.fileSystem), request.volumeLabel),
@@ -226,7 +226,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     auto *contents = label(tr("Mounted at: %1\nVolume labels: %2").arg(mounts, labels), "eraseContents");
     contents->setTextInteractionFlags(Qt::TextSelectableByMouse);
     summaryLayout->addWidget(contents);
-    const QString largeWarning = largeRestoreTargetWarning(disk);
+    const QString largeWarning = largeRestoreTargetWarning(disk, TextMode::Display);
     if (!largeWarning.isEmpty()) {
         summaryLayout->addWidget(label(largeWarning, "warningTitle"));
     }
@@ -400,7 +400,8 @@ void RestoreDialog::completeCurrentStep()
     auto &row = m_rows[m_step - 1];
     setState(row.widget, QStringLiteral("complete"));
     setState(row.indicator, QStringLiteral("complete"));
-    row.state->setText(tr("Done · %1 s").arg((m_elapsed.elapsed() - m_stepStartedMs) / 1000.0, 0, 'f', 1));
+    row.state->setText(
+        tr("Done · %1 s").arg(formatDecimal((m_elapsed.elapsed() - m_stepStartedMs) / 1000.0, 1, TextMode::Display)));
 }
 
 bool RestoreDialog::setProgress(int step, int totalSteps, const QString &message)

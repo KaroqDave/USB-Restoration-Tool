@@ -4,11 +4,6 @@
 
 ### 1.9.0 — German support (in progress)
 
-- Translate shared disk descriptions, size/duration formatting, safety refusals
-  and layout warnings while preserving English logs. The main window, About and
-  activity dialog controls, theme/filesystem labels, restore dialog and both
-  plans' step titles are translated, including caller-supplied stall notices and
-  success/cancellation summaries. Backend-supplied messages remain English.
 - Separate translated display messages from English logging, including Linux
   helper and Windows backend errors and progress. Do not simply translate the
   shared backend strings: `RestoreWorker` currently logs and displays the same
@@ -29,6 +24,16 @@
   feature and validation are complete; no release or tag yet.
 
 ## Recently completed
+
+- 2026-10-31: Translated shared disk descriptions, decimal size/duration
+  formatting, safety/identity refusals, layout errors and large-drive warnings.
+  Core messages use an explicit display mode; existing backend/log calls default
+  to English, and display formatting leaves the process locale unchanged. Added
+  safety-decision invariance, German refusal/warning UI checks in both themes
+  and scales, and English restore-log checks with German UI. Linux build and all
+  five ctest checks pass; privileged loop tests skipped. Startup, backend
+  messages, helper protocol and package/CI validation remain open. No physical
+  drive accessed.
 
 - 2026-10-31: Added 72 German display strings for the main window, About and
   activity dialog controls, theme/filesystem labels and caller-supplied restore

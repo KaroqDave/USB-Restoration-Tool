@@ -164,8 +164,12 @@ cmake --build build-linux --target update_translations
 Review the new translations before building; unfinished entries fall back to
 English. Extend the extraction sources as translation coverage grows. Backend
 messages currently also feed the log, so they need separate display and English
-log representations before being translated. Language must never decide whether
-a restore is allowed or which device is opened.
+log representations before being translated. Shared core descriptions, safety
+reasons and layout errors accept `TextMode::Display`; their default is English
+for backend and log callers. The catalog supplies the display number locale,
+without changing the process-wide locale. Device IDs and protocol tokens are
+never translated. Language must never decide whether a restore is allowed or
+which device is opened.
 
 ## Install and package
 

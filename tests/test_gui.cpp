@@ -1,4 +1,5 @@
 #include "gui/main_window.h"
+#include "core/safety.h"
 #include "gui/restore_dialog.h"
 #include "gui/theme.h"
 #include "platform/translations.h"
@@ -210,6 +211,122 @@ class GuiTests : public QObject {
         }
         QCOMPARE(RestoreDialog::tr("Confirm USB restore"), englishTitle);
         QCOMPARE(QLocale(), locale);
+    }
+
+    void translatesSharedDescriptionsWithoutChangingLogs()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const QLocale locale;
+        DiskInfo disk = exampleDisk();
+        disk.name.clear();
+        QCOMPARE(formatByteSize(disk.size), QStringLiteral("32.00 GB"));
+        QCOMPARE(formatByteSize(disk.size, TextMode::Display), QStringLiteral("32,00 GB"));
+        QCOMPARE(formatByteSize(512, TextMode::Display), QStringLiteral("512 B"));
+        QCOMPARE(formatDecimal(1234.5, 1), QStringLiteral("1234.5"));
+        QCOMPARE(formatDecimal(1234.5, 1, TextMode::Display), QStringLiteral("1234,5"));
+        QCOMPARE(describeDisk(disk), QStringLiteral("USB drive 2 — USB disk (32.00 GB)"));
+        QCOMPARE(describeDisk(disk, TextMode::Display), QStringLiteral("USB drive 2 — USB-Laufwerk (32,00 GB)"));
+        QCOMPARE(partitionStyleName(0), QStringLiteral("RAW / unknown"));
+        QCOMPARE(partitionStyleName(0, TextMode::Display), QStringLiteral("RAW / unbekannt"));
+        disk.size = LargeRestoreTargetBytes;
+        QVERIFY(largeRestoreTargetWarning(disk).startsWith(QStringLiteral("Large USB disk: 128.00 GB.")));
+        QVERIFY(largeRestoreTargetWarning(disk, TextMode::Display)
+                    .startsWith(QStringLiteral("Großes USB-Laufwerk: 128,00 GB.")));
+        QString english;
+        QString german;
+        disk.isReadOnly = true;
+        QVERIFY(!isSafeRestoreTarget(disk, {}, &english));
+        QVERIFY(!isSafeRestoreTarget(disk, {}, &german, TextMode::Display));
+        QCOMPARE(english, QStringLiteral("USB drive 2 is read-only."));
+        QCOMPARE(german, QStringLiteral("USB drive 2 ist schreibgeschützt."));
+        disk.size = 3ull * 1024 * 1024 * 1024 * 1024;
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Mbr, disk, &english));
+        QVERIFY(!canCreatePartitionLayout(PartitionStyle::Mbr, disk, &german, TextMode::Display));
+        QVERIFY(english.startsWith(QStringLiteral("MBR cannot address")));
+        QVERIFY(german.startsWith(QStringLiteral("MBR kann eine Partition")));
+        DiskInfo changed = disk;
+        changed.serialNumber = QStringLiteral("new");
+        disk.serialNumber = QStringLiteral("old");
+        QVERIFY(!isSameRestoreTarget(disk, changed, &english));
+        QVERIFY(!isSameRestoreTarget(disk, changed, &german, TextMode::Display));
+        QVERIFY(english.contains(QStringLiteral("same serial number")));
+        QVERIFY(german.contains(QStringLiteral("„Seriennummer“")));
+        QVERIFY(!isSameDeviceSequence(disk.deviceId, 1, 2, &german, TextMode::Display));
+        QVERIFY(german.startsWith(QStringLiteral("Es konnte nicht bestätigt werden")));
+        QCOMPARE(QLocale(), locale);
+        RestoreDialog dialog(exampleRequest(), linuxRestorePlan());
+        confirmErase(dialog);
+        QVERIFY(dialog.setProgress(1, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Prüfen")));
+        QVERIFY(dialog.setProgress(2, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Erkennen")));
+        const QString duration = stepRow(dialog, 1)->findChild<QLabel *>(QStringLiteral("restoreStepState"))->text();
+        QVERIFY(duration.contains(QLatin1Char(',')));
+        QVERIFY(!duration.contains(QLatin1Char('.')));
+        dialog.finishCancelled(QStringLiteral("Test beendet"));
+        QVERIFY(translations.load(Language::English));
+        QCOMPARE(formatByteSize(disk.size, TextMode::Display), formatByteSize(disk.size));
+    }
+
+    void showsTranslatedSafetyRefusalsWithoutStartingARestore_data()
+    {
+        QTest::addColumn<int>("scenario");
+        QTest::addColumn<bool>("dark");
+        for (const bool dark : {false, true}) {
+            for (int scenario = 0; scenario < 4; ++scenario) {
+                const QByteArray name = QByteArray(dark ? "dark-" : "light-") + QByteArray::number(scenario);
+                QTest::newRow(name.constData()) << scenario << dark;
+            }
+        }
+    }
+
+    void showsTranslatedSafetyRefusalsWithoutStartingARestore()
+    {
+        QFETCH(int, scenario);
+        QFETCH(bool, dark);
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        QSettings(QStringLiteral("KaroqDave"), QStringLiteral("USB Restoration Tool")).clear();
+        ExampleService service;
+        if (scenario == 0)
+            service.disk.isReadOnly = true;
+        if (scenario == 1)
+            service.disk.busType = 0;
+        if (scenario == 2)
+            service.disk.size = 3ull * 1024 * 1024 * 1024 * 1024;
+        if (scenario == 3)
+            service.disk.size = LargeRestoreTargetBytes;
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        if (scenario == 2) {
+            for (auto *combo : window.findChildren<QComboBox *>()) {
+                if (combo->accessibleName() == QStringLiteral("Partitionsschema"))
+                    combo->setCurrentIndex(1);
+            }
+        }
+        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        QVERIFY(restore);
+        QCOMPARE(restore->isEnabled(), scenario == 3);
+        QString details;
+        for (auto *label : window.findChildren<QLabel *>())
+            details += label->text();
+        const QString expected[] = {
+            QStringLiteral("ist schreibgeschützt"),
+            QStringLiteral("Bus Unbekannt"),
+            QStringLiteral("MBR kann eine Partition"),
+            QStringLiteral("Großes USB-Laufwerk: 128,00 GB")};
+        QVERIFY2(details.contains(expected[scenario]), qPrintable(details));
+        if (scenario != 3) {
+            restore->click();
+            QVERIFY(!window.findChild<RestoreDialog *>());
+        } else {
+            restore->click();
+            auto *dialog = window.findChild<RestoreDialog *>();
+            QVERIFY(dialog);
+            QVERIFY(!dialog->findChild<QPushButton *>(QStringLiteral("confirmErase"))->isEnabled());
+            dialog->reject();
+        }
+        QCOMPARE(service.restores.load(), 0);
+        window.close();
     }
 
     void keepsBackendErrorsInEnglishWhileTheDialogIsGerman()
@@ -1069,6 +1186,9 @@ class GuiTests : public QObject {
                 ? QStringLiteral("Das Laufwerk enthält jetzt ein exFAT-Volume mit dem Namen USB unter /dev/example1.")
                 : QStringLiteral("Die Wiederherstellung wurde vor dem Löschen des Laufwerks angehalten."));
         QCOMPARE(service.restores.load(), 1);
+        const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
+        QVERIFY(log.contains(QStringLiteral("Restore requested for USB drive 2 — Example Flash Drive (32.00 GB)")));
+        QVERIFY(!log.contains(QStringLiteral("32,00 GB")));
         dialog->accept();
         window.close();
     }
