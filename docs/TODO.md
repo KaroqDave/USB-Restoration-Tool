@@ -10,8 +10,8 @@
 - 2026-10-31: Formatted all C++ sources with clang-format 22.1.8 (layout only;
   identical with whitespace removed) and added a `format` CI job that fails on any
   unformatted `.cpp` or `.h`, with that version pinned from PyPI. The formatting
-  commit is listed in `.git-blame-ignore-revs`. The check passes locally with the
-  PyPI build; the CI job has not run yet.
+  commit is listed in `.git-blame-ignore-revs`. The `format` job and every other
+  job passed in CI on `f5375aa`.
 
 - 2026-10-31: Closed the branch review findings. Windows write protection is
   reported as such instead of as refused access. Wrapped storage failures label
@@ -19,8 +19,8 @@
   and drive-letter steps give their own advice instead of the generic replug
   advice; the volume-lock message no longer repeats it. The restore window
   reports when it ignores an out-of-order progress step, and the log records it.
-  Linux build and all four ctest suites pass; Windows tests were updated but not
-  run, and no physical drive was accessed.
+  Linux build and all four ctest suites pass locally; the Windows build and tests
+  passed in CI on `f5375aa`. No physical drive was accessed.
 
 - 2026-10-31: Measured two restores with the current Linux build, run as root, on
   an Intenso Basic Line stick (7.47 GB, 512-byte sectors, GPT). exFAT finished
