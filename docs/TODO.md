@@ -7,6 +7,16 @@
 
 ## Recently completed
 
+- 2026-10-31: Added a README preview of the confirmation dialog in both themes.
+  A new `rendersTheConfirmationDialog` GUI test opens it through the main
+  window's Restore button with first-run settings and writes `confirm-light.png`
+  and `confirm-dark.png`; it also checks that the erase button starts disabled
+  and that dismissing it starts no restore. Rendering is byte-identical across runs.
+  A restore animation follows it: `rendersTheRestoreAnimation` records the dialog
+  from acknowledgement to result through the ten Linux steps (skipped unless
+  `USBRESTORE_GUI_ANIMATION` is set), and `scripts/render-restore-animation.sh`
+  encodes 520 px GIFs of about 300 KB each with ffmpeg.
+
 - 2026-10-31: Formatted all C++ sources with clang-format 22.1.8 (layout only;
   identical with whitespace removed) and added a `format` CI job that fails on any
   unformatted `.cpp` or `.h`, with that version pinned from PyPI. The formatting

@@ -6,6 +6,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFrame>
@@ -28,6 +29,7 @@
 #include <QTimer>
 
 #include <atomic>
+#include <functional>
 
 using namespace usbrestore;
 
@@ -41,6 +43,16 @@ DiskInfo exampleDisk()
     disk.name = QStringLiteral("Example Flash Drive");
     disk.busType = UsbBusType;
     disk.size = 32ULL * 1024 * 1024 * 1024;
+    return disk;
+}
+
+// The README previews show what an ISO writer leaves behind, so the erase summary has something to name.
+DiskInfo installerDisk()
+{
+    DiskInfo disk = exampleDisk();
+    disk.mountPoints = {QStringLiteral("/run/media/user/Ubuntu 24.04 LTS amd64")};
+    disk.labels = {QStringLiteral("Ubuntu 24.04 LTS amd64")};
+    disk.fileSystems = {QStringLiteral("iso9660")};
     return disk;
 }
 
@@ -825,6 +837,133 @@ class GuiTests : public QObject {
                 window.grab().save(QDir(output).filePath(QStringLiteral("app-%1.png").arg(dark ? "dark" : "light"))));
         }
         window.close();
+    }
+
+    void rendersTheConfirmationDialog_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    // Saves the README's confirmation preview, opened through the main window as a user would.
+    void rendersTheConfirmationDialog()
+    {
+        QFETCH(bool, dark);
+        QSettings(QStringLiteral("KaroqDave"), QStringLiteral("USB Restoration Tool")).clear();
+        applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
+        ExampleService service;
+        service.disk = installerDisk();
+        MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        window.show();
+        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        auto *dialog = window.findChild<RestoreDialog *>();
+        QVERIFY(dialog);
+        QVERIFY(dialog->isVisible());
+        QVERIFY(!dialog->findChild<QPushButton *>(QStringLiteral("confirmErase"))->isEnabled());
+        QTest::qWait(80);
+
+        const QString output = qEnvironmentVariable("USBRESTORE_GUI_SNAPSHOTS");
+        if (!output.isEmpty()) {
+            QVERIFY(QDir().mkpath(output));
+            QVERIFY(dialog->grab().save(
+                QDir(output).filePath(QStringLiteral("confirm-%1.png").arg(dark ? "dark" : "light"))));
+        }
+        dialog->reject();
+        QCOMPARE(service.restores.load(), 0);
+        window.close();
+    }
+
+    void rendersTheRestoreAnimation_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+
+    // Records the README's restore animation; scripts/render-restore-animation.sh encodes it at the same rate.
+    void rendersTheRestoreAnimation()
+    {
+        QFETCH(bool, dark);
+        const QString output = qEnvironmentVariable("USBRESTORE_GUI_ANIMATION");
+        if (output.isEmpty()) {
+            QSKIP("Set USBRESTORE_GUI_ANIMATION to a directory to record the frames; it takes real time.");
+        }
+        constexpr int FrameMs = 50;
+        QDir frames(QDir(output).filePath(QString::fromLatin1(QTest::currentDataTag())));
+        QVERIFY(frames.removeRecursively());
+        QVERIFY(QDir().mkpath(frames.path()));
+
+        applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
+        RestoreRequest request = exampleRequest();
+        request.disk = installerDisk();
+        const QVector<RestoreStep> &plan = linuxRestorePlan();
+        RestoreDialog dialog(request, plan);
+        dialog.show();
+
+        // The backend's own messages, so the preview reads like a real Linux restore.
+        const auto message = [](RestoreStep step) {
+            switch (step) {
+            case RestoreStep::VerifyDisk:
+                return QStringLiteral("Verifying the selected USB disk");
+            case RestoreStep::IdentifyDevice:
+                return QStringLiteral("Identifying the block device");
+            case RestoreStep::Unmount:
+                return QStringLiteral("Unmounting existing filesystems");
+            case RestoreStep::OpenExclusive:
+                return QStringLiteral("Opening the device exclusively");
+            case RestoreStep::ClearSignatures:
+                return QStringLiteral("Clearing old MBR, GPT and ISO signatures");
+            case RestoreStep::WritePartitionTable:
+                return QStringLiteral("Writing the GPT partition table");
+            case RestoreStep::Format:
+                return QStringLiteral("Formatting as exFAT");
+            case RestoreStep::RereadPartitionTable:
+                return QStringLiteral("Re-reading the partition table");
+            case RestoreStep::WaitForPartition:
+                return QStringLiteral("Waiting for the new partition to appear");
+            default:
+                return QStringLiteral("Restore complete");
+            }
+        };
+
+        struct Cue {
+            qint64 atMs;
+            std::function<void()> act;
+        };
+        QVector<Cue> cues;
+        cues.append(
+            {1400, [&] { dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))->setChecked(true); }});
+        cues.append({2400, [&] { dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"))->click(); }});
+        qint64 at = 3000;
+        const int total = static_cast<int>(plan.size());
+        for (int step = 1; step <= total; ++step) {
+            cues.append({at, [&dialog, &plan, message, step, total] {
+                             QVERIFY(dialog.setProgress(step, total, message(plan.at(step - 1))));
+                         }});
+            // Clearing signatures is the one step that takes noticeably longer on a real stick.
+            at += plan.at(step - 1) == RestoreStep::ClearSignatures ? 1600 : 500;
+        }
+        cues.append({at, [&] {
+                         dialog.finishSuccess(
+                             QStringLiteral("The disk is now one exFAT volume labelled USB at /dev/example1."));
+                     }});
+        const qint64 end = at + 3000;
+
+        QElapsedTimer clock;
+        clock.start();
+        int frame = 0;
+        int next = 0;
+        for (qint64 due = 0; due <= end; due += FrameMs) {
+            QTest::qWait(static_cast<int>(qMax<qint64>(0, due - clock.elapsed())));
+            while (next < cues.size() && cues.at(next).atMs <= due) {
+                cues.at(next++).act();
+            }
+            QCoreApplication::processEvents();
+            QVERIFY(dialog.grab().save(
+                frames.filePath(QStringLiteral("frame-%1.png").arg(frame++, 4, 10, QLatin1Char('0')))));
+        }
+        QCOMPARE(next, cues.size());
     }
 
     void describesTheReleaseAndProjectVersion_data()

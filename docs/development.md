@@ -60,11 +60,21 @@ USBRESTORE_GUI_SNAPSHOTS=build-linux/ui-previews ./build-linux/usb-gui-tests ren
 The README's interface previews come from the same test binary:
 
 ```bash
-USBRESTORE_GUI_SNAPSHOTS=docs/images ./build-linux/usb-gui-tests rendersTheMainWindow -platform offscreen
+USBRESTORE_GUI_SNAPSHOTS=docs/images ./build-linux/usb-gui-tests rendersTheMainWindow rendersTheConfirmationDialog -platform offscreen
 ```
 
-That writes `app-light.png` and `app-dark.png` with first-run settings. Review
-both, and regenerate them whenever the main window changes.
+That writes `app-light.png`, `app-dark.png`, `confirm-light.png` and
+`confirm-dark.png` with first-run settings. Review all four, and regenerate them
+whenever the main window or the confirmation dialog changes.
+
+The restore animation, `restore-light.gif` and `restore-dark.gif`, is recorded in
+real time and encoded with ffmpeg:
+
+```bash
+./scripts/render-restore-animation.sh build-linux
+```
+
+It takes about 25 seconds. Regenerate it whenever the restore dialog changes.
 
 Set `QT_SCALE_FACTOR=2` to check 200% scaling.
 

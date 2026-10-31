@@ -25,6 +25,24 @@ Built with Qt 6 for Windows and Linux. Tested across multiple devices and system
 
 Interface preview with an example drive.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/confirm-dark.png">
+  <img src="docs/images/confirm-light.png" alt="Confirmation dialog naming the drive, the new layout and what is mounted from it, with Erase and restore disabled until the acknowledgement is ticked." width="520">
+</picture>
+
+Before anything is erased, the confirmation names the drive, the layout it will
+get and what is mounted from it. **Erase and restore** stays disabled until you
+tick the acknowledgement. Progress and the result appear in the same window.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/restore-dark.gif">
+  <img src="docs/images/restore-light.gif" alt="Animation of a restore: the acknowledgement is ticked, each step moves from waiting to done, cancelling is disabled once writing begins, and the dialog ends on Restore complete." width="520">
+</picture>
+
+Each step is marked as it starts and finishes. Cancelling is possible until the
+first write; after that the restore runs to its result. Step timings in the
+animation are illustrative.
+
 ## Download and run
 
 Get a build from [Releases](https://github.com/KaroqDave/USB-Restoration-Tool/releases/latest).
