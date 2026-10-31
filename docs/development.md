@@ -260,6 +260,18 @@ filenames, `PascalCase` types, `camelCase` functions and variables, and `m_` mem
 inside `namespace usbrestore`. Platform failures return `bool` with a
 `QString *error`; messages should explain the operation and next step.
 
+CI fails if any tracked `.cpp` or `.h` file is not formatted with clang-format
+22.1.8. Other releases lay some code out differently, so use that version on every
+platform, then format before committing:
+
+```sh
+python -m pip install clang-format==22.1.8
+git ls-files '*.cpp' '*.h' | xargs clang-format -i
+```
+
+On Windows, run the second line from Git Bash, or in PowerShell use
+`git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }`.
+
 Use Conventional Commits and include relevant validation in pull requests.
 Keep open work in [TODO.md](TODO.md), release history in [CHANGELOG.md](../CHANGELOG.md),
 and safety guidance in [SECURITY.md](../SECURITY.md).

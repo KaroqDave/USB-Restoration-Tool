@@ -53,7 +53,8 @@ Build and project guidance lives in `docs/development.md`; open tasks live in `d
   to `sgdisk` and `fdisk`. Needs the `usb-partition-dump` target built.
 - `./scripts/build-standalone.ps1` / `./scripts/build-appimage.sh` /
   `./scripts/build-deb.sh` / `./scripts/build-rpm.sh` — package.
-- `clang-format -i src/**/*.cpp src/**/*.h` — the repo ships a `.clang-format`.
+- `git ls-files '*.cpp' '*.h' | xargs clang-format -i` — with clang-format 22.1.8,
+ the version CI checks against; see `docs/development.md`.
 
 ## Coding Style & Naming Conventions
 

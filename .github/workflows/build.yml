@@ -8,6 +8,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Pinned because clang-format releases disagree on some layouts; keep in step with docs/development.md.
+  format:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install clang-format
+        run: python -m pip install clang-format==22.1.8
+
+      - name: Check formatting
+        run: git ls-files '*.cpp' '*.h' | xargs clang-format --dry-run --Werror
+
   build-rpm:
     uses: ./.github/workflows/rpm.yml
     with:

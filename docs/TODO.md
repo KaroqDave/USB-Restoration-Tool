@@ -7,6 +7,12 @@
 
 ## Recently completed
 
+- 2026-10-31: Formatted all C++ sources with clang-format 22.1.8 (layout only;
+  identical with whitespace removed) and added a `format` CI job that fails on any
+  unformatted `.cpp` or `.h`, with that version pinned from PyPI. The formatting
+  commit is listed in `.git-blame-ignore-revs`. The check passes locally with the
+  PyPI build; the CI job has not run yet.
+
 - 2026-10-31: Closed the branch review findings. Windows write protection is
   reported as such instead of as refused access. Wrapped storage failures label
   the inner text "Details" rather than attributing it to Windows, and the detach
