@@ -2,8 +2,6 @@
 
 ## Next
 
-- Merge [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11), tag
-  `v1.8.0` and verify the published release assets and checksums.
 - 1.9.0: Add German to everything the user sees: the GUI, step names, refusal
   reasons and the restore errors shown in the dialog, including those raised by
   the Linux helper and Windows backend. The log stays English. Use
@@ -15,6 +13,16 @@
   scaling in both themes, and keep English wording tests on a fixed locale.
 
 ## Recently completed
+
+- 2026-10-31: Published 1.8.0 as the latest stable release. Squash-merged
+  [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11) as
+  `5938510`, with a tree identical to the CI-validated `24aff9e`, and tagged the
+  release preparation commit. All six release jobs and both `main` builds
+  passed. Verified the Windows ZIP, AppImage, `.deb`, RPM and checksum files
+  against GitHub's asset digests, the three Linux `.sha256` files and all 20
+  Windows bundle files. The executable reports 1.8.0, both packaged helpers report
+  `version 4 app 1.8.0 steps 10 destructive 5`, and the extracted AppImage
+  passes a four-second headless startup check. No physical drive accessed.
 
 - 2026-10-31: Added a README preview of the confirmation dialog in both themes.
   A new `rendersTheConfirmationDialog` GUI test opens it through the main
