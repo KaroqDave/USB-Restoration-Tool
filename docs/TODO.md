@@ -6,6 +6,22 @@
   `v1.8.0` and verify the published release assets and checksums.
 - Measure restore times on disposable media using the setup and step durations
   now recorded in the application log.
+- Keep the cancellation notice in the restore dialog through stall notices.
+  `RestoreDialog::setNotice` overwrites "Cancellation requested…", and on
+  recovery says to wait "until the restore finishes" while the button reads
+  "Stopping…"; `setProgress` does not restore it while cancelling. Add a GUI
+  test for a stall after cancellation.
+- Colour `RestoreStepIndicator` without repurposing app-wide palette roles.
+  `applyTheme` sets `QPalette::LinkVisited` to the error colour and
+  `QPalette::Mid` to the border colour for the whole application; pass the
+  colours to the indicator instead.
+- Make the AppImage Qt probe prove it loads the bundled Qt libraries. It relies
+  on `LD_LIBRARY_PATH`, which an old-style `DT_RPATH` on `usb-qt-bundle-probe`
+  would override, letting damaged bundled libraries pass. Fail the check if the
+  probe has an `RPATH`, or build it without one.
+- Decide where the `.deb` ships the license. The `LICENSE` install added for the
+  RPM also puts `/usr/share/licenses/usb-restoration-tool/LICENSE` in the Debian
+  package, where `/usr/share/doc/<pkg>/copyright` is expected.
 
 ## Recently completed
 
