@@ -2,11 +2,188 @@
 
 ## Next
 
-- Bring Windows restore errors up to the Linux wording: `raw_disk.*` and
-  `windows_disk_service.*` should name the drive, the operation and the next step
-  instead of passing system error text through.
+- Merge [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11), tag
+  `v1.8.0` and verify the published release assets and checksums.
 
 ## Recently completed
+
+- 2026-10-31: Added a README preview of the confirmation dialog in both themes.
+  A new `rendersTheConfirmationDialog` GUI test opens it through the main
+  window's Restore button with first-run settings and writes `confirm-light.png`
+  and `confirm-dark.png`; it also checks that the erase button starts disabled
+  and that dismissing it starts no restore. Rendering is byte-identical across runs.
+  A restore animation follows it: `rendersTheRestoreAnimation` records the dialog
+  from acknowledgement to result through the ten Linux steps (skipped unless
+  `USBRESTORE_GUI_ANIMATION` is set), and `scripts/render-restore-animation.sh`
+  encodes 520 px GIFs of about 300 KB each with ffmpeg.
+
+- 2026-10-31: Formatted all C++ sources with clang-format 22.1.8 (layout only;
+  identical with whitespace removed) and added a `format` CI job that fails on any
+  unformatted `.cpp` or `.h`, with that version pinned from PyPI. The formatting
+  commit is listed in `.git-blame-ignore-revs`. The `format` job and every other
+  job passed in CI on `f5375aa`.
+
+- 2026-10-31: Closed the branch review findings. Windows write protection is
+  reported as such instead of as refused access. Wrapped storage failures label
+  the inner text "Details" rather than attributing it to Windows, and the detach
+  and drive-letter steps give their own advice instead of the generic replug
+  advice; the volume-lock message no longer repeats it. The restore window
+  reports when it ignores an out-of-order progress step, and the log records it.
+  Linux build and all four ctest suites pass locally; the Windows build and tests
+  passed in CI on `f5375aa`. No physical drive was accessed.
+
+- 2026-10-31: Measured two restores with the current Linux build, run as root, on
+  an Intenso Basic Line stick (7.47 GB, 512-byte sectors, GPT). exFAT finished
+  in 2101 ms and FAT32 in 4913 ms. Setup was 0 ms and 4 ms. Clearing signatures
+  took 1952 ms and 1878 ms; formatting took 90 ms for exFAT and 3001 ms for
+  FAT32. Every other step was under 25 ms. Both completed. NTFS and ext4 were
+  not run, and no package was installed.
+
+- 2026-10-31: The AppImage probe now checks every loaded `libQt6*` library after
+  rendering, including plugin dependencies, and rejects host libraries and
+  symlinks outside the bundle. Linux GUI regressions cover complete bundles,
+  missing QtGui/QtWidgets and a host symlink. Linux build and all four ctest
+  suites pass. The packaging check rejects an incomplete SVG bundle and accepts
+  a complete one, including QtSvg. The AppImage was not rebuilt. No physical
+  drive accessed.
+
+- 2026-10-31: Kept the cancellation notice through stall and recovery text, and
+  pinned that with a GUI test. The step indicator now paints from the applied
+  theme palette, so `applyTheme` no longer sets `Mid` to the border colour or
+  `LinkVisited` to the error colour. The AppImage probe is linked without an
+  RPATH or RUNPATH; the packaging script refuses either and accepts the run only
+  when the loaded QtCore library is inside the AppDir. The `.deb` now includes
+  the license at `/usr/share/doc/usb-restoration-tool/copyright` as well as the
+  RPM's `/usr/share/licenses/usb-restoration-tool/LICENSE`. Linux build and all
+  four ctest suites pass, including 81 GUI checks. The probe reports
+  `/lib64/libQt6Core.so.6` and `readelf` shows no RPATH or RUNPATH. AppImage,
+  `.deb` and RPM packages were not rebuilt. No physical drive accessed.
+
+- 2026-10-31: Completed the 1.8.0 pre-release review on
+  [CI run 79](https://github.com/KaroqDave/USB-Restoration-Tool/actions/runs/41144616037)
+  (`f81d369`). All five jobs pass: Windows (`build-windows`), Ubuntu 22.04
+  AppImage (`build-linux`), Ubuntu 24.04 Debian (`build-deb`), Fedora 43 RPM
+  (`build-rpm`) and Ubuntu 24.04 ASan/UBSan + libFuzzer (`sanitizers`). All four
+  ctest suites pass in every job (including `usb-gui-tests` on Windows, under
+  ASan/UBSan, and at 200% scaling with 79 checks on Fedora 43), and all 37
+  privileged Linux loop cases pass with no skips in both `build-deb` and
+  `sanitizers`. Downloaded and verified the four CI artifacts: AppImage, `.deb`
+  and `.rpm` match their `.sha256` files, all 20 files in the Windows ZIP match
+  `SHA256SUMS.txt`, the Windows executable and `README.txt` report `1.8.0`, both
+  packaged helpers report `version 4 app 1.8.0 steps 10 destructive 5`, and the
+  extracted CI AppImage passes a four-second headless startup check. Interactive
+  desktop polkit authentication and physical-media restores remain manual checks
+  for disposable media.
+
+- 2026-10-30: Finished the release cleanup. Removed the unused
+  `restoredLocationNoun()` from `DiskService` and both backends. The README
+  screenshots now come from a new `rendersTheMainWindow` GUI test that writes
+  `app-light.png` and `app-dark.png` with first-run settings, so they show 1.8.0,
+  GPT default and the current interface. Updated `AGENTS.md` for the restore
+  dialog and the AppImage probe, the helper protocol example, and the screenshot
+  instructions. Linux build and all four ctest suites pass at 100% and 200%
+  scaling. No physical drive accessed.
+
+- 2026-10-30: Fixed the local AppImage startup crash by rebuilding with upstream
+  patchelf commit `3e996db`; linuxdeploy's bundled version moved Qt plugin code
+  without preserving its startup address. Packaging now checks bundled platform
+  and SVG loading with a backend-free probe, which reproduces the old crash and
+  passes on the rebuilt bundle. The actual AppImage passes a four-second
+  unprivileged, headless startup check and checksum verification. No restore performed.
+
+- 2026-10-30: Added CPack Fedora RPM packaging with system Qt, formatter
+  dependencies, the helper, polkit policy and license. Shared CI/release
+  integration builds on Fedora 43 and publishes the RPM and checksum. Fedora 43
+  container and Fedora 44 local builds pass all four ctest suites and all 65
+  GUI checks at 200% scaling. Fedora 43 install, release-0.1-to-1 upgrade and
+  removal pass, including package integrity, unprivileged helper/Qt/SVG probes
+  and polkit action loading. Package paths, permissions, dependencies, versions,
+  prefix refusals and checksums pass. Updated native-package guidance. GitHub
+  workflow execution, desktop authentication and physical-media restore checks
+  remain pending; privileged loop tests skipped. No physical drive accessed.
+
+- 2026-10-30: Prepared 1.8.0 in `CMakeLists.txt` with unreleased README notes and
+  changelog entries for the restore dialog, setup improvements, clearer errors
+  and the About dialog. Package metadata and artifact naming derive from the
+  project version. Linux build and all four ctest suites pass; production
+  main-window and About widgets show 1.8.0 in both themes using an example
+  service. The helper announces app 1.8.0 with protocol 4 unchanged. Release
+  preflight accepts v1.8.0, extracts its notes and rejects a mismatched tag.
+  Windows builds, package rebuilds and final release validation remain pending;
+  privileged loop tests skip locally. No physical drive accessed.
+
+- 2026-10-30: Reviewed the restore dialog against both backends. Confirmation still
+  freezes the request shown, and dismissal cannot start a restore. Progress,
+  cancellation, failure and success stay in the dialog; the main window rescans
+  afterward. Cancel is refused from the first disk-writing step on the Linux and
+  Windows plans, matching the backends' last safe checkpoints. Closing is still
+  refused while the restore thread runs. The close explanation now says the disk
+  is unchanged before that step, and is parented to the restore dialog so it is
+  not hidden behind it. Linux build and all four ctest suites pass. The GUI suite
+  reports 77 passed at 100% and 200% scaling, in both themes, including both
+  plans. Confirmation, progress, success and failure previews were checked in
+  both themes, with confirmation and Windows progress also checked at 200%.
+  Windows and sanitizer CI have not run for this dialog; the ASan runtime is not
+  installed locally. Privileged loop tests were skipped. No physical drive accessed.
+
+- 2026-10-30: Refreshed the About dialog for the single restore window, the
+  filesystem choices and the Windows, Debian, Fedora and AppImage builds. The
+  displayed version still comes from the project version. GUI tests receive that
+  version and fail if it falls back to `0.0.0-dev`. Linux build and all four
+  ctest suites pass. The new check passes in both themes at 100% and 200%
+  scaling, and the GUI suite reports 67 passed at both scales. Windows and
+  sanitizer checks remain pending. No physical drive accessed.
+
+- 2026-10-30: Updated [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11)
+  to describe the restore dialog, faster setup, clearer drive errors, the
+  AppImage startup probe, the Fedora RPM and version 1.8.0. The description
+  keeps CI run 78 on `9c9037d` separate from later local results. Windows and
+  sanitizer jobs have not rerun for the dialog, the Fedora workflow has not run
+  on GitHub, and no physical drive was restored.
+
+- 2026-10-30: Removed the main window's old progress bar and duplicate restore
+  outcomes. Progress, cancellation, stall notices and results stay in the restore
+  dialog; the main window rescans and shows current disk eligibility for the next
+  restore. Added regressions for all outcomes, a fresh acknowledgement on retry,
+  and missing, unsafe or unscannable disks after a restore. Linux build and all
+  four ctest suites pass; 65 GUI checks pass at 100% and 200% scaling, covering
+  both themes. Windows and sanitizer checks remain pending; privileged loop tests
+  are skipped locally. No physical drive accessed.
+
+- 2026-10-29: Added a themed, single-window confirmation and restore flow,
+  with animated active steps, completed-step checks and durations, elapsed time,
+  stall notices and inline results. Confirmation retains the disk details,
+  large-drive warning and checkbox gate; dismissal cannot start a restore, and
+  the worker receives the exact request shown. It displays the backend's plan and disables
+  cancellation once writing starts; Escape and closing cannot dismiss a running
+  restore. Linux build and all four ctest suites pass, including 50 GUI checks
+  using an example service. Checked both themes and plans at 100% and 200%
+  scaling. Windows and sanitizer validation remain pending. No physical disk accessed.
+
+- 2026-10-29: Fixed the Ubuntu 22.04 test build by including glibc's mount header
+  before the kernel filesystem header, whose macros otherwise replace the mount
+  enum names. The initial PR #11 CI run confirmed the Windows build, tests and
+  portable bundle, plus all 37 privileged Linux cases with no skips in both the
+  Debian and sanitizer jobs, including the new mounted-partition checks.
+
+- 2026-10-29: Preflight and Linux handle checks skip filesystem display details
+  while still reading fresh identity, state and mount points. Windows storage
+  operations reuse one WMI connection per restore; permanent physical-drive lock
+  errors no longer spend five seconds retrying. Linux signature clearing uses
+  4 MiB chunks, reducing the usual eight synchronous writes to two without
+  changing the cleared range or flushes. The log records setup, step and total
+  durations. Added sector-alignment/range tests, a loop-image mount/identity
+  regression and a Windows lock-delay regression. Linux build, 156 core tests,
+  eight Linux tests and fuzz-corpus replay pass; 29 loop cases skip locally.
+  Windows and privileged loop validation passed in CI as noted above. No physical drive tested.
+
+- 2026-10-29: Windows raw-device errors now name the disk and operation and give
+  advice for busy, write-protected, disconnected, not-ready, I/O and capacity
+  failures, retaining the Windows error number. Storage and formatter failures
+  keep Windows' details alongside the disk, operation and retry advice.
+  Added Windows tests for the wording, preserved details and invalid raw handles.
+  Linux build and all three ctest suites pass; privileged loop tests are skipped.
+  Windows validation passed in CI as noted above. No physical-drive restore was performed.
 
 - 2026-10-28: Linux restore errors now name the drive, the operation and the next
   step instead of quoting `strerror`. `deviceErrorText()` in `src/linux/block_device.*`
@@ -174,8 +351,7 @@
 - 2026-10-18: Added a `.deb` built by CPack through `scripts/build-deb.sh`, with
   the helper at `/usr/libexec/usb-restoration-helper` and its polkit action. CI
   builds, checks and installs it; releases attach it. Installing it and restoring
-  through pkexec is tested and confirmed working. No other package formats are
-  planned; the `.deb` and AppImage cover Linux.
+  through pkexec is tested and confirmed working.
 
 - 2026-10-18: The Linux helper catches `SIGPIPE`/`SIGHUP`, and both backends
   confirm the disk again after the partition table is written and before

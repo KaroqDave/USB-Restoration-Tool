@@ -1,0 +1,46 @@
+name: Fedora RPM
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        type: string
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:43
+
+    steps:
+      - name: Install build and test dependencies
+        run: >-
+          dnf install -y
+          git cmake gcc-c++ make qt6-qtbase-devel rpm-build binutils cpio
+          dbus-daemon polkit glib2 libxml2 util-linux
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build RPM
+        run: ./scripts/build-rpm.sh
+
+      - name: Test
+        run: ctest --test-dir build-rpm --output-on-failure
+
+      - name: Test GUI at 200% scaling
+        run: QT_SCALE_FACTOR=2 ./build-rpm/usb-gui-tests -platform offscreen
+
+      - name: Verify installation, upgrade and removal
+        env:
+          USBRESTORE_TEST_RPM: "1"
+        run: ./scripts/test-rpm-install.sh build-rpm standalone/*.rpm
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            standalone/*.rpm
+            standalone/*.rpm.sha256
+          if-no-files-found: error

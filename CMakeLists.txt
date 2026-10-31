@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(USBRestorationTool
-    VERSION 1.7.2
+    VERSION 1.8.0
     DESCRIPTION "Restore ISO-written USB drives to one clean volume"
     LANGUAGES CXX
 )
@@ -329,6 +329,7 @@ function(usbrestore_export_clangd_compile_commands)
         list(APPEND _includes
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool-tests_autogen/include${_suffix}"
+            "${CMAKE_CURRENT_BINARY_DIR}/usb-gui-tests_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-partition-dump_autogen/include${_suffix}"
             "${CMAKE_CURRENT_BINARY_DIR}/usb-core-fuzz_autogen/include${_suffix}"
         )
@@ -396,6 +397,7 @@ function(usbrestore_export_clangd_compile_commands)
         ${USBRESTORE_PLATFORM_SOURCES}
         ${USBRESTORE_GUI_SOURCES}
         tests/test_core.cpp
+        tests/test_gui.cpp
         tests/fuzz_core.cpp
         tools/partition_dump.cpp
     )
@@ -472,6 +474,8 @@ set(USBRESTORE_GUI_SOURCES
     src/gui/main.cpp
     src/gui/main_window.cpp
     src/gui/main_window.h
+    src/gui/restore_dialog.cpp
+    src/gui/restore_dialog.h
     src/gui/theme.cpp
     src/gui/theme.h
     resources/resources.qrc
@@ -479,6 +483,14 @@ set(USBRESTORE_GUI_SOURCES
 
 add_executable(usb-branding-export EXCLUDE_FROM_ALL tools/export_branding.cpp)
 target_link_libraries(usb-branding-export PRIVATE Qt6::Gui)
+
+if(NOT WIN32)
+    add_executable(usb-qt-bundle-probe EXCLUDE_FROM_ALL tools/qt_bundle_probe.cpp)
+    # No build rpath: the AppImage check selects bundled Qt with LD_LIBRARY_PATH,
+    # and a DT_RPATH would be searched first and hide a damaged bundle.
+    set_target_properties(usb-qt-bundle-probe PROPERTIES SKIP_BUILD_RPATH TRUE)
+    target_link_libraries(usb-qt-bundle-probe PRIVATE Qt6::Widgets)
+endif()
 
 if(WIN32)
     # The version resource is generated so PROJECT_VERSION stays the only place
@@ -586,7 +598,43 @@ if(USBRESTORE_BUILD_TESTS)
     endif()
 
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
+
+    add_executable(usb-gui-tests
+        ${USBRESTORE_CORE_SOURCES}
+        src/platform/logger.cpp
+        src/platform/logger.h
+        src/platform/restore_worker.cpp
+        src/platform/restore_worker.h
+        src/gui/app_settings.cpp
+        src/gui/main_window.cpp
+        src/gui/main_window.h
+        src/gui/restore_dialog.cpp
+        src/gui/restore_dialog.h
+        src/gui/theme.cpp
+        resources/resources.qrc
+        tests/test_gui.cpp
+    )
+    target_include_directories(usb-gui-tests PRIVATE src)
+    target_compile_definitions(usb-gui-tests PRIVATE
+        USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
+    )
+    target_link_libraries(usb-gui-tests PRIVATE Qt6::Widgets Qt6::Test)
     if(WIN32)
+        target_sources(usb-gui-tests PRIVATE src/win/windows_util.cpp)
+        target_compile_definitions(usb-gui-tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(usb-gui-tests PRIVATE shell32 advapi32)
+        if(MSVC)
+            target_compile_options(usb-gui-tests PRIVATE /utf-8)
+        endif()
+    else()
+        add_dependencies(usb-gui-tests usb-qt-bundle-probe)
+    endif()
+    usbrestore_sanitize(usb-gui-tests)
+    add_dependencies(usb-restoration-tool-tests usb-gui-tests)
+    add_test(NAME usb-gui-tests COMMAND usb-gui-tests -platform offscreen)
+    if(WIN32)
+        set_tests_properties(usb-gui-tests PROPERTIES
+            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
 
@@ -688,6 +736,13 @@ else()
     # A package without the helper would be the AppImage's run-as-root mode
     # with none of the AppImage's portability, so there is none.
     if(USBRESTORE_INSTALL_HELPER)
+        install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/licenses/usb-restoration-tool")
+        # Debian looks for the license at this path. The RPM keeps the copy above,
+        # marked %license; one install tree feeds both packages.
+        install(FILES LICENSE
+                DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/usb-restoration-tool"
+                RENAME copyright)
+
         set(CPACK_GENERATOR DEB)
         set(CPACK_PACKAGE_NAME usb-restoration-tool)
         set(CPACK_PACKAGE_VENDOR KaroqDave)
@@ -702,6 +757,7 @@ else()
         set(CPACK_USBRESTORE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
         set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpack_project_config.cmake")
         set(CPACK_STRIP_FILES ON)
+        set(CPACK_PACKAGE_RELOCATABLE OFF)
 
         set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
         set(CPACK_DEBIAN_PACKAGE_SECTION admin)
@@ -718,6 +774,36 @@ else()
             dosfstools
             ntfs-3g
             e2fsprogs)
+
+        set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+        set(CPACK_RPM_PACKAGE_RELEASE 1)
+        set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)
+        set(CPACK_RPM_PACKAGE_LICENSE MIT)
+        set(CPACK_RPM_PACKAGE_GROUP "System/Tools")
+        set(CPACK_RPM_PACKAGE_AUTOREQ ON)
+        # RPM discovers linked libraries, not Qt plugins or external programs.
+        string(JOIN ", " CPACK_RPM_PACKAGE_REQUIRES
+            qt6-qtbase-gui
+            qt6-qtwayland
+            qt6-qtsvg
+            polkit
+            exfatprogs
+            dosfstools
+            ntfsprogs
+            e2fsprogs)
+        set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+            /usr/libexec
+            /usr/share/applications
+            /usr/share/icons
+            /usr/share/icons/hicolor
+            /usr/share/icons/hicolor/scalable
+            /usr/share/icons/hicolor/scalable/apps
+            /usr/share/icons/hicolor/256x256
+            /usr/share/icons/hicolor/256x256/apps
+            /usr/share/licenses
+            /usr/share/polkit-1
+            /usr/share/polkit-1/actions)
+        set(CPACK_RPM_USER_FILELIST "%license /usr/share/licenses/usb-restoration-tool/LICENSE")
 
         include(CPack)
     endif()

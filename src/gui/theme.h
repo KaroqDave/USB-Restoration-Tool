@@ -59,6 +59,10 @@ Palette darkPalette();
 ColorScheme resolveColorScheme(Theme theme);
 const Palette &paletteFor(ColorScheme scheme);
 
+// The palette most recently given to applyTheme. Painted widgets that cannot use
+// a stylesheet read this instead of borrowing unrelated palette roles.
+const Palette &appliedPalette();
+
 QString buildStyleSheet(const Palette &palette);
 
 Theme themeFromSettings(int value);

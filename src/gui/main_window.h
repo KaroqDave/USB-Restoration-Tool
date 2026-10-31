@@ -11,14 +11,12 @@
 #include <QPointer>
 #include <QVector>
 
-class QCheckBox;
 class QCloseEvent;
 class QComboBox;
 class QDialog;
 class QLabel;
 class QLayout;
 class QListWidget;
-class QProgressBar;
 class QPushButton;
 class QTextEdit;
 class QThread;
@@ -27,6 +25,7 @@ class QTimer;
 namespace usbrestore {
 
 class RestoreWorker;
+class RestoreDialog;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -58,7 +57,6 @@ class MainWindow : public QMainWindow {
     QWidget *buildDiskSection();
     QWidget *buildDetailSection();
     QWidget *buildRestoreSection();
-    QLayout *buildActionLayout();
     QWidget *buildFooterWarning();
     QDialog *activityDialog();
 
@@ -73,7 +71,7 @@ class MainWindow : public QMainWindow {
     void setRunning(bool running);
     void noteRestoreActivity();
     void appendLog(const QString &message);
-    bool confirmErase(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem);
+    void beginRestore(const RestoreRequest &request);
     PartitionStyle selectedPartitionStyle() const;
     FileSystemType selectedFileSystem() const;
     const DiskInfo *selectedDisk() const;
@@ -91,11 +89,9 @@ class MainWindow : public QMainWindow {
     // Stall watch: tells a stick stuck in uninterruptible sleep apart from a hung program.
     QElapsedTimer m_restoreActivity;
     int m_restoreStep = 0;
-    QString m_restoreStepText;
     bool m_stallNoticeShown = false;
-    bool m_stallExplained = false;
 
-    // For the completion message: the combo box is re-enabled before it is built.
+    // The result describes the confirmed request, not a later selection.
     FileSystemType m_restoreFileSystem = FileSystemType::ExFat;
 
     QListWidget *m_diskList = nullptr;
@@ -111,10 +107,10 @@ class MainWindow : public QMainWindow {
     QPushButton *m_restoreButton = nullptr;
     QPushButton *m_themeButton = nullptr;
     QPushButton *m_activityButton = nullptr;
-    QProgressBar *m_progress = nullptr;
     QTimer *m_stallTimer = nullptr;
     QTextEdit *m_log = nullptr;
     QPointer<QDialog> m_activityDialog;
+    QPointer<RestoreDialog> m_restoreDialog;
     QPointer<QThread> m_restoreThread;
     QPointer<RestoreWorker> m_restoreWorker;
 };

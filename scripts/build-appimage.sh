@@ -13,6 +13,7 @@
 #   TOOLS_DIR          Where linuxdeploy is cached (default: ~/.cache/usb-restoration-tool-tools)
 #   NO_STRIP           Disable linuxdeploy stripping (default: true; older bundled
 #                      strip binaries fail on modern rolling-release libraries)
+#   PATCHELF           Override linuxdeploy's bundled patchelf with a fixed build
 #
 # Note: the AppImage bundles Qt, not mkfs.exfat. Formatting uses the exfatprogs
 # already installed on the machine, because a filesystem tool has to match the
@@ -162,7 +163,8 @@ fi
 cmake "${cmake_args[@]}"
 
 step "Building"
-cmake --build "$BuildDir" --config "$CMAKE_BUILD_TYPE" --target usb-restoration-tool
+cmake --build "$BuildDir" --config "$CMAKE_BUILD_TYPE" --target usb-restoration-tool usb-qt-bundle-probe
+ProbePath="$(cd "$BuildDir" && pwd)/usb-qt-bundle-probe"
 
 step "Installing to AppDir"
 rm -rf "$AppDir"
@@ -216,6 +218,28 @@ pushd "$BuildOutputDir" > /dev/null
     -i "$IconPngPath" \
     --plugin qt \
     --output appimage
+
+step "Checking bundled Qt startup without disk access"
+# Loading the original executable misses patchelf damage to the deployed platform
+# plugins; use only the bundled libraries and plugins in a backend-free probe.
+# DT_RPATH is searched before LD_LIBRARY_PATH, and DT_RUNPATH is a fallback, so
+# either one could load the Qt this probe was built against instead of the bundle.
+if readelf -d "$ProbePath" | grep -qE '\(RPATH\)|\(RUNPATH\)'; then
+    echo "error: usb-qt-bundle-probe has an RPATH or RUNPATH, so it cannot prove the bundled Qt loaded." >&2
+    popd > /dev/null
+    exit 1
+fi
+if ! (
+    ulimit -c 0
+    export LD_LIBRARY_PATH="$AppDir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    "$ProbePath" "$AppDir/usr/plugins" \
+        "$AppDir/usr/share/icons/hicolor/scalable/apps/usb-restoration-tool.svg" "$AppDir/usr/lib"
+); then
+    echo "error: bundled Qt could not start; the AppImage has not passed validation." >&2
+    echo "If patchelf corrupted a Qt plugin, rebuild with PATCHELF pointing to a fixed version." >&2
+    popd > /dev/null
+    exit 1
+fi
 
 GeneratedAppImage="$(find "$BuildOutputDir" -maxdepth 1 -name '*.AppImage' -type f | head -1)"
 if [[ -z "$GeneratedAppImage" ]]; then

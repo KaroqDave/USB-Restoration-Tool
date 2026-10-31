@@ -26,13 +26,16 @@ NTFS, or (on Linux) ext4. Source lives in `src/`:
 - `src/helper/` — `main.cpp` for `usb-restoration-helper`, the Linux-only
   privileged binary. Qt Core only, no widgets, and nothing it is told is
   trusted. See `docs/polkit-helper.md`.
-- `src/gui/` — `main.cpp`, `main_window.*`, `theme.*`, `app_settings.*`.
+- `src/gui/` — `main.cpp`, `main_window.*`, `restore_dialog.*` (confirmation,
+  progress and result in one window), `theme.*`, `app_settings.*`.
 
-Tests live in `tests/test_core.cpp` (`src/core`), `tests/test_wmi.cpp` (Windows WMI
+Tests live in `tests/test_gui.cpp` (offscreen widgets and an example disk service),
+`tests/test_core.cpp` (`src/core`), `tests/test_wmi.cpp` (Windows WMI
 encoding and job monitoring) and `tests/test_linux.cpp` (Linux formatter mappings and
 partition re-reads on loop images); `tests/fuzz_core.cpp` fuzzes the parsers and
 partition tables and replays `tests/fuzz-corpus`. `tools/partition_dump.cpp` backs
-`scripts/verify-partition-tables.sh`. Docs beyond the README go in `docs/`.
+`scripts/verify-partition-tables.sh`, and `tools/qt_bundle_probe.cpp` checks that a
+built AppImage's bundled Qt plugins still load. Docs beyond the README go in `docs/`.
 Build and project guidance lives in `docs/development.md`; open tasks live in `docs/TODO.md`.
 
 ## Build, Test, and Development Commands
@@ -49,8 +52,9 @@ Build and project guidance lives in `docs/development.md`; open tasks live in `d
 - `./scripts/verify-partition-tables.sh build-linux` — hand the partition tables
   to `sgdisk` and `fdisk`. Needs the `usb-partition-dump` target built.
 - `./scripts/build-standalone.ps1` / `./scripts/build-appimage.sh` /
-  `./scripts/build-deb.sh` — package.
-- `clang-format -i src/**/*.cpp src/**/*.h` — the repo ships a `.clang-format`.
+  `./scripts/build-deb.sh` / `./scripts/build-rpm.sh` — package.
+- `git ls-files '*.cpp' '*.h' | xargs clang-format -i` — with clang-format 22.1.8,
+ the version CI checks against; see `docs/development.md`.
 
 ## Coding Style & Naming Conventions
 
@@ -73,7 +77,8 @@ comment or the docs already say.
 ## Testing Guidelines
 
 Tests use `QtTest`, are named after the behaviour they pin down, and go in the
-file for the code they cover: `test_core.cpp`, `test_wmi.cpp` or `test_linux.cpp`. Every change to a safety rule needs a test, including the case it
+file for the code they cover: `test_core.cpp`, `test_wmi.cpp`, `test_linux.cpp` or
+`test_gui.cpp`. Every change to a safety rule needs a test, including the case it
 now refuses that it previously allowed — several existing tests exist purely to
 document a rule that used to be too permissive, and their comments say so.
 

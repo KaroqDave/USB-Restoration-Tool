@@ -2,6 +2,7 @@
 
 #include "core/disk.h"
 #include "platform/disk_service.h"
+#include "win/wmi.h"
 
 #include <QString>
 #include <QStringList>
@@ -40,10 +41,8 @@ class VolumeManager {
 
     // Returns the \\?\Volume{...}\ name, empty on timeout. The reporter gets periodic
     // notes because slow media can take most of a minute and silence looks like a stall.
-    QString waitForVolumeOnDisk(quint32 diskNumber,
-                                int timeoutMs,
-                                QString *error = nullptr,
-                                RestoreReporter *reporter = nullptr) const;
+    QString waitForVolumeOnDisk(
+        quint32 diskNumber, int timeoutMs, QString *error = nullptr, RestoreReporter *reporter = nullptr) const;
 
     QString mountVolume(const QString &volumeName, QString *error = nullptr) const;
 
@@ -62,6 +61,9 @@ class VolumeManager {
 
   private:
     QString findVolumeNameForDisk(quint32 diskNumber) const;
+
+    // Owned by one restore on its worker thread; queries and job reads still fetch live objects.
+    WmiConnection m_storage;
 };
 
 } // namespace usbrestore

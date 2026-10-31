@@ -248,17 +248,19 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr)
         return reported.isEmpty() ? QStringLiteral("The restore failed.") : reported;
 
     case RestoreExitUsage:
-        return QStringLiteral("USB Restoration Tool and its restore helper do not agree on how to talk to each "
-                              "other, which usually means a partly upgraded installation. Reinstall the "
-                              "application.%1")
+        return QStringLiteral(
+                   "USB Restoration Tool and its restore helper do not agree on how to talk to each "
+                   "other, which usually means a partly upgraded installation. Reinstall the "
+                   "application.%1")
             .arg(reported.isEmpty() ? QString() : QStringLiteral("\n\nThe helper said: %1").arg(reported));
 
     // pkexec's own, not the helper's.
     case 126:
         return QStringLiteral("Authentication was cancelled, so nothing on the drive was changed.");
     case 127:
-        return QStringLiteral("The restore helper could not be started. Check that USB Restoration Tool is "
-                              "installed rather than run from a build directory.");
+        return QStringLiteral(
+            "The restore helper could not be started. Check that USB Restoration Tool is "
+            "installed rather than run from a build directory.");
 
     default:
         return reported.isEmpty()
@@ -285,8 +287,9 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
     }
 
     if (run.crashed) {
-        return failWith(QStringLiteral("The restore helper stopped unexpectedly. Check the drive with a partition "
-                                       "tool before using it."));
+        return failWith(QStringLiteral(
+            "The restore helper stopped unexpectedly. Check the drive with a partition "
+            "tool before using it."));
     }
 
     // Before the exit code: no line from a mismatched helper can be trusted, its
@@ -311,8 +314,9 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
     }
 
     if (run.location.isEmpty()) {
-        return failWith(QStringLiteral("The restore helper finished without reporting where the volume ended up. "
-                                       "Check the drive with a partition tool before using it."));
+        return failWith(QStringLiteral(
+            "The restore helper finished without reporting where the volume ended up. "
+            "Check the drive with a partition tool before using it."));
     }
 
     return HelperRunVerdict::Succeeded;
@@ -487,10 +491,11 @@ bool acceptHelperAnnouncement(
     }
     return fail(
         error,
-        QStringLiteral("USB Restoration Tool is version %1, but its restore helper is from %2, so "
-                       "the two disagree about how a restore proceeds. This usually means a partly "
-                       "upgraded installation. Reinstall the application so both come from the same "
-                       "release.")
+        QStringLiteral(
+            "USB Restoration Tool is version %1, but its restore helper is from %2, so "
+            "the two disagree about how a restore proceeds. This usually means a partly "
+            "upgraded installation. Reinstall the application so both come from the same "
+            "release.")
             .arg(ourAppVersion, theirs));
 }
 

@@ -4,7 +4,55 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.8.0 - Unreleased
+
+A single confirmation-to-result restore dialog, reduced restore setup work and
+clearer drive errors.
+
+### Added
+
+- A themed restore dialog with animated active steps, completed-step durations,
+  elapsed time, stall guidance and inline success, cancellation and error results.
+- Application log timings for restore setup, each numbered step and the entire
+  attempt, including failed and cancelled attempts.
+- GUI regressions for restore outcomes, fresh acknowledgement on retry and
+  missing, unsafe or unscannable drives after a restore.
+- A native Fedora RPM built with CPack, including the restore helper, polkit
+  action, system Qt and formatter dependencies. CI and release builds check
+  installation, upgrade and removal in a disposable Fedora environment.
+- A backend-free AppImage packaging probe for bundled Qt platform and SVG
+  loading, detecting plugin corruption before a bundle is published.
+
+### Changed
+
+- Erase confirmation and progress share one dialog. The disk summary,
+  large-drive warning and acknowledgement gate remain in place; cancellation
+  stops being available when destructive work starts, and a running restore
+  cannot be dismissed.
+- The main window rescans after a restore and shows current drive eligibility
+  instead of duplicating the restore dialog's progress and result.
+- Preflight and Linux open-handle checks omit filesystem display details while
+  still checking fresh identity, disk state and mount points.
+- Windows storage operations reuse one WMI connection per restore.
+- Linux signature clearing uses 4 MiB writes without changing the cleared range
+  or flushes.
+- Linux and Windows drive failures name the operation and provide next steps,
+  while retaining OS error details. Formatter failures preserve their output
+  without assuming that the drive is damaged.
+- The About dialog describes the single restore window, the filesystem choices
+  and the Windows, Debian, Fedora and AppImage builds, with the version taken
+  from the project version.
+- Closing the main window during a restore now says the disk is unchanged until
+  writing starts, and the explanation appears on the restore dialog rather than
+  behind it.
+
+### Fixed
+
+- Windows no longer retries permanent physical-drive lock errors for five
+  seconds.
+- The local AppImage startup crash caused by patchelf rewriting Qt plugins was
+  resolved with a corrected patchelf build. Packaging supports selecting that
+  build through `PATCHELF` and rejects bundles that fail the loading probe.
 
 ## 1.7.2 - 2026-10-24
 

@@ -122,8 +122,7 @@ QVector<MountEntry> readMounts()
 
     // Not a QTextStream loop: procfs files report zero bytes, so atEnd() is true at once
     // and the mount table, and with it the device guard, would come back empty.
-    const QStringList lines =
-        QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &line : lines) {
         // Format: id parent major:minor root mountpoint options... - fstype source superopts
         const QStringList fields = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
@@ -279,8 +278,8 @@ PartitionStyle partitionStyleFromUdevDatabase(const QString &devicePath)
 QString fileSystemTypeForDevice(const QString &sysfsPath)
 {
     const DeviceNumber number = readDeviceNumber(sysfsPath);
-    const QList<QByteArray> values = udevProperties(
-        number, {QByteArrayLiteral("ID_FS_TYPE"), QByteArrayLiteral("ID_FS_VERSION")});
+    const QList<QByteArray> values =
+        udevProperties(number, {QByteArrayLiteral("ID_FS_TYPE"), QByteArrayLiteral("ID_FS_VERSION")});
     const QByteArray &type = values.at(0);
     const QByteArray &version = values.at(1);
 

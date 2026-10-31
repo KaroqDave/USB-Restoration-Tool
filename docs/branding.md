@@ -11,8 +11,11 @@ stays descriptive; the tagline is **A fresh start for your USB drive.**
 - `app.ico` contains 16, 20, 24, 32, 40, 48, 64, 128 and 256 px Windows icons.
 - [readme-banner.svg](../resources/branding/readme-banner.svg) is the editable
   project banner; the README uses its PNG export for consistent text rendering.
-- `docs/images/app-light.png` and `app-dark.png` show the actual widgets with an
-  example drive, rather than a physical device.
+- `docs/images/app-light.png`, `app-dark.png`, `confirm-light.png` and
+  `confirm-dark.png` show the actual main window and confirmation dialog with an
+  example drive, rather than a physical device; `restore-light.gif` and
+  `restore-dark.gif` animate a restore. `usb-gui-tests` writes them; see
+  [Development](development.md#test).
 
 Use the same icon for the executable, taskbar, Linux launcher, header and About
 dialog. Do not stretch it or put text inside the tile.

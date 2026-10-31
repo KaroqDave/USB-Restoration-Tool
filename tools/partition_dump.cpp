@@ -17,11 +17,12 @@ namespace {
 
 void printUsage(const char *program)
 {
-    std::fprintf(stderr,
-                 "usage: %s <disk-size-bytes> <sector-size> <gpt|mbr> <output-image> [exfat|fat32|ntfs|ext4]\n\n"
-                 "Writes a sparse image of the given size with nothing on it but the\n"
-                 "partition table a restore would produce. Filesystem defaults to exfat.\n",
-                 program);
+    std::fprintf(
+        stderr,
+        "usage: %s <disk-size-bytes> <sector-size> <gpt|mbr> <output-image> [exfat|fat32|ntfs|ext4]\n\n"
+        "Writes a sparse image of the given size with nothing on it but the\n"
+        "partition table a restore would produce. Filesystem defaults to exfat.\n",
+        program);
 }
 
 } // namespace
@@ -73,8 +74,8 @@ int main(int argc, char *argv[])
     }
     // Sparse: a 32 GiB image costs a few hundred kilobytes on disk.
     if (!image.resize(static_cast<qint64>(request.diskSize))) {
-        std::fprintf(stderr, "could not size %s to %llu bytes\n", argv[4],
-                     static_cast<unsigned long long>(request.diskSize));
+        std::fprintf(
+            stderr, "could not size %s to %llu bytes\n", argv[4], static_cast<unsigned long long>(request.diskSize));
         return 1;
     }
 
@@ -89,12 +90,13 @@ int main(int argc, char *argv[])
     }
     image.close();
 
-    std::printf("%s: %s %s, %u-byte sectors, partition at %llu +%llu\n",
-                argv[4],
-                style.constData(),
-                qPrintable(fileSystemTypeToken(request.fileSystem)),
-                request.sectorSize,
-                static_cast<unsigned long long>(request.layout.startOffset),
-                static_cast<unsigned long long>(request.layout.length));
+    std::printf(
+        "%s: %s %s, %u-byte sectors, partition at %llu +%llu\n",
+        argv[4],
+        style.constData(),
+        qPrintable(fileSystemTypeToken(request.fileSystem)),
+        request.sectorSize,
+        static_cast<unsigned long long>(request.layout.startOffset),
+        static_cast<unsigned long long>(request.layout.length));
     return 0;
 }

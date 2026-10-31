@@ -203,8 +203,14 @@ jobs:
             standalone/*.deb.sha256
           if-no-files-found: error
 
+  build-rpm:
+    needs: preflight
+    uses: ./.github/workflows/rpm.yml
+    with:
+      artifact-name: rpm-release
+
   publish:
-    needs: [build-windows, build-linux, build-deb]
+    needs: [build-windows, build-linux, build-deb, build-rpm]
     runs-on: ubuntu-latest
 
     steps:
@@ -220,6 +226,7 @@ jobs:
             artifacts/windows-release/**
             artifacts/linux-release/**
             artifacts/deb-release/**
+            artifacts/rpm-release/**
           # The README notes become the body; generate_release_notes appends the
           # commit list and compare link underneath.
           body_path: artifacts/release-notes/release-notes.md

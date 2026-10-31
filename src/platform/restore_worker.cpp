@@ -23,9 +23,13 @@ bool RestoreWorker::cancelRequested() const
 
 void RestoreWorker::run()
 {
+    m_elapsed.start();
     RestoreResult result;
     QString error;
-    if (m_service.restore(m_request, *this, &result, &error)) {
+    const bool restored = m_service.restore(m_request, *this, &result, &error);
+    logStepDuration();
+    emit logFileOnly(QStringLiteral("Restore attempt took %1 ms").arg(m_elapsed.elapsed()));
+    if (restored) {
         emit finished(result.location);
         return;
     }
@@ -44,9 +48,21 @@ void RestoreWorker::run()
 
 void RestoreWorker::step(const QString &message)
 {
+    logStepDuration();
     m_step = qMin(m_step + 1, m_service.totalRestoreSteps());
     emit logMessage(message);
     emit progress(m_step, m_service.totalRestoreSteps(), message);
+}
+
+void RestoreWorker::logStepDuration()
+{
+    const qint64 now = m_elapsed.elapsed();
+    if (m_step == 0) {
+        emit logFileOnly(QStringLiteral("Restore setup took %1 ms").arg(now));
+    } else {
+        emit logFileOnly(QStringLiteral("Step %1 took %2 ms").arg(m_step).arg(now - m_stepStartedMs));
+    }
+    m_stepStartedMs = now;
 }
 
 void RestoreWorker::detail(const QString &message)

@@ -73,6 +73,11 @@ bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &
     return canCreateFileSystemOn(type, disk, reason);
 }
 
+const QVector<RestoreStep> &LinuxDiskService::restorePlan() const
+{
+    return linuxRestorePlan();
+}
+
 int LinuxDiskService::totalRestoreSteps() const
 {
     return static_cast<int>(linuxRestorePlan().size());
@@ -81,11 +86,6 @@ int LinuxDiskService::totalRestoreSteps() const
 int LinuxDiskService::firstDestructiveStep() const
 {
     return firstDestructiveStepOf(linuxRestorePlan());
-}
-
-QString LinuxDiskService::restoredLocationNoun() const
-{
-    return QStringLiteral("device");
 }
 
 bool LinuxDiskService::restore(

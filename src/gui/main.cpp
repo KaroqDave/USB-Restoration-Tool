@@ -60,15 +60,15 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_LINUX
     // sudo strips the session D-Bus address, so Qt's GNOME theme warns on every root
     // start; silence it only when the bus is really absent and no rules were given.
-    if (::geteuid() == 0 && !qEnvironmentVariableIsSet("DBUS_SESSION_BUS_ADDRESS")
-        && !qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
+    if (::geteuid() == 0 && !qEnvironmentVariableIsSet("DBUS_SESSION_BUS_ADDRESS") &&
+        !qEnvironmentVariableIsSet("QT_LOGGING_RULES")) {
         qputenv("QT_LOGGING_RULES", QByteArrayLiteral("qt.qpa.theme.*=false"));
     }
 
     // GNOME Wayland refuses server-side decorations and Qt's fallback has no window
     // buttons (Ubuntu 26.04), so prefer XWayland there; wayland stays the fallback.
-    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM") && qEnvironmentVariableIsSet("WAYLAND_DISPLAY")
-        && qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QStringLiteral("GNOME"), Qt::CaseInsensitive)) {
+    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM") && qEnvironmentVariableIsSet("WAYLAND_DISPLAY") &&
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QStringLiteral("GNOME"), Qt::CaseInsensitive)) {
         qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("xcb;wayland"));
     }
 #endif

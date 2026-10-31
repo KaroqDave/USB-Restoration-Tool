@@ -293,8 +293,9 @@ bool isSameDeviceSequence(
         return true;
     }
     if (reason) {
-        *reason = QStringLiteral("Could not confirm that %1 is still the disk that was selected. Refresh and select "
-                                 "the USB again.")
+        *reason = QStringLiteral(
+                      "Could not confirm that %1 is still the disk that was selected. Refresh and select "
+                      "the USB again.")
                       .arg(device);
     }
     return false;

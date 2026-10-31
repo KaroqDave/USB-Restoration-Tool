@@ -25,6 +25,24 @@ Built with Qt 6 for Windows and Linux. Tested across multiple devices and system
 
 Interface preview with an example drive.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/confirm-dark.png">
+  <img src="docs/images/confirm-light.png" alt="Confirmation dialog naming the drive, the new layout and what is mounted from it, with Erase and restore disabled until the acknowledgement is ticked." width="520">
+</picture>
+
+Before anything is erased, the confirmation names the drive, the layout it will
+get and what is mounted from it. **Erase and restore** stays disabled until you
+tick the acknowledgement. Progress and the result appear in the same window.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/restore-dark.gif">
+  <img src="docs/images/restore-light.gif" alt="Animation of a restore: the acknowledgement is ticked, each step moves from waiting to done, cancelling is disabled once writing begins, and the dialog ends on Restore complete." width="520">
+</picture>
+
+Each step is marked as it starts and finishes. Cancelling is possible until the
+first write; after that the restore runs to its result. Step timings in the
+animation are illustrative.
+
 ## Download and run
 
 Get a build from [Releases](https://github.com/KaroqDave/USB-Restoration-Tool/releases/latest).
@@ -44,11 +62,17 @@ If runtime DLLs are missing, install the
 Restores require Linux 5.15 or later with disk-sequence support and the loop
 driver available (`/dev/loop-control`).
 
-On Ubuntu 24.04 or later and Debian 13 or later, install the `.deb`. It pulls
-in the formatters and pkexec:
+Native packages pull in the formatters and pkexec. On Ubuntu 24.04 or later and
+Debian 13 or later, install the `.deb`:
 
 ```bash
 sudo apt install ./usb-restoration-tool_*_amd64.deb
+```
+
+On Fedora 43 or later, install the `.rpm`:
+
+```bash
+sudo dnf install ./usb-restoration-tool-*.x86_64.rpm
 ```
 
 An installed build runs the GUI as your normal user and asks for authentication
@@ -110,7 +134,31 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.7.2
+## What's New in 1.8.0 (unreleased)
+
+- Confirmation, restore progress and the result now share one themed dialog,
+  with animated steps, completed-step timings, elapsed time and stall guidance.
+  The erase acknowledgement is still required, and cancellation is disabled
+  once destructive work starts.
+- After a restore, the main window rescans the drives and shows whether the
+  selected drive is eligible for another restore. Retrying requires a fresh
+  erase acknowledgement.
+- Restore setup avoids unnecessary filesystem-detail reads. Windows reuses its
+  storage connection and stops retrying permanent drive-lock errors; Linux
+  clears signatures in larger writes without changing the erased range.
+- Linux and Windows drive errors explain the failed operation and what to try
+  next. The log now records setup, step and total restore durations.
+- The About dialog covers the one-window restore flow and the published
+  packages. Closing the window during a restore explains that the disk is
+  unchanged until writing starts.
+- A native Fedora RPM installs the unprivileged app, restore helper and polkit
+  policy, with dependencies on the system Qt and all four formatters.
+- AppImage packaging checks bundled Qt platform and SVG loading to catch a
+  plugin-rewriting fault that caused startup crashes.
+
+Linux requirements are unchanged. Upgrade the installed app and helper together.
+
+### Previously, in 1.7.2
 
 - On Linux, a restore whose formatting step fails no longer leaves the old
   partitions showing over the new partition table.

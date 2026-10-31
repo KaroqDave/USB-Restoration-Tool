@@ -1,10 +1,12 @@
 #include "linux/loop_device.h"
 #include "linux/linux_restore.h"
 #include "linux/block_device.h"
+#include "linux/linux_enumerate.h"
 #include "core/partition_table.h"
 #include "core/safety.h"
 
 #include <QFile>
+#include <QDir>
 #include <QFileInfo>
 #include <QProcess>
 #include <QScopeGuard>
@@ -12,9 +14,11 @@
 #include <QtTest/QtTest>
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
+// Older glibc mount enums must precede the kernel's mount-flag macros.
+#include <sys/mount.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -97,6 +101,139 @@ PartitionTableRequest mbrTable(qint64 diskSize, int sectorSize, const GptLayout 
 class LinuxTests : public QObject {
     Q_OBJECT
   private slots:
+    void clearsOnlyRequestedImageRange_data()
+    {
+        QTest::addColumn<int>("sectorSize");
+        QTest::newRow("512") << 512;
+        QTest::newRow("4096") << 4096;
+    }
+
+    void clearsOnlyRequestedImageRange()
+    {
+        QFETCH(int, sectorSize);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("image"));
+        QFile image(path);
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        const qint64 clearBytes = 4 * MiB + sectorSize;
+        const QByteArray marker(sectorSize, '\x5a');
+        const QByteArray contents(clearBytes + 2 * sectorSize, '\x5a');
+        QCOMPARE(image.write(contents), contents.size());
+        QVERIFY(image.flush());
+
+        BlockDevice device(path);
+        QString error;
+        QVERIFY2(device.open(BlockDevice::Access::Exclusive, &error), qPrintable(error));
+        QVERIFY(!device.writeZeros(sectorSize + 1, clearBytes, sectorSize, &error));
+        QVERIFY(image.seek(0));
+        QCOMPARE(image.readAll(), contents);
+        QVERIFY2(device.writeZeros(sectorSize, clearBytes, sectorSize, &error), qPrintable(error));
+        QVERIFY2(device.flush(&error), qPrintable(error));
+        device.close();
+
+        QVERIFY(image.seek(0));
+        QCOMPARE(image.read(sectorSize), marker);
+        QCOMPARE(image.read(clearBytes), QByteArray(clearBytes, '\0'));
+        QCOMPARE(image.readAll(), marker);
+    }
+
+    void keepsIdentityAndMountedPartitionsInRestoreScan_data()
+    {
+        QTest::addColumn<int>("sectorSize");
+        QTest::newRow("512") << 512;
+        QTest::newRow("4096") << 4096;
+    }
+
+    void keepsIdentityAndMountedPartitionsInRestoreScan()
+    {
+        if (!qEnvironmentVariableIsSet("USBRESTORE_TEST_LOOP")) {
+            QSKIP("Set USBRESTORE_TEST_LOOP=1 and run as root for disposable-image loop tests.");
+        }
+        QVERIFY(::geteuid() == 0);
+        QFETCH(int, sectorSize);
+        constexpr qint64 DiskBytes = 64 * MiB;
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile image(dir.filePath(QStringLiteral("image")));
+        QVERIFY(image.open(QIODevice::ReadWrite));
+        QVERIFY(image.resize(DiskBytes));
+        const GptLayout layout = calculateGptLayout(DiskBytes, sectorSize);
+        const QByteArray table = buildMbr(mbrTable(DiskBytes, sectorSize, layout));
+        QCOMPARE(image.write(table), table.size());
+        QVERIFY(image.flush());
+
+        QString diskPath;
+        const int fd = attachScanningLoop(image.handle(), sectorSize, &diskPath);
+        QVERIFY(fd >= 0);
+        const auto release = qScopeGuard([fd]() {
+            ::ioctl(fd, LOOP_CLR_FD, 0);
+            ::close(fd);
+        });
+        const QString partitionPath = diskPath + QStringLiteral("p1");
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(partitionPath), 3000);
+        QProcess::execute(QStringLiteral("udevadm"), {QStringLiteral("settle")});
+        Reporter reporter;
+        QString error;
+        const QString tool = systemTool(QStringLiteral("mkfs.ext4"));
+        QVERIFY(!tool.isEmpty());
+        QVERIFY2(
+            formatLinuxPartition(
+                FileSystemType::Ext4,
+                tool,
+                partitionPath,
+                QStringLiteral("USB"),
+                layout.startOffset / sectorSize,
+                reporter,
+                &error),
+            qPrintable(error));
+        const QString mountPath = dir.filePath(QStringLiteral("mounted"));
+        QVERIFY(QDir().mkdir(mountPath));
+        QCOMPARE(
+            ::mount(
+                partitionPath.toLocal8Bit().constData(),
+                mountPath.toLocal8Bit().constData(),
+                "ext4",
+                MS_RDONLY | MS_NODEV | MS_NOSUID | MS_NOEXEC,
+                nullptr),
+            0);
+        const auto unmount = qScopeGuard([mountPath]() { ::umount(mountPath.toLocal8Bit().constData()); });
+
+        const QString name = QFileInfo(diskPath).fileName();
+        const DiskInfo display = diskInfoFor(name);
+        DiskInfo restore = diskInfoFor(name, DiskDetails::Restore);
+        QCOMPARE(display.partitionStyle, static_cast<quint16>(PartitionStyle::Mbr));
+        QCOMPARE(restore.partitionStyle, static_cast<quint16>(PartitionStyle::Unknown));
+        QVERIFY(restore.labels.isEmpty());
+        QVERIFY(restore.fileSystems.isEmpty());
+        QCOMPARE(restore.deviceId, display.deviceId);
+        QCOMPARE(restore.busType, display.busType);
+        QCOMPARE(restore.size, display.size);
+        QCOMPARE(restore.sectorSize, display.sectorSize);
+        QCOMPARE(restore.name, display.name);
+        QCOMPARE(restore.path, display.path);
+        QCOMPARE(restore.uniqueId, display.uniqueId);
+        QCOMPARE(restore.serialNumber, display.serialNumber);
+        QVERIFY(restore.deviceSequence == display.deviceSequence);
+        QCOMPARE(restore.isReadOnly, display.isReadOnly);
+        QCOMPARE(restore.isOffline, display.isOffline);
+        QCOMPARE(restore.isBoot, display.isBoot);
+        QCOMPARE(restore.isSystem, display.isSystem);
+        QCOMPARE(restore.mountPoints, display.mountPoints);
+        QVERIFY(restore.mountPoints.contains(mountPath));
+        QVERIFY2(isSameRestoreTarget(display, restore, &error), qPrintable(error));
+        QVERIFY(!isSafeRestoreTarget(restore, RestoreGuard(), &error));
+        QVERIFY(error.contains(QStringLiteral("bus")));
+
+        // Only the test's copy gains a USB bus, to exercise the mount refusal after the loop's bus refusal.
+        restore.busType = UsbBusType;
+        RestoreGuard guard;
+        QVERIFY(isSafeRestoreTarget(restore, guard));
+        guard.mountPoints = {mountPath};
+        QVERIFY(!isSafeRestoreTarget(restore, guard, &error));
+        QVERIFY(error.contains(QStringLiteral("protected")));
+    }
+
     void rejectsInvalidBackingBeforeAllocatingLoop()
     {
         LoopDevice loop;

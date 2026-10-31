@@ -41,8 +41,8 @@ class RestoreReporter {
 };
 
 // Backends report steps through this so a call that drifts from the plan shows up.
-inline void reportPlannedStep(RestoreStepCounter &counter, RestoreReporter &reporter, RestoreStep step,
-                              const QString &message)
+inline void
+reportPlannedStep(RestoreStepCounter &counter, RestoreReporter &reporter, RestoreStep step, const QString &message)
 {
     if (counter.advance(step) == 0) {
         Q_ASSERT_X(false, "reportPlannedStep", "restore step out of plan order");
@@ -84,6 +84,7 @@ class DiskService {
     // Windows imposes FAT32 size limits that Linux does not.
     virtual bool canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason = nullptr) const = 0;
 
+    virtual const QVector<RestoreStep> &restorePlan() const = 0;
     virtual int totalRestoreSteps() const = 0;
 
     // 1-based, from the backend's plan in core/restore_steps.cpp. The GUI tells the user
@@ -92,9 +93,6 @@ class DiskService {
 
     virtual bool
     restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) = 0;
-
-    // "drive letter" on Windows, "device" on Linux.
-    virtual QString restoredLocationNoun() const = 0;
 };
 
 } // namespace usbrestore

@@ -34,9 +34,10 @@ bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error
         return true;
     }
     if (error) {
-        *error = QStringLiteral("Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
-                                "partition table has already been rewritten. Plug it back in and run the restore on "
-                                "it again.")
+        *error = QStringLiteral(
+                     "Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
+                     "partition table has already been rewritten. Plug it back in and run the restore on "
+                     "it again.")
                      .arg(disk.number)
                      .arg(reason);
     }
@@ -58,8 +59,9 @@ PrivilegeMode WindowsDiskService::privilegeMode() const
 
 QString WindowsDiskService::privilegeHint() const
 {
-    return QStringLiteral("USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
-                          "window and start the app again, approving the Windows permission prompt.");
+    return QStringLiteral(
+        "USB Restoration Tool needs Administrator permission to restore USB disks.\n\nClose this "
+        "window and start the app again, approving the Windows permission prompt.");
 }
 
 QVector<DiskInfo> WindowsDiskService::listUsbDisks(QString *error) const
@@ -103,12 +105,14 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
     case FileSystemType::Fat32:
         // MSFT_Volume.Format refuses FAT32 above 32 GiB; the partition is smaller than the disk.
         if (calculateGptLayout(disk.size, disk.sectorSize).length > MaximumWindowsFat32VolumeBytes) {
-            return refuse(QStringLiteral("Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
-                                         "NTFS."));
+            return refuse(QStringLiteral(
+                "Windows cannot format FAT32 on a volume larger than 32 GB. Choose exFAT or "
+                "NTFS."));
         }
         if (windowsFat32AllocationUnitSize(disk) == 0) {
-            return refuse(QStringLiteral("Windows cannot format FAT32 on a volume this small with %1-byte sectors. "
-                                         "Choose exFAT or NTFS.")
+            return refuse(QStringLiteral(
+                              "Windows cannot format FAT32 on a volume this small with %1-byte sectors. "
+                              "Choose exFAT or NTFS.")
                               .arg(disk.sectorSize));
         }
         return true;
@@ -116,6 +120,11 @@ bool WindowsDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo
         return refuse(QStringLiteral("ext4 is not available on Windows."));
     }
     return refuse(QStringLiteral("That filesystem is not supported."));
+}
+
+const QVector<RestoreStep> &WindowsDiskService::restorePlan() const
+{
+    return windowsRestorePlan();
 }
 
 int WindowsDiskService::totalRestoreSteps() const
@@ -128,15 +137,18 @@ int WindowsDiskService::firstDestructiveStep() const
     return firstDestructiveStepOf(windowsRestorePlan());
 }
 
-QString WindowsDiskService::restoredLocationNoun() const
-{
-    return QStringLiteral("drive letter");
-}
-
 bool WindowsDiskService::restore(
     const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
 {
     DiskInfo disk = request.disk;
+    const auto failOperation = [&disk,
+                                error](const QString &operation, const QString &detail, const QString &advice = {}) {
+        if (error) {
+            *error = windowsRestoreErrorText(
+                QStringLiteral("Could not %1 on disk %2").arg(operation).arg(disk.number), detail, advice);
+        }
+        return false;
+    };
     QString reason;
     if (!isSafeRestoreTarget(disk, request.guard, &reason) || !canCreatePartitionLayout(request.style, disk, &reason)) {
         if (error) {
@@ -145,13 +157,12 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    VolumeManager volumes;
     RestoreStepCounter steps(windowsRestorePlan());
 
     reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, QStringLiteral("Verifying the selected USB disk"));
     DiskInfo currentDisk;
-    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, error)) {
-        return false;
+    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, &reason, DiskDetails::Restore)) {
+        return failOperation(QStringLiteral("verify the selected drive"), reason);
     }
     if (!isSameRestoreTarget(disk, currentDisk, &reason) || !isSafeRestoreTarget(currentDisk, request.guard, &reason)) {
         if (error) {
@@ -187,8 +198,9 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshMetadata, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error, &reporter)) {
-        return false;
+    VolumeManager volumes;
+    if (!volumes.refreshDisk(disk.number, &reason, &reporter)) {
+        return failOperation(QStringLiteral("refresh Windows disk metadata"), reason);
     }
 
     reportPlannedStep(
@@ -197,9 +209,13 @@ bool WindowsDiskService::restore(
         RestoreStep::DetachDriveLetters,
         QStringLiteral("Detaching existing volumes and drive letters"));
     // Letterless volumes first, so a volume whose letter is about to be removed is not counted twice.
-    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, error, &reporter) ||
-        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, error)) {
-        return false;
+    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, &reason, &reporter) ||
+        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, &reason)) {
+        return failOperation(
+            QStringLiteral("detach the existing volumes and drive letters"),
+            reason,
+            QStringLiteral(
+                "Close any files, File Explorer windows and programs using the drive and run the restore again"));
     }
 
     // Last harmless stop: deleting the partition records is the first change to the disk itself.
@@ -215,12 +231,13 @@ bool WindowsDiskService::restore(
     reportPlannedStep(
         steps, reporter, RestoreStep::DeletePartitions, QStringLiteral("Deleting existing partition records"));
     bool partitionAtDiskStart = false;
-    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, error, &reporter)) {
-        return false;
+    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, &reason, &reporter)) {
+        return failOperation(QStringLiteral("delete the existing partitions"), reason);
     }
     if (partitionAtDiskStart) {
-        reporter.detail(QStringLiteral("Disk %1 has a partition at its very start that Windows cannot delete, as on "
-                                       "a disk with no partition table; the empty table written next replaces it.")
+        reporter.detail(QStringLiteral(
+                            "Disk %1 has a partition at its very start that Windows cannot delete, as on "
+                            "a disk with no partition table; the empty table written next replaces it.")
                             .arg(disk.number));
     }
 
@@ -231,8 +248,9 @@ bool WindowsDiskService::restore(
         return false;
     }
     if (!volumes.waitForVolumesToLeaveDisk(oldVolumes, disk.number, OldVolumeTimeoutMs, &reporter)) {
-        reporter.detail(QStringLiteral("Windows had not removed the old volume on disk %1 after %2 seconds; "
-                                       "continuing.")
+        reporter.detail(QStringLiteral(
+                            "Windows had not removed the old volume on disk %1 after %2 seconds; "
+                            "continuing.")
                             .arg(disk.number)
                             .arg(OldVolumeTimeoutMs / 1000));
     }
@@ -256,8 +274,9 @@ bool WindowsDiskService::restore(
         steps, reporter, RestoreStep::ClearSignatures, QStringLiteral("Clearing old MBR, GPT and ISO signatures"));
     const bool cleared = rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error);
     if (rawDisk.notReadyRetries() > 0) {
-        reporter.detail(QStringLiteral("Retried the first write to disk %1 %2 time(s) after Windows refused it as not "
-                                       "ready while removing the old volume.")
+        reporter.detail(QStringLiteral(
+                            "Retried the first write to disk %1 %2 time(s) after Windows refused it as not "
+                            "ready while removing the old volume.")
                             .arg(disk.number)
                             .arg(rawDisk.notReadyRetries()));
     }
@@ -281,16 +300,16 @@ bool WindowsDiskService::restore(
 
     reportPlannedStep(
         steps, reporter, RestoreStep::WaitForVolume, QStringLiteral("Waiting for Windows to discover the new volume"));
-    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, error, &reporter);
+    const QString volumeName = volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, &reason, &reporter);
     if (volumeName.isEmpty()) {
-        return false;
+        return failOperation(QStringLiteral("find the new volume"), reason);
     }
 
     reportPlannedStep(
         steps, reporter, RestoreStep::RefreshNewVolume, QStringLiteral("Refreshing Windows disk metadata"));
-    if (!volumes.refreshDisk(disk.number, error, &reporter) ||
-        !volumes.volumePathBelongsToDisk(volumeName, disk.number, error)) {
-        return false;
+    if (!volumes.refreshDisk(disk.number, &reason, &reporter) ||
+        !volumes.volumePathBelongsToDisk(volumeName, disk.number, &reason)) {
+        return failOperation(QStringLiteral("verify the new volume"), reason);
     }
 
     // The rest goes by disk number alone; a live handle that still reports it
@@ -300,9 +319,14 @@ bool WindowsDiskService::restore(
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::AssignDriveLetter, QStringLiteral("Assigning a drive letter"));
-    const QString driveRoot = volumes.mountVolume(volumeName, error);
+    const QString driveRoot = volumes.mountVolume(volumeName, &reason);
     if (driveRoot.isEmpty()) {
-        return false;
+        return failOperation(
+            QStringLiteral("assign a drive letter"),
+            reason,
+            QStringLiteral(
+                "If every drive letter is in use, eject another drive to free one. Then unplug this drive, plug it "
+                "back in and run the restore again"));
     }
 
     reportPlannedStep(
@@ -320,9 +344,9 @@ bool WindowsDiskService::restore(
             request.fileSystem,
             allocationUnitSize,
             request.volumeLabel,
-            error,
+            &reason,
             &reporter)) {
-        return false;
+        return failOperation(QStringLiteral("format as %1").arg(fileSystemTypeName(request.fileSystem)), reason);
     }
 
     reportPlannedStep(steps, reporter, RestoreStep::Complete, QStringLiteral("Restore complete"));

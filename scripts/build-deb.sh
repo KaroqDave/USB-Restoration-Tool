@@ -29,6 +29,7 @@ readonly ExpectedFiles=(
     /usr/share/applications/usb-restoration-tool.desktop
     /usr/share/icons/hicolor/scalable/apps/usb-restoration-tool.svg
     /usr/share/icons/hicolor/256x256/apps/usb-restoration-tool.png
+    /usr/share/doc/usb-restoration-tool/copyright
 )
 
 step() {
@@ -59,7 +60,7 @@ cmake --build "$BuildDir" --parallel
 step "Packaging"
 PackageDir="$BuildDir/package"
 rm -rf "$PackageDir"
-cpack --config "$BuildDir/CPackConfig.cmake" -B "$PackageDir"
+cpack -G DEB --config "$BuildDir/CPackConfig.cmake" -B "$PackageDir"
 
 Deb="$(find "$PackageDir" -maxdepth 1 -name '*.deb' -type f | head -1)"
 [[ -n "$Deb" ]] || fail "cpack did not produce a .deb"

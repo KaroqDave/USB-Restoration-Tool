@@ -13,14 +13,14 @@ namespace usbrestore {
 QString windowsErrorMessage(DWORD error)
 {
     wchar_t *buffer = nullptr;
-    const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                            FORMAT_MESSAGE_IGNORE_INSERTS,
-                                        nullptr,
-                                        error,
-                                        0,
-                                        reinterpret_cast<LPWSTR>(&buffer),
-                                        0,
-                                        nullptr);
+    const DWORD length = FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        error,
+        0,
+        reinterpret_cast<LPWSTR>(&buffer),
+        0,
+        nullptr);
     QString message;
     if (length > 0 && buffer) {
         message = QString::fromWCharArray(buffer, static_cast<int>(length)).trimmed();
@@ -44,6 +44,74 @@ QString windowsErrorMessage(const QString &context, DWORD error)
     return QStringLiteral("%1: %2").arg(context, windowsErrorMessage(error));
 }
 
+QString windowsDeviceErrorText(const QString &context, DWORD error)
+{
+    QString reason;
+    QString advice = QStringLiteral("Unplug the drive, plug it back in and try again");
+    switch (error) {
+    case ERROR_SHARING_VIOLATION:
+    case ERROR_LOCK_VIOLATION:
+    case ERROR_BUSY:
+        reason = QStringLiteral("another program is still using the drive");
+        advice = QStringLiteral("Close any files, File Explorer windows and programs using the drive and try again");
+        break;
+    case ERROR_WRITE_PROTECT:
+        reason = QStringLiteral("the drive is write-protected");
+        advice = QStringLiteral(
+            "If it has a write-protect switch, turn it off and try again. If it has none, the drive may have made "
+            "itself read-only and need replacing");
+        break;
+    case ERROR_ACCESS_DENIED:
+        reason = QStringLiteral("Windows refused access to the drive");
+        advice = QStringLiteral(
+            "Close any programs using the drive. If it has a write-protect switch, turn it off and try again. "
+            "If it stays read-only, the drive may have made itself read-only and need replacing");
+        break;
+    case ERROR_IO_DEVICE:
+    case ERROR_CRC:
+    case ERROR_READ_FAULT:
+    case ERROR_WRITE_FAULT:
+        reason = QStringLiteral("the drive could not complete the read or write");
+        advice = QStringLiteral(
+            "Unplug it, plug it back in and try again; if it keeps happening, try another USB port or replace the "
+            "drive");
+        break;
+    case ERROR_NOT_READY:
+        reason = QStringLiteral("the drive is not ready");
+        break;
+    case ERROR_DEV_NOT_EXIST:
+    case ERROR_DEVICE_NOT_CONNECTED:
+    case ERROR_NO_MEDIA_IN_DRIVE:
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+        reason = QStringLiteral("the drive is no longer available");
+        advice = QStringLiteral("Plug it back in, refresh the list and select it again");
+        break;
+    case ERROR_DISK_FULL:
+    case ERROR_HANDLE_DISK_FULL:
+        reason = QStringLiteral("the drive ran out of room before its reported size");
+        advice = QStringLiteral(
+            "Unplug it, plug it back in and try again; if it happens again the drive may be smaller than it claims");
+        break;
+    default:
+        return QStringLiteral("%1: %2. %3.").arg(context, windowsErrorMessage(error), advice);
+    }
+    return QStringLiteral("%1: %2 (Windows error %3). %4.").arg(context, reason).arg(error).arg(advice);
+}
+
+QString windowsRestoreErrorText(const QString &context, const QString &detail, const QString &advice)
+{
+    const QString nextStep =
+        advice.isEmpty()
+            ? QStringLiteral("Close any programs using the drive, unplug it, plug it back in and run the restore again")
+            : advice;
+    QString message = QStringLiteral("%1. %2.").arg(context, nextStep);
+    if (!detail.isEmpty()) {
+        message += QStringLiteral("\n\nDetails: %1").arg(detail);
+    }
+    return message;
+}
+
 QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
 {
     for (int code = 'D'; code <= 'Z'; ++code) {
@@ -64,14 +132,15 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
     QByteArray buffer(static_cast<int>(sizeof(VOLUME_DISK_EXTENTS)), '\0');
     for (int attempt = 0; attempt < 5; ++attempt) {
         DWORD returned = 0;
-        const BOOL ok = DeviceIoControl(volumeHandle,
-                                        IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
-                                        nullptr,
-                                        0,
-                                        buffer.data(),
-                                        static_cast<DWORD>(buffer.size()),
-                                        &returned,
-                                        nullptr);
+        const BOOL ok = DeviceIoControl(
+            volumeHandle,
+            IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+            nullptr,
+            0,
+            buffer.data(),
+            static_cast<DWORD>(buffer.size()),
+            &returned,
+            nullptr);
         if (ok) {
             constexpr DWORD headerSize = offsetof(VOLUME_DISK_EXTENTS, Extents);
             if (returned < headerSize) {
@@ -103,13 +172,14 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
 HANDLE openVolumeForQuery(QChar driveLetter)
 {
     const QString path = QStringLiteral("\\\\.\\%1:").arg(driveLetter);
-    return CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()),
-                       0,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE,
-                       nullptr,
-                       OPEN_EXISTING,
-                       0,
-                       nullptr);
+    return CreateFileW(
+        reinterpret_cast<LPCWSTR>(path.utf16()),
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr);
 }
 
 QStringList protectedSystemDriveLetters()
