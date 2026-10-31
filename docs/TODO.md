@@ -4,6 +4,15 @@
 
 - Merge [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11), tag
   `v1.8.0` and verify the published release assets and checksums.
+- 1.9.0: Add German to everything the user sees: the GUI, step names, refusal
+  reasons and the restore errors shown in the dialog, including those raised by
+  the Linux helper and Windows backend. The log stays English. Use
+  `qt_add_translations` with `usbrestore_de.ts` and the Qt base translations.
+  Follow the system language, with a manual override in `AppSettings` and the
+  interface. The helper needs the language as a display-only argument, since
+  pkexec clears the environment; it must never affect a safety decision. Ship
+  translations in every package, render German in GUI tests at 100% and 200%
+  scaling in both themes, and keep English wording tests on a fixed locale.
 
 ## Recently completed
 

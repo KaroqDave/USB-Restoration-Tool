@@ -134,7 +134,7 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.8.0 (unreleased)
+## What's New in 1.8.0
 
 - Confirmation, restore progress and the result now share one themed dialog,
   with animated steps, completed-step timings, elapsed time and stall guidance.
