@@ -211,6 +211,12 @@ only `cmake --install --prefix` would break that relationship. See the
 | Debian package | `./scripts/build-deb.sh` | `.deb` and checksum under `standalone/` |
 | Fedora package | `./scripts/build-rpm.sh` | `.rpm` and checksum under `standalone/` |
 
+The package scripts run `--show-translation en` and `--show-translation de` on the
+binary that performs the restore. That is the helper in the Debian and Fedora
+packages, and the application itself in the AppImage and Windows bundle. The
+probe prints one line and exits before opening a disk. German must print
+`Erhöhte Berechtigung erforderlich`.
+
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options
 remain available in the packaging script's help.
@@ -255,8 +261,10 @@ sudo dnf install cmake gcc-c++ make qt6-qtbase-devel qt6-qttools-devel qt6-lingu
 ctest --test-dir build-rpm --output-on-failure
 ```
 
-Leave `CMAKE_PREFIX_PATH` unset for this build too. The script refuses Qt
-libraries that are not owned by an RPM, verifies the helper/policy/GUI paths,
+Leave `CMAKE_PREFIX_PATH` unset for this build too. Set `Qt6LinguistTools_DIR`
+when LinguistTools is unpacked but not installed; the Qt libraries themselves
+must still come from Fedora packages. The script refuses Qt libraries that
+are not owned by an RPM, verifies the helper/policy/GUI paths,
 file ownership and permissions, runtime dependencies and helper version, and
 writes a checksum. RPM's library dependency generator supplements explicit
 requirements for Qt plugins, polkit and the formatters; Fedora's NTFS formatter

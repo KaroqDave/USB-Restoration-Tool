@@ -147,6 +147,17 @@ int main(int argc, char *argv[])
         return usbrestore::RestoreExitSuccess;
     }
 
+    // Before the root check: this only prints a catalog line and does not restore.
+    const usbrestore::CatalogProbe probe = usbrestore::catalogProbe(arguments);
+    if (probe.kind != usbrestore::CatalogProbeKind::NotRequested) {
+        if (probe.kind == usbrestore::CatalogProbeKind::Ready) {
+            writeLine(probe.line);
+            return usbrestore::RestoreExitSuccess;
+        }
+        return probe.kind == usbrestore::CatalogProbeKind::MissingCatalog ? usbrestore::RestoreExitFailed
+                                                                          : usbrestore::RestoreExitUsage;
+    }
+
     // Before any work, so a caller that rejects the version can still cancel.
     announceVersion();
 

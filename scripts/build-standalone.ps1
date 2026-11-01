@@ -90,6 +90,18 @@ if (-not (Test-Path -LiteralPath $exe)) {
     throw "Exported executable not found at '$exe'. Export likely failed."
 }
 
+Write-Step "Checking the embedded catalog"
+$catalogLines = @{
+    en = "Elevated permission required"
+    de = "Erhöhte Berechtigung erforderlich"
+}
+foreach ($language in @("en", "de")) {
+    $line = (& $exe --show-translation $language)
+    if ($LASTEXITCODE -ne 0 -or "$line".Trim() -ne $catalogLines[$language]) {
+        throw "Catalog probe $language failed (exit $LASTEXITCODE): $line"
+    }
+}
+
 if ($Sign) {
     Write-Step "Signing $ExeName"
     if (-not $CertificateThumbprint) {

@@ -1469,6 +1469,7 @@ class GuiTests : public QObject {
     {
         QTest::addColumn<int>("outcome");
         QTest::newRow("success") << 0;
+        QTest::newRow("failed") << 1;
         QTest::newRow("cancelled") << 2;
     }
 
@@ -1479,6 +1480,10 @@ class GuiTests : public QObject {
         QVERIFY(translations.load(Language::German));
         ExampleService service;
         service.outcome = outcome;
+        if (outcome == 1) {
+            service.reportMessages = true;
+            service.backendError = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore failed."));
+        }
         MainWindow window(service, Theme::Light);
         window.show();
         window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
@@ -1488,19 +1493,24 @@ class GuiTests : public QObject {
         if (outcome == 2) {
             dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->click();
         }
-        QTRY_COMPARE(
-            dialog->windowTitle(),
-            outcome == 0 ? QStringLiteral("Wiederherstellung abgeschlossen")
-                         : QStringLiteral("Wiederherstellung abgebrochen"));
-        QCOMPARE(
-            dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(),
+        const QString title = outcome == 0   ? QStringLiteral("Wiederherstellung abgeschlossen")
+                              : outcome == 1 ? QStringLiteral("Wiederherstellung fehlgeschlagen")
+                                             : QStringLiteral("Wiederherstellung abgebrochen");
+        const QString message =
             outcome == 0
                 ? QStringLiteral("Das Laufwerk enthält jetzt ein exFAT-Volume mit dem Namen USB unter /dev/example1.")
-                : QStringLiteral("Die Wiederherstellung wurde vor dem Löschen des Laufwerks angehalten."));
+            : outcome == 1 ? QStringLiteral("Die Wiederherstellung ist fehlgeschlagen.")
+                           : QStringLiteral("Die Wiederherstellung wurde vor dem Löschen des Laufwerks angehalten.");
+        QTRY_COMPARE(dialog->windowTitle(), title);
+        QCOMPARE(dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(), message);
         QCOMPARE(service.restores.load(), 1);
         const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
         QVERIFY(log.contains(QStringLiteral("Restore requested for USB drive 2 — Example Flash Drive (32.00 GB)")));
         QVERIFY(!log.contains(QStringLiteral("32,00 GB")));
+        if (outcome == 1) {
+            QVERIFY(log.contains(QStringLiteral("ERROR: The restore failed.")));
+            QVERIFY(!log.contains(QStringLiteral("Die Wiederherstellung ist fehlgeschlagen.")));
+        }
         dialog->accept();
         window.close();
     }

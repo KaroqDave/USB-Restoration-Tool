@@ -5,9 +5,12 @@
 #include "platform/startup.h"
 #include "platform/translations.h"
 
+#include "core/restore_protocol.h"
+
 #include <QApplication>
 #include <QIcon>
 #include <QMessageBox>
+#include <QTextStream>
 #include <QtGlobal>
 
 #ifdef Q_OS_WIN
@@ -85,6 +88,21 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QStringLiteral(USBRESTORE_APP_VERSION));
     QApplication::setDesktopFileName(QStringLiteral("usb-restoration-tool"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
+
+    QStringList arguments = QCoreApplication::arguments();
+    if (!arguments.isEmpty()) {
+        arguments.removeFirst();
+    }
+    const usbrestore::CatalogProbe probe = usbrestore::catalogProbe(arguments);
+    if (probe.kind != usbrestore::CatalogProbeKind::NotRequested) {
+        if (probe.kind == usbrestore::CatalogProbeKind::Ready) {
+            QTextStream out(stdout);
+            out << probe.line << '\n';
+            return usbrestore::RestoreExitSuccess;
+        }
+        return probe.kind == usbrestore::CatalogProbeKind::MissingCatalog ? usbrestore::RestoreExitFailed
+                                                                          : usbrestore::RestoreExitUsage;
+    }
 
     const usbrestore::AppSettings settings = usbrestore::loadAppSettings();
     // Lives for the process: widgets created below, including the privilege dialog, read it.

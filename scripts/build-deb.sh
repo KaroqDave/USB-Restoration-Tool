@@ -84,6 +84,16 @@ grep -qF "<annotate key=\"org.freedesktop.policykit.exec.path\">$HelperPath</ann
 strings -el "$Extracted/usr/bin/usb-restoration-tool" | grep -qxF "$HelperPath" \
     || fail "usb-restoration-tool was not built to start $HelperPath"
 echo "  GUI and polkit action both name $HelperPath"
+for language in en de; do
+    case "$language" in
+        en) expected="Elevated permission required" ;;
+        de) expected="Erhöhte Berechtigung erforderlich" ;;
+    esac
+    actual="$("$Extracted$HelperPath" --show-translation "$language")" \
+        || fail "the helper catalog probe failed for $language"
+    [[ "$actual" == "$expected" ]] || fail "the helper printed '$actual' for $language"
+done
+echo "  helper catalog probe passed"
 
 step "Writing package and checksum"
 mkdir -p "$OutputRoot"

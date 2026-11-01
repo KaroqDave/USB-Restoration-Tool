@@ -4,6 +4,7 @@
 #include "core/restore_protocol.h"
 #include "core/restore_steps.h"
 #include "core/safety.h"
+#include "platform/translations.h"
 
 #include <QScopeGuard>
 #include <QTranslator>
@@ -90,6 +91,9 @@ PartitionTableRequest tableRequestFor(std::uint64_t diskSize, quint32 sectorSize
 }
 
 } // namespace
+
+extern int qInitResources_usb_restoration_tool_tests_translations();
+extern int qCleanupResources_usb_restoration_tool_tests_translations();
 
 class CoreTests : public QObject {
     Q_OBJECT
@@ -1311,6 +1315,42 @@ class CoreTests : public QObject {
         rejected.versionError = QStringLiteral("protocol mismatch");
         QCOMPARE(judgeHelperRun(rejected, &display, TextMode::Display), HelperRunVerdict::Failed);
         QCOMPARE(display, rejected.versionError);
+    }
+
+    void showsTheEmbeddedCatalogWithoutTouchingADisk()
+    {
+        const QLocale locale;
+        const CatalogProbe english = catalogProbe({QStringLiteral("--show-translation"), QStringLiteral("en")});
+        QCOMPARE(english.kind, CatalogProbeKind::Ready);
+        QCOMPARE(english.line, QStringLiteral("Elevated permission required"));
+
+        const CatalogProbe german = catalogProbe({QStringLiteral("--show-translation"), QStringLiteral("de")});
+        QCOMPARE(german.kind, CatalogProbeKind::Ready);
+        QCOMPARE(german.line, QStringLiteral("Erhöhte Berechtigung erforderlich"));
+
+        QCOMPARE(catalogProbe({}).kind, CatalogProbeKind::NotRequested);
+        QCOMPARE(
+            catalogProbe({QStringLiteral("--language"), QStringLiteral("de")}).kind, CatalogProbeKind::NotRequested);
+        for (const QStringList &arguments :
+             {QStringList{QStringLiteral("--show-translation")},
+              QStringList{QStringLiteral("--show-translation"), QStringLiteral("system")},
+              QStringList{QStringLiteral("--show-translation"), QStringLiteral("fr")},
+              QStringList{QStringLiteral("--show-translation"), QStringLiteral("DE")},
+              QStringList{QStringLiteral("--show-translation"), QStringLiteral("de"), QStringLiteral("extra")}}) {
+            const CatalogProbe rejected = catalogProbe(arguments);
+            QCOMPARE(rejected.kind, CatalogProbeKind::Usage);
+            QVERIFY(rejected.line.isEmpty());
+        }
+
+        const auto restoreCatalog = qScopeGuard([]() { qInitResources_usb_restoration_tool_tests_translations(); });
+        qCleanupResources_usb_restoration_tool_tests_translations();
+        const CatalogProbe missing = catalogProbe({QStringLiteral("--show-translation"), QStringLiteral("de")});
+        QCOMPARE(missing.kind, CatalogProbeKind::MissingCatalog);
+        QVERIFY(missing.line.isEmpty());
+        const CatalogProbe englishStill = catalogProbe({QStringLiteral("--show-translation"), QStringLiteral("en")});
+        QCOMPARE(englishStill.kind, CatalogProbeKind::Ready);
+        QCOMPARE(englishStill.line, QStringLiteral("Elevated permission required"));
+        QCOMPARE(QLocale(), locale);
     }
 
     void refusesUnrecognisedFlagSpellings_data()

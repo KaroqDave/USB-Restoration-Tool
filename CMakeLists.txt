@@ -623,6 +623,7 @@ if(USBRESTORE_BUILD_TESTS)
 
     add_executable(usb-restoration-tool-tests
         ${USBRESTORE_CORE_SOURCES}
+        src/platform/translations.cpp
         tests/test_core.cpp
     )
     usbrestore_embed_translations(usb-restoration-tool-tests)

@@ -252,6 +252,21 @@ mv "$GeneratedAppImage" "$OutputPath"
 popd > /dev/null
 rm -rf "$BuildOutputDir"
 
+step "Checking the embedded catalog without disk access"
+for language in en de; do
+    case "$language" in
+        en) expected="Elevated permission required" ;;
+        de) expected="Erhöhte Berechtigung erforderlich" ;;
+    esac
+    actual="$(QT_QPA_PLATFORM=offscreen "$OutputPath" --show-translation "$language")" \
+        || { echo "error: AppImage catalog probe failed for $language" >&2; exit 1; }
+    if [[ "$actual" != "$expected" ]]; then
+        echo "error: AppImage printed '$actual' for $language" >&2
+        exit 1
+    fi
+done
+echo "  catalog probe passed"
+
 step "Writing checksum"
 ( cd "$OutputRoot" && sha256sum "$(basename "$OutputPath")" > "$(basename "$OutputPath").sha256" )
 

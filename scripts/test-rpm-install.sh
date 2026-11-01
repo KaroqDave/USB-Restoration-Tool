@@ -67,6 +67,13 @@ checkInstalled() {
     [[ "$protocol" == "version "* && "$protocol" == *" app $ExpectedVersion steps "* ]] \
         || fail "installed helper version mismatch"
     echo "$protocol"
+    local german english
+    german="$(runuser -u nobody -- "$HelperPath" --show-translation de)" \
+        || fail "installed helper catalog probe failed for de"
+    [[ "$german" == "Erhöhte Berechtigung erforderlich" ]] || fail "installed helper printed '$german' for de"
+    english="$(runuser -u nobody -- "$HelperPath" --show-translation en)" \
+        || fail "installed helper catalog probe failed for en"
+    [[ "$english" == "Elevated permission required" ]] || fail "installed helper printed '$english' for en"
     xmllint --nonet --noout "$PolicyPath"
     # Start polkit directly: its activation helper uses the fixed system-bus socket.
     dbus-run-session --config-file="$BaselineDir/dbus.conf" -- bash -e -c '

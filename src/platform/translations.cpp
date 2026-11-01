@@ -49,4 +49,35 @@ QString elevatedPermissionTitle()
     return QCoreApplication::translate("usbrestore::Startup", "Elevated permission required");
 }
 
+CatalogProbe catalogProbe(const QStringList &arguments)
+{
+    CatalogProbe result;
+    if (arguments.isEmpty() || arguments.first() != QLatin1String(ShowTranslationFlag)) {
+        return result;
+    }
+    result.kind = CatalogProbeKind::Usage;
+    if (arguments.size() != 2) {
+        return result;
+    }
+
+    const QString token = arguments.at(1);
+    Language language = Language::System;
+    if (token == QLatin1String("en")) {
+        language = Language::English;
+    } else if (token == QLatin1String("de")) {
+        language = Language::German;
+    } else {
+        return result;
+    }
+
+    Translations translations;
+    if (!activateInterfaceLanguage(translations, language)) {
+        result.kind = CatalogProbeKind::MissingCatalog;
+        return result;
+    }
+    result.kind = CatalogProbeKind::Ready;
+    result.line = elevatedPermissionTitle();
+    return result;
+}
+
 } // namespace usbrestore

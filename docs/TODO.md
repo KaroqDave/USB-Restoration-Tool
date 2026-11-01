@@ -4,14 +4,22 @@
 
 ### 1.9.0 — German support (in progress)
 
-- Verify all four package formats carry the helper catalogs, and extend German
-  rendering checks to real error paths. Keep both themes at 100% and 200% scaling
-  and English wording tests on a fixed locale. Windows, Qt 6.4 and sanitizer
-  validation remain to be run in CI.
 - Prepare the 1.9.0 version bump, README release notes and changelog after the
   feature and validation are complete; no release or tag yet.
 
 ## Recently completed
+
+- 2026-11-01: Added `--show-translation en` and `de` so each package can prove its
+  restore binary loads the embedded catalog and exits before opening a disk.
+  German must print `Erhöhte Berechtigung erforderlich`; a missing catalog fails
+  instead of falling back to English. The helper handles it before the root
+  check, and the GUI handles it before the privilege dialog. Debian, RPM,
+  AppImage and Windows package scripts run the probe. A German restore-failure
+  dialog keeps the English diagnostic in the activity log. Linux build and all
+  five ctest checks pass, including the GUI suite at 100% and 200%. The local
+  RPM build passed its catalog probe and was not installed. Debian, AppImage,
+  Windows, Qt 6.4 and sanitizer CI were not run. Privileged loop tests skipped.
+  The 1.9.0 notes remain open. No physical drive accessed.
 
 - 2026-11-01: Passed the resolved display language to the helper as a required
   `--language en` or `de` argument and raised the protocol to version 5. A
