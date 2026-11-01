@@ -194,8 +194,7 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error, QString *
                                       "usbrestore::Backend",
                                       "The opened handle points at disk %1, not the whole of disk %2. "
                                       "Refresh the list and select the USB drive again."))
-                          .arg(deviceNumber.DeviceNumber)
-                          .arg(m_diskNumber));
+                          .arg(deviceNumber.DeviceNumber, m_diskNumber));
     }
 
     // Re-read from the device, not the WMI snapshot, so a replug since enumeration is caught.
@@ -232,8 +231,8 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error, QString *
                             "usbrestore::Backend",
                             "Disk %1 now reports %2 instead of the %3 that was selected. "
                             "Refresh the list and select the USB drive again."))
-                .arg(m_diskNumber)
                 .arg(
+                    m_diskNumber,
                     RestoreMessage{formatByteSize(reportedSize), formatByteSize(reportedSize, TextMode::Display)},
                     RestoreMessage{formatByteSize(expected.size), formatByteSize(expected.size, TextMode::Display)}));
     }
@@ -247,9 +246,7 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error, QString *
                                           "usbrestore::Backend",
                                           "Disk %1 reports %2-byte sectors instead of the %3-byte sectors that "
                                           "were selected. Refresh the list and select the USB drive again."))
-                              .arg(m_diskNumber)
-                              .arg(reportedSectorSize)
-                              .arg(expected.sectorSize));
+                              .arg(m_diskNumber, reportedSectorSize, expected.sectorSize));
         }
     }
 
@@ -507,8 +504,7 @@ bool RawDisk::createSinglePartition(
                                 "usbrestore::Backend",
                                 "Could not create a partition on disk %1: %2 Select a supported partition layout "
                                 "or a different USB drive."))
-                    .arg(m_diskNumber)
-                    .arg(failure));
+                    .arg(m_diskNumber, failure));
         }
         return false;
     }
@@ -676,8 +672,7 @@ bool RawDisk::writeZeros(
                 restoreText(QT_TRANSLATE_NOOP(
                                 "usbrestore::Backend",
                                 "Could not clear old signatures on disk %1: %2 Restart the app and try again."))
-                    .arg(m_diskNumber)
-                    .arg(unaligned));
+                    .arg(m_diskNumber, unaligned));
         }
         return false;
     }
@@ -758,8 +753,7 @@ RestoreMessage RawDisk::lastError(const char *operation) const
     const DWORD code = GetLastError();
     return windowsDeviceErrorMessage(
         restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
-            .arg(restoreText(operation))
-            .arg(m_diskNumber),
+            .arg(restoreText(operation), m_diskNumber),
         code);
 }
 

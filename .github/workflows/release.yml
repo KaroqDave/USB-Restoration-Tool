@@ -102,6 +102,8 @@ jobs:
         run: cmake -S . -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
 
       - name: Build and test
+        env:
+          QT_FORCE_STDERR_LOGGING: "1"
         run: |
           cmake --build build --config Release --target usb-restoration-tool usb-restoration-tool-tests
           ctest --test-dir build -C Release --output-on-failure

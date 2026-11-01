@@ -702,7 +702,7 @@ if(USBRESTORE_BUILD_TESTS)
         set_property(TEST usb-gui-tests-scaled APPEND PROPERTY
             ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
-            ENVIRONMENT "PATH=${_usbrestore_test_path}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
 
         add_executable(usb-wmi-tests tests/test_wmi.cpp src/platform/translations.cpp
             ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
@@ -716,7 +716,7 @@ if(USBRESTORE_BUILD_TESTS)
         add_dependencies(usb-restoration-tool-tests usb-wmi-tests)
         add_test(NAME usb-wmi-tests COMMAND usb-wmi-tests)
         set_tests_properties(usb-wmi-tests PROPERTIES
-            ENVIRONMENT "PATH=${_usbrestore_test_path}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
     endif()
 
     # Writes a partition table into a sparse image so sgdisk and fdisk can be
@@ -761,7 +761,7 @@ if(USBRESTORE_BUILD_TESTS)
     add_test(NAME usb-core-fuzz-corpus COMMAND usb-core-fuzz ${_usbrestore_fuzz_seeds})
     if(WIN32)
         set_tests_properties(usb-core-fuzz-corpus PROPERTIES
-            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path}")
     endif()
     unset(_usbrestore_fuzz_seeds)
 endif()

@@ -158,9 +158,7 @@ QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint
                    "usbrestore::Core",
                    "Refusing to zero %1 bytes at offset %2: not a multiple of the %3-byte sector size."),
                mode)
-        .arg(bytes)
-        .arg(offset)
-        .arg(sector);
+        .arg(QString::number(bytes), QString::number(offset), QString::number(sector));
 }
 
 bool isPartitionAtDiskStart(std::optional<std::uint64_t> partitionOffset)
@@ -239,8 +237,7 @@ bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QStrin
     if (!isSupportedSectorSize(disk.sectorSize)) {
         return refuse(
             coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "%1 reports an unsupported sector size of %2 bytes."), mode)
-                .arg(name)
-                .arg(disk.sectorSize));
+                .arg(name, QString::number(disk.sectorSize)));
     }
 
     if (calculateGptLayout(disk.size, disk.sectorSize).length == 0) {

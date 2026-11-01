@@ -29,7 +29,8 @@ struct RestoreMessage {
     {
         return mode == TextMode::Display ? message.display : message.english;
     }
-    template <typename T> static const T &argument(const T &value, TextMode) { return value; }
+    static const QString &argument(const QString &value, TextMode) { return value; }
+    template <typename T> static QString argument(const T &value, TextMode) { return QString::number(value); }
 };
 
 RestoreMessage restoreText(const char *source);

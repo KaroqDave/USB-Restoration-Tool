@@ -79,9 +79,7 @@ RestoreMessage deviceErrorMessage(const RestoreMessage &context, int errorNumber
         reason = QString::fromLocal8Bit(std::strerror(errorNumber));
     }
     return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1: %2 (errno %3). %4."))
-        .arg(context, reason)
-        .arg(errorNumber)
-        .arg(advice);
+        .arg(context, reason, errorNumber, advice);
 }
 
 QString deviceErrorText(const QString &context, int errorNumber)
@@ -253,9 +251,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
                                       "usbrestore::Backend",
                                       "%1 uses %2-byte sectors, not the %3-byte sectors the layout was built for. "
                                       "Refresh and select the USB again."))
-                          .arg(m_devicePath)
-                          .arg(reportedSector)
-                          .arg(expected.sectorSize));
+                          .arg(m_devicePath, reportedSector, expected.sectorSize));
     }
 
     if (readSysfsAttribute(QStringLiteral("/sys/block/%1/ro").arg(diskName)) == QStringLiteral("1")) {

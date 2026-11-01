@@ -315,8 +315,7 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr, TextMode 
                          QT_TRANSLATE_NOOP(
                              "usbrestore::Core", "The restore helper stopped unexpectedly (exit code %1): %2"),
                          mode)
-                         .arg(exitCode)
-                         .arg(reported);
+                         .arg(QString::number(exitCode), reported);
     }
 }
 

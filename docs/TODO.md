@@ -6,6 +6,14 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
 
+- 2026-11-02: Closed the 1.9.0 branch review findings. `RestoreMessage::arg` and
+  multi-argument error/status formatting now substitute all arguments in one pass
+  so reordered German placeholders and `%N` tokens in device paths or diagnostics
+  cannot collide. `usb-core-fuzz` checks `encodeFailureLine`, the `args-*` and
+  version-line fuzz seeds include protocol v5 `--language`, Windows test
+  environments share the escaped `PATH` and `QT_FORCE_STDERR_LOGGING=1`, and
+  `SECURITY.md` lists `1.9.x` as the supported release line.
+
 - 2026-11-01: The Windows bundle probe saw an empty catalog line with exit 0. The GUI
   binary now writes that line to the inherited standard-output handle, and the
   package script pipes the GUI executable and reads the output as UTF-8 so

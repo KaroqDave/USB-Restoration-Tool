@@ -640,16 +640,17 @@ void MainWindow::renderSelectedDisk()
     }
 
     m_detailTitle->setText(describeDisk(*disk, TextMode::Display));
-    m_detailValues->setText(
-        tr("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
-           "Filesystems: %4\n"
-           "Mounted at: %5\n"
-           "Volume labels: %6")
-            .arg(
-                busTypeName(disk->busType, TextMode::Display),
-                partitionStyleName(disk->partitionStyle, TextMode::Display))
-            .arg(disk->sectorSize)
-            .arg(joinOrDash(disk->fileSystems), joinOrDash(disk->mountPoints), joinOrDash(disk->labels)));
+    m_detailValues->setText(tr("Bus: %1    Current layout: %2    Sector size: %3 bytes\n"
+                               "Filesystems: %4\n"
+                               "Mounted at: %5\n"
+                               "Volume labels: %6")
+                                .arg(
+                                    busTypeName(disk->busType, TextMode::Display),
+                                    partitionStyleName(disk->partitionStyle, TextMode::Display),
+                                    QString::number(disk->sectorSize),
+                                    joinOrDash(disk->fileSystems),
+                                    joinOrDash(disk->mountPoints),
+                                    joinOrDash(disk->labels)));
 }
 
 void MainWindow::updateRestoreState()
@@ -765,9 +766,12 @@ void MainWindow::beginRestore(const RestoreRequest &request)
     m_logger.logFileOnly(QStringLiteral(
                              "Target details — device %1, bus %2, sector size %3, mounted at [%4], "
                              "labels [%5]")
-                             .arg(disk.deviceId, busTypeName(disk.busType))
-                             .arg(disk.sectorSize)
-                             .arg(disk.mountPoints.join(QStringLiteral(", ")), disk.labels.join(QStringLiteral(", "))));
+                             .arg(
+                                 disk.deviceId,
+                                 busTypeName(disk.busType),
+                                 QString::number(disk.sectorSize),
+                                 disk.mountPoints.join(QStringLiteral(", ")),
+                                 disk.labels.join(QStringLiteral(", "))));
     m_restoreFileSystem = request.fileSystem;
 
     setRunning(true);

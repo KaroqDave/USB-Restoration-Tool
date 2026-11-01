@@ -113,6 +113,24 @@ class WmiTests : public QObject {
         QVERIFY(error.english.contains(diagnostic));
         QVERIFY(error.display.contains(diagnostic));
         QVERIFY(error.display.contains(QStringLiteral("starten Sie die Wiederherstellung erneut")));
+        const auto reordered = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
+                                   .arg(
+                                       restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "format as %1"))
+                                           .arg(QStringLiteral("FAT32-%2")),
+                                       7);
+        QCOMPARE(reordered.english, QStringLiteral("Could not format as FAT32-%2 on disk 7"));
+        QCOMPARE(
+            reordered.display,
+            QStringLiteral(
+                "Auf Datenträger 7 konnte folgende Aktion nicht ausgeführt werden: als FAT32-%2 formatieren"));
+        const auto percentDevice = windowsDeviceErrorMessage(
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open volume %1 before restore"))
+                .arg(QStringLiteral("\\\\?\\Volume{%2-%3-%4}")),
+            ERROR_WRITE_PROTECT);
+        for (const auto &text : {percentDevice.english, percentDevice.display}) {
+            QVERIFY2(text.contains(QStringLiteral("\\\\?\\Volume{%2-%3-%4}")), qPrintable(text));
+            QVERIFY2(text.contains(QString::number(ERROR_WRITE_PROTECT)), qPrintable(text));
+        }
         RawDisk unopened(7);
         QString english, display;
         QVERIFY(!unopened.verifyIdentity({}, &english, &display));

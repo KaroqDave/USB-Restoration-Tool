@@ -44,8 +44,7 @@ bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error
                             "Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
                             "partition table has already been rewritten. Plug it back in and run the restore on "
                             "it again."))
-                .arg(disk.number)
-                .arg(RestoreMessage{reason, displayReason}));
+                .arg(disk.number, RestoreMessage{reason, displayReason}));
     }
     return false;
 }
@@ -165,8 +164,7 @@ bool WindowsDiskService::restore(
                     displayError,
                     windowsRestoreErrorMessage(
                         restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
-                            .arg(operation)
-                            .arg(disk.number),
+                            .arg(operation, disk.number),
                         detail,
                         advice));
             }

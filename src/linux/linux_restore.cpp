@@ -428,8 +428,7 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
                                           "usbrestore::Backend",
                                           "FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
                                           "the rest of the drive would be left unused. Choose exFAT or NTFS."))
-                              .arg(formatLimitSize(maximum))
-                              .arg(disk.sectorSize));
+                              .arg(formatLimitSize(maximum), disk.sectorSize));
         }
         if (length < minimum) {
             return refuse(restoreText(QT_TRANSLATE_NOOP(
@@ -724,8 +723,7 @@ bool performLinuxRestore(
                                 "usbrestore::Backend",
                                 "The new partition did not appear on %1 within %2 seconds. Unplug the drive, "
                                 "plug it back in and run the restore again."))
-                    .arg(disk.deviceId)
-                    .arg(NewPartitionTimeoutMs / 1000));
+                    .arg(disk.deviceId, NewPartitionTimeoutMs / 1000));
         }
         return false;
     }

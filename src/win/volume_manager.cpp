@@ -498,8 +498,7 @@ QString VolumeManager::waitForVolumeOnDisk(
             restoreText(
                 QT_TRANSLATE_NOOP(
                     "usbrestore::Backend", "Windows did not report a new volume for disk %1 within %2 seconds."))
-                .arg(diskNumber)
-                .arg(timeoutMs / 1000));
+                .arg(diskNumber, timeoutMs / 1000));
     }
     return {};
 }

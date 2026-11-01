@@ -108,6 +108,9 @@ void fuzzProtocolLines(Input &input)
     const ProtocolLine detail = overTheWire(encodeDetailLine(text));
     FUZZ_REQUIRE(detail.kind == ProtocolLineKind::Detail && detail.text == expected);
 
+    const ProtocolLine failure = overTheWire(encodeFailureLine(text));
+    FUZZ_REQUIRE(failure.kind == ProtocolLineKind::Failure && failure.text == expected);
+
     const ProtocolLine result = overTheWire(encodeResultLine(text));
     FUZZ_REQUIRE(result.kind == ProtocolLineKind::Result && result.text == expected);
 

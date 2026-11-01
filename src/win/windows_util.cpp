@@ -107,9 +107,7 @@ RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD er
         return RestoreMessage{QStringLiteral("%1: %2. %3.")}.arg(context, windowsErrorMessage(error), advice);
     }
     return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1: %2 (Windows error %3). %4."))
-        .arg(context, reason)
-        .arg(error)
-        .arg(advice);
+        .arg(context, reason, error, advice);
 }
 
 RestoreMessage

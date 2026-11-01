@@ -126,10 +126,26 @@ class LinuxTests : public QObject {
             context, EBUSY, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Try the restore again")));
         QVERIFY(loop.display.contains(QStringLiteral("Loop-Treiber")));
         QVERIFY(loop.english.contains(QStringLiteral("loop driver")));
+        const RestoreMessage percentContext =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not unmount %1"))
+                .arg(QStringLiteral("/run/media/user/%2-%3-%4"));
+        const auto percentError = deviceErrorMessage(percentContext, EIO);
+        for (const auto &text : {percentError.english, percentError.display}) {
+            QVERIFY2(text.contains(QStringLiteral("/run/media/user/%2-%3-%4")), qPrintable(text));
+            QVERIFY2(text.contains(QStringLiteral("errno %1").arg(EIO)), qPrintable(text));
+        }
+        DiskInfo oversizedFat32;
+        oversizedFat32.size = 4ull * 1024 * 1024 * 1024 * 1024;
+        oversizedFat32.sectorSize = 512;
+        QString english, display;
+        QVERIFY(!canCreateFileSystemOn(FileSystemType::Fat32, oversizedFat32, &english, &display));
+        QVERIFY2(english.contains(QStringLiteral("512-byte sectors")), qPrintable(english));
+        QVERIFY2(display.contains(QStringLiteral("Sektoren von 512 Byte")), qPrintable(display));
+        QVERIFY2(
+            !display.contains(QStringLiteral("%1")) && !display.contains(QStringLiteral("%2")), qPrintable(display));
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         BlockDevice missing(dir.filePath(QStringLiteral("missing-device")));
-        QString english, display;
         QVERIFY(!missing.open(BlockDevice::Access::Inspect, &english, &display));
         QVERIFY(english.startsWith(QStringLiteral("Could not open ")));
         QVERIFY(display.contains(QStringLiteral("konnte nicht geöffnet werden")));

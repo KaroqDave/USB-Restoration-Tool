@@ -49,9 +49,7 @@ RestoreMessage loopErrorMessage(const RestoreMessage &operation, int errorNumber
     }
 
     return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1: %2 (errno %3). %4."))
-        .arg(operation, reason)
-        .arg(errorNumber)
-        .arg(advice);
+        .arg(operation, reason, errorNumber, advice);
 }
 
 QString loopErrorText(const QString &operation, int errorNumber, const QString &advice)
