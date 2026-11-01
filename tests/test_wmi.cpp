@@ -2,6 +2,7 @@
 #include "win/windows_disk_service.h"
 #include "win/raw_disk.h"
 #include "win/windows_util.h"
+#include "platform/translations.h"
 
 #include <QElapsedTimer>
 #include <QtTest/QtTest>
@@ -93,14 +94,48 @@ class WmiTests : public QObject {
         }
     }
 
+    void translatesNativeErrorsWhileKeepingEnglishDiagnostics()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const auto context =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not clear old signatures on disk %1")).arg(7);
+        for (const DWORD code :
+             {ERROR_WRITE_PROTECT, ERROR_IO_DEVICE, ERROR_NOT_READY, ERROR_SHARING_VIOLATION, ERROR_BAD_COMMAND}) {
+            const auto message = windowsDeviceErrorMessage(context, code);
+            QVERIFY(message.english.startsWith(QStringLiteral("Could not clear old signatures on disk 7")));
+            QVERIFY(message.display.startsWith(QStringLiteral("Alte Signaturen auf Datenträger 7")));
+            QVERIFY(message.english.contains(QString::number(code)));
+            QVERIFY(message.display.contains(QString::number(code)));
+        }
+        const QString diagnostic = QStringLiteral("MSFT_Volume.Format: HRESULT 0x80070005");
+        const auto error = windowsRestoreErrorMessage(context, diagnostic);
+        QVERIFY(error.english.contains(diagnostic));
+        QVERIFY(error.display.contains(diagnostic));
+        QVERIFY(error.display.contains(QStringLiteral("starten Sie die Wiederherstellung erneut")));
+        RawDisk unopened(7);
+        QString english, display;
+        QVERIFY(!unopened.verifyIdentity({}, &english, &display));
+        QVERIFY(english.contains(QStringLiteral("drive is not open")));
+        QVERIFY(display.contains(QStringLiteral("nicht geöffnet")));
+        QCOMPARE(
+            WindowsDiskService().privilegeHint(),
+            QStringLiteral(
+                "USB Restoration Tool benötigt Administratorrechte, um USB-Laufwerke wiederherzustellen.\n\n"
+                "Schließen Sie dieses Fenster und starten Sie die Anwendung erneut. Bestätigen Sie dabei die "
+                "Windows-Berechtigungsabfrage."));
+    }
+
     void refusesOversizedMbrBeforeAnyBackendStep()
     {
         struct Reporter : RestoreReporter {
             int steps = 0;
-            void step(const QString &) override { ++steps; }
+            void step(const RestoreMessage &) override { ++steps; }
             void detail(const QString &) override {}
             bool cancelRequested() const override { return false; }
         } reporter;
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
         WindowsDiskService service;
         RestoreRequest request;
         request.disk.deviceId = QStringLiteral("synthetic-review-device");
@@ -109,10 +144,11 @@ class WmiTests : public QObject {
         request.disk.sectorSize = 512;
         request.style = PartitionStyle::Mbr;
         request.fileSystem = FileSystemType::ExFat;
-        QString error;
-        QVERIFY(!service.restore(request, reporter, nullptr, &error));
+        QString error, displayError;
+        QVERIFY(!service.restore(request, reporter, nullptr, &error, &displayError));
         QCOMPARE(reporter.steps, 0);
-        QVERIFY(error.contains(QStringLiteral("MBR")));
+        QVERIFY(error.contains(QStringLiteral("MBR cannot address")));
+        QVERIFY(displayError.contains(QStringLiteral("MBR kann eine Partition")));
     }
 
     void explainsDeviceFailuresInPlainLanguage()

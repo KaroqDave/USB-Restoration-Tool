@@ -33,7 +33,7 @@ class RestoreWorker : public QObject, private RestoreReporter {
     void finished(const QString &location);
 
   private:
-    void step(const QString &message) override;
+    void step(const RestoreMessage &message) override;
     void detail(const QString &message) override;
     bool cancelRequested() const override;
     void logStepDuration();

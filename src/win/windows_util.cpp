@@ -44,72 +44,106 @@ QString windowsErrorMessage(const QString &context, DWORD error)
     return QStringLiteral("%1: %2").arg(context, windowsErrorMessage(error));
 }
 
-QString windowsDeviceErrorText(const QString &context, DWORD error)
+RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD error)
 {
-    QString reason;
-    QString advice = QStringLiteral("Unplug the drive, plug it back in and try again");
+    RestoreMessage reason;
+    RestoreMessage advice =
+        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Unplug the drive, plug it back in and try again"));
     switch (error) {
     case ERROR_SHARING_VIOLATION:
     case ERROR_LOCK_VIOLATION:
     case ERROR_BUSY:
-        reason = QStringLiteral("another program is still using the drive");
-        advice = QStringLiteral("Close any files, File Explorer windows and programs using the drive and try again");
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "another program is still using the drive"));
+        advice = restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
+            "Close any files, File Explorer windows and programs using the drive and try again"));
         break;
     case ERROR_WRITE_PROTECT:
-        reason = QStringLiteral("the drive is write-protected");
-        advice = QStringLiteral(
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive is write-protected"));
+        advice = restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
             "If it has a write-protect switch, turn it off and try again. If it has none, the drive may have made "
-            "itself read-only and need replacing");
+            "itself read-only and need replacing"));
         break;
     case ERROR_ACCESS_DENIED:
-        reason = QStringLiteral("Windows refused access to the drive");
-        advice = QStringLiteral(
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Windows refused access to the drive"));
+        advice = restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
             "Close any programs using the drive. If it has a write-protect switch, turn it off and try again. "
-            "If it stays read-only, the drive may have made itself read-only and need replacing");
+            "If it stays read-only, the drive may have made itself read-only and need replacing"));
         break;
     case ERROR_IO_DEVICE:
     case ERROR_CRC:
     case ERROR_READ_FAULT:
     case ERROR_WRITE_FAULT:
-        reason = QStringLiteral("the drive could not complete the read or write");
-        advice = QStringLiteral(
+        reason =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive could not complete the read or write"));
+        advice = restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
             "Unplug it, plug it back in and try again; if it keeps happening, try another USB port or replace the "
-            "drive");
+            "drive"));
         break;
     case ERROR_NOT_READY:
-        reason = QStringLiteral("the drive is not ready");
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive is not ready"));
         break;
     case ERROR_DEV_NOT_EXIST:
     case ERROR_DEVICE_NOT_CONNECTED:
     case ERROR_NO_MEDIA_IN_DRIVE:
     case ERROR_FILE_NOT_FOUND:
     case ERROR_PATH_NOT_FOUND:
-        reason = QStringLiteral("the drive is no longer available");
-        advice = QStringLiteral("Plug it back in, refresh the list and select it again");
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive is no longer available"));
+        advice = restoreText(
+            QT_TRANSLATE_NOOP("usbrestore::Backend", "Plug it back in, refresh the list and select it again"));
         break;
     case ERROR_DISK_FULL:
     case ERROR_HANDLE_DISK_FULL:
-        reason = QStringLiteral("the drive ran out of room before its reported size");
-        advice = QStringLiteral(
-            "Unplug it, plug it back in and try again; if it happens again the drive may be smaller than it claims");
+        reason =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive ran out of room before its reported size"));
+        advice = restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
+            "Unplug it, plug it back in and try again; if it happens again the drive may be smaller than it claims"));
         break;
     default:
-        return QStringLiteral("%1: %2. %3.").arg(context, windowsErrorMessage(error), advice);
+        return RestoreMessage{QStringLiteral("%1: %2. %3.")}.arg(context, windowsErrorMessage(error), advice);
     }
-    return QStringLiteral("%1: %2 (Windows error %3). %4.").arg(context, reason).arg(error).arg(advice);
+    return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1: %2 (Windows error %3). %4."))
+        .arg(context, reason)
+        .arg(error)
+        .arg(advice);
+}
+
+RestoreMessage
+windowsRestoreErrorMessage(const RestoreMessage &context, const RestoreMessage &detail, const RestoreMessage &advice)
+{
+    const RestoreMessage nextStep =
+        advice.english.isEmpty()
+            ? restoreText(QT_TRANSLATE_NOOP(
+                  "usbrestore::Backend",
+                  "Close any programs using the drive, unplug it, plug it back in and run the restore again"))
+            : advice;
+    RestoreMessage message = RestoreMessage{QStringLiteral("%1. %2.")}.arg(context, nextStep);
+    if (!detail.english.isEmpty()) {
+        const RestoreMessage details =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "\n\nDetails: %1")).arg(detail);
+        message.english += details.english;
+        message.display += details.display;
+    }
+    return message;
+}
+
+RestoreMessage windowsErrorDetails(const RestoreMessage &context, DWORD error)
+{
+    return RestoreMessage{QStringLiteral("%1: %2"), QStringLiteral("%1: %2")}.arg(context, windowsErrorMessage(error));
+}
+
+QString windowsDeviceErrorText(const QString &context, DWORD error)
+{
+    return windowsDeviceErrorMessage(context, error).english;
 }
 
 QString windowsRestoreErrorText(const QString &context, const QString &detail, const QString &advice)
 {
-    const QString nextStep =
-        advice.isEmpty()
-            ? QStringLiteral("Close any programs using the drive, unplug it, plug it back in and run the restore again")
-            : advice;
-    QString message = QStringLiteral("%1. %2.").arg(context, nextStep);
-    if (!detail.isEmpty()) {
-        message += QStringLiteral("\n\nDetails: %1").arg(detail);
-    }
-    return message;
+    return windowsRestoreErrorMessage(context, detail, advice).english;
 }
 
 QString firstAvailableDriveLetter(quint32 logicalDrivesMask)

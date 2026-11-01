@@ -130,6 +130,8 @@ set(USBRESTORE_CORE_SOURCES
     src/core/language.h
     src/core/partition_table.cpp
     src/core/partition_table.h
+    src/core/restore_message.cpp
+    src/core/restore_message.h
     src/core/restore_protocol.cpp
     src/core/restore_protocol.h
     src/core/restore_steps.cpp
@@ -536,9 +538,12 @@ endif()
 qt_add_translations(usb-restoration-tool
     ${_usbrestore_translation_source_targets}
     TS_FILES translations/usbrestore_de.ts
-    SOURCES src/gui/restore_dialog.cpp src/gui/restore_dialog.h
-        src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/core/disk.cpp
-        src/core/language.cpp src/core/safety.cpp
+    SOURCES src/gui/main.cpp src/gui/restore_dialog.cpp src/gui/restore_dialog.h
+        src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/platform/translations.cpp
+        src/core/disk.cpp
+        src/core/language.cpp src/core/restore_message.cpp src/core/safety.cpp
+        src/core/partition_table.cpp src/core/restore_protocol.cpp
+        src/platform/restore_worker.cpp ${USBRESTORE_LINUX_SOURCES} ${USBRESTORE_WIN_SOURCES}
     INCLUDE_DIRECTORIES src
     LUPDATE_OPTIONS -locations none -no-obsolete
     LRELEASE_OPTIONS -nounfinished
@@ -627,9 +632,16 @@ if(USBRESTORE_BUILD_TESTS)
     usbrestore_sanitize(usb-restoration-tool-tests)
 
     if(NOT WIN32)
-        add_executable(usb-linux-tests tests/test_linux.cpp ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_LINUX_RESTORE_SOURCES})
+        add_executable(usb-linux-tests tests/test_linux.cpp src/platform/translations.cpp
+            src/linux/linux_disk_service.cpp src/linux/helper_client.cpp
+            ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_LINUX_RESTORE_SOURCES})
         target_include_directories(usb-linux-tests PRIVATE src)
+        target_compile_definitions(usb-linux-tests PRIVATE
+            USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
+            USBRESTORE_HELPER_PATH="${USBRESTORE_HELPER_PATH}"
+        )
         target_link_libraries(usb-linux-tests PRIVATE Qt6::Core Qt6::Test)
+        usbrestore_embed_translations(usb-linux-tests)
         usbrestore_sanitize(usb-linux-tests)
         add_dependencies(usb-restoration-tool-tests usb-linux-tests)
         add_test(NAME usb-linux-tests COMMAND usb-linux-tests)
@@ -684,8 +696,10 @@ if(USBRESTORE_BUILD_TESTS)
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
 
-        add_executable(usb-wmi-tests tests/test_wmi.cpp ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
+        add_executable(usb-wmi-tests tests/test_wmi.cpp src/platform/translations.cpp
+            ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
         target_include_directories(usb-wmi-tests PRIVATE src)
+        usbrestore_embed_translations(usb-wmi-tests)
         target_link_libraries(usb-wmi-tests PRIVATE Qt6::Core Qt6::Test ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
         target_compile_definitions(usb-wmi-tests PRIVATE UNICODE _UNICODE NOMINMAX)
         if(MSVC)

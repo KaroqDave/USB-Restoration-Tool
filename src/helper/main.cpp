@@ -60,11 +60,11 @@ void writeError(const QString &message)
 
 class HelperReporter : public usbrestore::RestoreReporter {
   public:
-    void step(const QString &message) override
+    void step(const usbrestore::RestoreMessage &message) override
     {
         const int total = static_cast<int>(usbrestore::linuxRestorePlan().size());
         m_step = qMin(m_step + 1, total);
-        writeLine(usbrestore::encodeStepLine(m_step, total, message));
+        writeLine(usbrestore::encodeStepLine(m_step, total, message.english));
     }
 
     void detail(const QString &message) override

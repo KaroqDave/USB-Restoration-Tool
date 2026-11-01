@@ -24,5 +24,6 @@ enum class Language {
 Language languageFromSettings(const QString &value);
 QString languageToSettings(Language language);
 Language resolveLanguage(Language preference, const QStringList &uiLanguages = QLocale::system().uiLanguages());
+QString languageButtonText(Language language);
 
 } // namespace usbrestore

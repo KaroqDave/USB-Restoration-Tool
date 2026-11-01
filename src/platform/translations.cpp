@@ -35,4 +35,18 @@ bool Translations::load(Language language)
     return true;
 }
 
+bool activateInterfaceLanguage(Translations &translations, Language preference)
+{
+    if (translations.load(preference)) {
+        return true;
+    }
+    translations.load(Language::English);
+    return false;
+}
+
+QString elevatedPermissionTitle()
+{
+    return QCoreApplication::translate("usbrestore::Startup", "Elevated permission required");
+}
+
 } // namespace usbrestore

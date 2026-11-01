@@ -4,16 +4,11 @@
 
 ### 1.9.0 — German support (in progress)
 
-- Separate translated display messages from English logging, including Linux
-  helper and Windows backend errors and progress. Do not simply translate the
-  shared backend strings: `RestoreWorker` currently logs and displays the same
-  text. Preserve formatter and OS details alongside translated explanations.
-- Wire `Translations` into startup and add the interface's system/English/German
-  override using the saved `AppSettings::language`. Keep activation disabled
-  until the remaining text is covered. Do not change language during a restore.
 - Pass the resolved language to the helper as a strictly validated, display-only
-  argument because pkexec clears the environment. Never use it for safety or
-  device identity decisions. Test missing, invalid and repeated arguments and
+  argument because pkexec clears the environment. Carry its translated failure
+  explanation separately from English diagnostics; until then, detailed helper
+  refusals remain English under a translated failure heading. Never use the language
+  for safety or device identity decisions. Test missing, invalid and repeated arguments and
   unchanged safety refusals; update the protocol version when its arguments or
   output change.
 - Embed the catalogs in the helper as well as the GUI, verify all four package
@@ -24,6 +19,27 @@
   feature and validation are complete; no release or tag yet.
 
 ## Recently completed
+
+- 2026-11-01: Activated the saved system/English/German choice at startup and added the
+  main-window language cycle. The choice is saved with the other settings and is
+  not applied while a restore is running. The privilege dialog is translated;
+  a missing catalog leaves English in place and the application still opens.
+  Helper protocol, packaging and the 1.9.0 notes remain open. Linux build and
+  all five ctest checks pass, including the GUI suite at 100% and 200% scaling;
+  privileged loop tests skipped. Windows, Qt 6.4 and sanitizer CI were not run.
+  One disposable stick was restored and looked fine.
+
+- 2026-10-31: Split backend display text from English logs with paired restore
+  messages and optional display-error outputs. Added German native Linux and
+  Windows explanations, shared progress wording, and translated helper-client
+  launch/protocol errors. Paths, error codes and formatter/OS details are retained;
+  helper wire output stays English and the client derives display steps from the
+  shared plan. Detailed helper refusals await its language/transport work above.
+  Added worker/channel, native failure and formatter-detail regressions. Linux
+  build and all five ctest checks pass; privileged loop tests skipped. Startup
+  activation, Windows/Qt 6.4/sanitizer CI and package validation remain pending.
+  Partition-tool verification could not run locally because `sgdisk` is missing;
+  partition-table bytes are unchanged. No physical drive accessed.
 
 - 2026-10-31: Translated shared disk descriptions, decimal size/duration
   formatting, safety/identity refusals, layout errors and large-drive warnings.

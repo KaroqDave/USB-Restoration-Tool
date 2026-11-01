@@ -14,6 +14,8 @@
 class QCloseEvent;
 class QComboBox;
 class QDialog;
+class QEvent;
+class QGroupBox;
 class QLabel;
 class QLayout;
 class QListWidget;
@@ -26,13 +28,16 @@ namespace usbrestore {
 
 class RestoreWorker;
 class RestoreDialog;
+class Translations;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
-    MainWindow(DiskService &service, Theme initialTheme, QWidget *parent = nullptr);
+    MainWindow(
+        DiskService &service, Theme initialTheme, Translations *translations = nullptr, QWidget *parent = nullptr);
 
   protected:
+    void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
   private slots:
@@ -47,6 +52,7 @@ class MainWindow : public QMainWindow {
     void onRestoreFinished(const QString &location);
     void onStallTick();
     void toggleTheme();
+    void cycleLanguage();
     void showAbout();
     void showActivity();
     void openLogFile();
@@ -63,6 +69,7 @@ class MainWindow : public QMainWindow {
     void loadSettings();
     void saveSettings();
     void applyCurrentTheme();
+    void retranslateUi();
     void refreshStatusBadge();
 
     void renderDisks();
@@ -78,6 +85,7 @@ class MainWindow : public QMainWindow {
     bool waitForRestoreThread(int timeoutMs = 30000);
 
     DiskService &m_service;
+    Translations *m_translations = nullptr;
     QVector<DiskInfo> m_disks;
     RestoreGuard m_guard;
     Logger m_logger;
@@ -95,18 +103,32 @@ class MainWindow : public QMainWindow {
     FileSystemType m_restoreFileSystem = FileSystemType::ExFat;
 
     QListWidget *m_diskList = nullptr;
+    QLabel *m_subtitle = nullptr;
+    QLabel *m_privilegeBadge = nullptr;
     QLabel *m_diskCount = nullptr;
     QLabel *m_detailTitle = nullptr;
     QLabel *m_detailValues = nullptr;
     QLabel *m_planLabel = nullptr;
     QLabel *m_statusLabel = nullptr;
     QLabel *m_detailLabel = nullptr;
+    QLabel *m_partitionLabel = nullptr;
+    QLabel *m_filesystemLabel = nullptr;
+    QLabel *m_warningTitle = nullptr;
+    QLabel *m_warningDetail = nullptr;
+    QLabel *m_activityCaption = nullptr;
+    QGroupBox *m_diskCard = nullptr;
+    QGroupBox *m_detailCard = nullptr;
+    QGroupBox *m_restoreCard = nullptr;
     QComboBox *m_styleCombo = nullptr;
     QComboBox *m_fileSystemCombo = nullptr;
     QPushButton *m_refreshButton = nullptr;
     QPushButton *m_restoreButton = nullptr;
     QPushButton *m_themeButton = nullptr;
+    QPushButton *m_languageButton = nullptr;
     QPushButton *m_activityButton = nullptr;
+    QPushButton *m_aboutButton = nullptr;
+    QPushButton *m_openLogButton = nullptr;
+    QPushButton *m_activityCloseButton = nullptr;
     QTimer *m_stallTimer = nullptr;
     QTextEdit *m_log = nullptr;
     QPointer<QDialog> m_activityDialog;

@@ -1,10 +1,13 @@
+#include "linux/linux_disk_service.h"
 #include "linux/loop_device.h"
 #include "linux/linux_restore.h"
 #include "linux/block_device.h"
 #include "linux/linux_enumerate.h"
 #include "core/partition_table.h"
 #include "core/safety.h"
+#include "platform/translations.h"
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -29,8 +32,10 @@ using namespace usbrestore;
 namespace {
 constexpr qint64 MiB = 1024 * 1024;
 struct Reporter : RestoreReporter {
-    void step(const QString &) override {}
-    void detail(const QString &) override {}
+    int steps = 0;
+    QStringList diagnostics;
+    void step(const RestoreMessage &) override { ++steps; }
+    void detail(const QString &message) override { diagnostics.append(message); }
     bool cancelRequested() const override { return false; }
 };
 
@@ -102,6 +107,90 @@ class LinuxTests : public QObject {
     Q_OBJECT
   private slots:
     void initTestCase() { QLocale::setDefault(QLocale::c()); }
+
+    void translatesNativeErrorsWhileKeepingEnglishDiagnostics()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const QLocale locale;
+        const RestoreMessage context = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not write to %1"))
+                                           .arg(QStringLiteral("/dev/example"));
+        const auto message = deviceErrorMessage(context, EIO);
+        QVERIFY(message.english.contains(QStringLiteral("the drive stopped answering")));
+        QVERIFY(message.display.contains(QStringLiteral("das Laufwerk antwortet nicht mehr")));
+        for (const auto &text : {message.english, message.display}) {
+            QVERIFY(text.contains(QStringLiteral("/dev/example")));
+            QVERIFY(text.contains(QStringLiteral("errno %1").arg(EIO)));
+        }
+        const auto loop = loopErrorMessage(
+            context, EBUSY, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Try the restore again")));
+        QVERIFY(loop.display.contains(QStringLiteral("Loop-Treiber")));
+        QVERIFY(loop.english.contains(QStringLiteral("loop driver")));
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        BlockDevice missing(dir.filePath(QStringLiteral("missing-device")));
+        QString english, display;
+        QVERIFY(!missing.open(BlockDevice::Access::Inspect, &english, &display));
+        QVERIFY(english.startsWith(QStringLiteral("Could not open ")));
+        QVERIFY(display.contains(QStringLiteral("konnte nicht geöffnet werden")));
+        QVERIFY(!missing.verifyIdentity({}, &english, &display));
+        QVERIFY(english.contains(QStringLiteral("not open")));
+        QVERIFY(display.contains(QStringLiteral("nicht geöffnet")));
+        RestoreRequest request;
+        request.disk.deviceId = dir.filePath(QStringLiteral("never-opened"));
+        request.disk.busType = UsbBusType;
+        request.disk.size = 32ull * 1024 * 1024 * 1024;
+        request.disk.isReadOnly = true;
+        Reporter reporter;
+        QVERIFY(!performLinuxRestore(request, reporter, nullptr, &english, &display));
+        QVERIFY(english.contains(QStringLiteral("read-only")));
+        QVERIFY(display.contains(QStringLiteral("schreibgeschützt")));
+        QCOMPARE(reporter.steps, 0);
+        QCOMPARE(QLocale(), locale);
+    }
+
+    void translatesThePrivilegeHint()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const QString hint = LinuxDiskService().privilegeHint();
+        QCOMPARE(
+            hint,
+            QStringLiteral(
+                "USB Restoration Tool kann keine Berechtigung erhalten, um USB-Laufwerke wiederherzustellen.\n\n"
+                "Installieren Sie das Programm, damit es beim Start einer Wiederherstellung nach Berechtigung fragen "
+                "kann, oder starten Sie es erneut mit sudo:\n\n"
+                "    sudo %1")
+                .arg(QCoreApplication::applicationFilePath()));
+    }
+
+    void capturesErrnoBeforeTranslatingDeviceAndLoopErrors()
+    {
+        class ErrnoTranslator : public QTranslator {
+          public:
+            bool isEmpty() const override { return false; }
+            QString translate(const char *, const char *source, const char *, int) const override
+            {
+                errno = ENOSPC;
+                return QString::fromUtf8(source);
+            }
+        } translator;
+        QVERIFY(QCoreApplication::installTranslator(&translator));
+        const auto remove = qScopeGuard([&]() { QCoreApplication::removeTranslator(&translator); });
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QString english, display;
+        BlockDevice missing(dir.filePath(QStringLiteral("missing-device")));
+        QVERIFY(!missing.open(BlockDevice::Access::Inspect, &english, &display));
+        for (const auto &text : {english, display}) {
+            QVERIFY2(text.contains(QStringLiteral("errno %1").arg(ENOENT)), qPrintable(text));
+        }
+        LoopDevice loop;
+        QVERIFY(!loop.configure(-1, 0, MiB, 512, &english, &display));
+        for (const auto &text : {english, display}) {
+            QVERIFY2(text.contains(QStringLiteral("errno %1").arg(EBADF)), qPrintable(text));
+        }
+    }
 
     void clearsOnlyRequestedImageRange_data()
     {
@@ -327,8 +416,11 @@ class LinuxTests : public QObject {
         const QString partitionPath = dir.filePath(QStringLiteral("volume"));
         const QString diagnostic = QStringLiteral("Unsupported feature in formatter configuration");
         Reporter reporter;
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
 
         for (const bool withOutput : {true, false}) {
+            reporter.diagnostics.clear();
             QFile script(tool);
             QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
             QByteArray contents = "#!/bin/sh\n";
@@ -340,9 +432,21 @@ class LinuxTests : public QObject {
             script.close();
             QVERIFY(script.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
 
-            QString error;
+            QString error, displayError;
             QVERIFY(!formatLinuxPartition(
-                FileSystemType::ExFat, tool, partitionPath, QStringLiteral("USB"), 2048, reporter, &error));
+                FileSystemType::ExFat,
+                tool,
+                partitionPath,
+                QStringLiteral("USB"),
+                2048,
+                reporter,
+                &error,
+                &displayError));
+            QVERIFY2(displayError.contains(QStringLiteral("konnte das neue Volume")), qPrintable(displayError));
+            QVERIFY(displayError.contains(partitionPath));
+            QCOMPARE(displayError.contains(diagnostic), withOutput);
+            QVERIFY(reporter.diagnostics.last().contains(QStringLiteral("failed: ")));
+            QCOMPARE(reporter.diagnostics.last().contains(diagnostic), withOutput);
             QVERIFY2(error.contains(QStringLiteral("mkfs-test failed to format")), qPrintable(error));
             QVERIFY2(error.contains(partitionPath), qPrintable(error));
             QCOMPARE(error.contains(diagnostic), withOutput);

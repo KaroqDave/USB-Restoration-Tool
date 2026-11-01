@@ -146,15 +146,18 @@ setup includes the time spent approving the authentication prompt.
 
 ## Translations
 
-German support is being prepared for 1.9.0 and is not activated at startup yet.
+The GUI loads the saved language at startup, before any window.
 `AppSettings::language` stores `system`, `en` or `de`; missing and unknown values
-follow the system's preferred UI languages, falling back to English.
-`Translations` owns the Qt translators without changing the default locale.
+follow the system's preferred UI languages, falling back to English. The main
+window cycles those three choices and saves them. It does not switch language
+while a restore is running. `Translations` owns the Qt translators without
+changing the default locale. A catalog that fails to load leaves English in
+place and the application still opens.
 
 `qt_add_translations` compiles `translations/usbrestore_de.ts`. The application
-catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI and GUI tests;
+catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI and translation tests;
 loading never searches user-writable directories or environment-supplied paths.
-The helper will need its own embedded catalogs when its display protocol is
+The helper still needs its own embedded catalogs when its display protocol is
 extended. Update the catalog after marking more UI text for translation:
 
 ```bash
@@ -162,10 +165,20 @@ cmake --build build-linux --target update_translations
 ```
 
 Review the new translations before building; unfinished entries fall back to
-English. Extend the extraction sources as translation coverage grows. Backend
-messages currently also feed the log, so they need separate display and English
-log representations before being translated. Shared core descriptions, safety
-reasons and layout errors accept `TextMode::Display`; their default is English
+English. Both platform source sets are listed explicitly for extraction on Qt 6.4.
+`RestoreMessage` carries English log text and translated display text; nested
+messages format each half separately and raw diagnostics populate both unchanged.
+Backend `QString *error` outputs remain English. Optional `displayError` outputs
+carry UI explanations, and `RestoreWorker` emits them only through progress and
+failure signals. Log-only reporter details never pass through a translator.
+
+The helper still emits English protocol messages. Its client logs them unchanged
+and derives display progress from the shared step plan. Launch/protocol errors
+are translated locally; detailed helper refusals remain English diagnostics under
+a translated failure heading until the helper has its own display-language
+argument, catalogs and separate display-error transport.
+
+Shared core descriptions, safety reasons and layout errors accept `TextMode::Display`; their default is English
 for backend and log callers. The catalog supplies the display number locale,
 without changing the process-wide locale. Device IDs and protocol tokens are
 never translated. Language must never decide whether a restore is allowed or

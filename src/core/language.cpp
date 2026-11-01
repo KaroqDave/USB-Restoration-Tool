@@ -61,4 +61,17 @@ Language resolveLanguage(Language preference, const QStringList &uiLanguages)
     return Language::English;
 }
 
+QString languageButtonText(Language language)
+{
+    switch (language) {
+    case Language::System:
+        return QCoreApplication::translate("usbrestore::Language", "Language: Auto");
+    case Language::English:
+        return QCoreApplication::translate("usbrestore::Language", "Language: English");
+    case Language::German:
+        return QCoreApplication::translate("usbrestore::Language", "Language: German");
+    }
+    return QCoreApplication::translate("usbrestore::Language", "Language: Auto");
+}
+
 } // namespace usbrestore

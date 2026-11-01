@@ -13,21 +13,21 @@ constexpr auto StorageNamespace = L"ROOT\\Microsoft\\Windows\\Storage";
 
 } // namespace
 
-QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error) const
+QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error, QString *displayError) const
 {
     QVector<DiskInfo> disks;
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
-        if (error) {
-            *error = storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, storage.lastError());
         }
         return disks;
     }
 
     const auto objects = storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE BusType = %1").arg(UsbBusType));
     if (objects.isEmpty() && !storage.lastError().isEmpty()) {
-        if (error) {
-            *error = storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, storage.lastError());
         }
         return disks;
     }
@@ -43,12 +43,13 @@ QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error) const
     return disks;
 }
 
-bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *error, DiskDetails details) const
+bool DiskEnumerator::diskByNumber(
+    quint32 diskNumber, DiskInfo *disk, QString *error, DiskDetails details, QString *displayError) const
 {
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
-        if (error) {
-            *error = storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, storage.lastError());
         }
         return false;
     }
@@ -57,13 +58,17 @@ bool DiskEnumerator::diskByNumber(quint32 diskNumber, DiskInfo *disk, QString *e
     const auto objects = storage.query(
         QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (objects.isEmpty()) {
-        if (error) {
+        if (error || displayError) {
             const QString detail = storage.lastError();
-            *error = detail.isEmpty() ? QStringLiteral(
-                                            "Disk %1 is no longer reported as a USB disk. Refresh and "
-                                            "select the USB again.")
-                                            .arg(diskNumber)
-                                      : detail;
+            setRestoreError(
+                error,
+                displayError,
+                detail.isEmpty() ? restoreText(QT_TRANSLATE_NOOP(
+                                                   "usbrestore::Backend",
+                                                   "Disk %1 is no longer reported as a USB disk. Refresh and "
+                                                   "select the USB again."))
+                                       .arg(diskNumber)
+                                 : detail);
         }
         return false;
     }

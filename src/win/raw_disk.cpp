@@ -132,7 +132,7 @@ RawDisk::~RawDisk()
     }
 }
 
-bool RawDisk::open(QString *error)
+bool RawDisk::open(QString *error, QString *displayError)
 {
     const QString path = QStringLiteral("\\\\.\\PhysicalDrive%1").arg(m_diskNumber);
     m_handle = CreateFileW(
@@ -144,25 +144,27 @@ bool RawDisk::open(QString *error)
         FILE_ATTRIBUTE_NORMAL,
         nullptr);
     if (m_handle == INVALID_HANDLE_VALUE) {
-        if (error) {
-            *error = lastError(QStringLiteral("open the drive"));
+        if (error || displayError) {
+            setRestoreError(error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "open the drive")));
         }
         return false;
     }
     return true;
 }
 
-bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
+bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error, QString *displayError)
 {
-    const auto refuse = [error](const QString &text) {
-        if (error) {
-            *error = text;
+    const auto refuse = [error, displayError](const RestoreMessage &text) {
+        if (error || displayError) {
+            setRestoreError(error, displayError, text);
         }
         return false;
     };
 
     if (m_handle == INVALID_HANDLE_VALUE) {
-        return refuse(QStringLiteral("Could not verify disk %1 because the drive is not open. Run the restore again.")
+        return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "Could not verify disk %1 because the drive is not open. Run the restore again."))
                           .arg(m_diskNumber));
     }
 
@@ -178,18 +180,20 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
             sizeof(deviceNumber),
             &returned,
             nullptr)) {
-        return refuse(lastError(QStringLiteral("read the device number")));
+        return refuse(lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "read the device number")));
     }
     if (deviceNumber.DeviceType != FILE_DEVICE_DISK) {
-        return refuse(QStringLiteral(
-                          "Could not verify disk %1 because the opened device is not a disk. "
-                          "Refresh the list and select the USB drive again.")
+        return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "Could not verify disk %1 because the opened device is not a disk. "
+                                      "Refresh the list and select the USB drive again."))
                           .arg(m_diskNumber));
     }
     if (deviceNumber.DeviceNumber != m_diskNumber || deviceNumber.PartitionNumber > 0) {
-        return refuse(QStringLiteral(
-                          "The opened handle points at disk %1, not the whole of disk %2. "
-                          "Refresh the list and select the USB drive again.")
+        return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "The opened handle points at disk %1, not the whole of disk %2. "
+                                      "Refresh the list and select the USB drive again."))
                           .arg(deviceNumber.DeviceNumber)
                           .arg(m_diskNumber));
     }
@@ -197,34 +201,41 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
     // Re-read from the device, not the WMI snapshot, so a replug since enumeration is caught.
     QByteArray descriptorBuffer;
     if (!readStorageDeviceDescriptor(m_handle, &descriptorBuffer)) {
-        return refuse(lastError(QStringLiteral("read the storage properties")));
+        return refuse(lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "read the storage properties")));
     }
 
     const auto *descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR *>(descriptorBuffer.constData());
     if (descriptor->BusType != BusTypeUsb) {
-        return refuse(QStringLiteral("Disk %1 is not on the USB bus. Refresh the list and select a USB drive.")
+        return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "Disk %1 is not on the USB bus. Refresh the list and select a USB drive."))
                           .arg(m_diskNumber));
     }
 
     if (!serialsAgree(serialFromDescriptor(descriptorBuffer), expected.serialNumber)) {
-        return refuse(QStringLiteral(
-                          "Disk %1 reports a different serial number than the disk that was selected. "
-                          "Refresh the list and select the USB drive again.")
+        return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "Disk %1 reports a different serial number than the disk that was selected. "
+                                      "Refresh the list and select the USB drive again."))
                           .arg(m_diskNumber));
     }
 
     GET_LENGTH_INFORMATION length = {};
     if (!DeviceIoControl(
             m_handle, IOCTL_DISK_GET_LENGTH_INFO, nullptr, 0, &length, sizeof(length), &returned, nullptr)) {
-        return refuse(lastError(QStringLiteral("read the drive size")));
+        return refuse(lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "read the drive size")));
     }
     const auto reportedSize = static_cast<std::uint64_t>(length.Length.QuadPart);
     if (expected.size != 0 && reportedSize != expected.size) {
-        return refuse(QStringLiteral(
-                          "Disk %1 now reports %2 instead of the %3 that was selected. "
-                          "Refresh the list and select the USB drive again.")
-                          .arg(m_diskNumber)
-                          .arg(formatByteSize(reportedSize), formatByteSize(expected.size)));
+        return refuse(
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "Disk %1 now reports %2 instead of the %3 that was selected. "
+                            "Refresh the list and select the USB drive again."))
+                .arg(m_diskNumber)
+                .arg(
+                    RestoreMessage{formatByteSize(reportedSize), formatByteSize(reportedSize, TextMode::Display)},
+                    RestoreMessage{formatByteSize(expected.size), formatByteSize(expected.size, TextMode::Display)}));
     }
 
     DISK_GEOMETRY_EX geometry = {};
@@ -232,9 +243,10 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
             m_handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geometry, sizeof(geometry), &returned, nullptr)) {
         const auto reportedSectorSize = static_cast<quint32>(geometry.Geometry.BytesPerSector);
         if (reportedSectorSize != 0 && expected.sectorSize != 0 && reportedSectorSize != expected.sectorSize) {
-            return refuse(QStringLiteral(
-                              "Disk %1 reports %2-byte sectors instead of the %3-byte sectors that "
-                              "were selected. Refresh the list and select the USB drive again.")
+            return refuse(restoreText(QT_TRANSLATE_NOOP(
+                                          "usbrestore::Backend",
+                                          "Disk %1 reports %2-byte sectors instead of the %3-byte sectors that "
+                                          "were selected. Refresh the list and select the USB drive again."))
                               .arg(m_diskNumber)
                               .arg(reportedSectorSize)
                               .arg(expected.sectorSize));
@@ -242,13 +254,13 @@ bool RawDisk::verifyIdentity(const DiskInfo &expected, QString *error)
     }
 
     if (!DeviceIoControl(m_handle, IOCTL_DISK_IS_WRITABLE, nullptr, 0, nullptr, 0, &returned, nullptr)) {
-        return refuse(lastError(QStringLiteral("check write access")));
+        return refuse(lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "check write access")));
     }
 
     return true;
 }
 
-bool RawDisk::lock(QString *error)
+bool RawDisk::lock(QString *error, QString *displayError)
 {
     DWORD unused = 0;
     DWORD code = ERROR_SUCCESS;
@@ -267,54 +279,70 @@ bool RawDisk::lock(QString *error)
             Sleep(500);
         }
     }
-    if (error) {
-        *error = windowsDeviceErrorText(QStringLiteral("Could not lock the drive on disk %1").arg(m_diskNumber), code);
+    if (error || displayError) {
+        setRestoreError(
+            error,
+            displayError,
+            windowsDeviceErrorMessage(
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not lock the drive on disk %1"))
+                    .arg(m_diskNumber),
+                code));
     }
     return false;
 }
 
-bool RawDisk::allowExtendedIo(QString *error)
+bool RawDisk::allowExtendedIo(QString *error, QString *displayError)
 {
     DWORD unused = 0;
     if (!DeviceIoControl(m_handle, FSCTL_ALLOW_EXTENDED_DASD_IO, nullptr, 0, nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("enable extended disk I/O"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "enable extended disk I/O")));
         }
         return false;
     }
     return true;
 }
 
-bool RawDisk::refreshLayout(QString *error)
+bool RawDisk::refreshLayout(QString *error, QString *displayError)
 {
     DWORD unused = 0;
     if (!DeviceIoControl(m_handle, IOCTL_DISK_UPDATE_PROPERTIES, nullptr, 0, nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("refresh the disk properties"));
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "refresh the disk properties")));
         }
         return false;
     }
     return true;
 }
 
-bool RawDisk::clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSize, QString *error)
+bool RawDisk::clearPartitionSignatures(
+    std::uint64_t diskSize, quint32 sectorSize, QString *error, QString *displayError)
 {
     const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
 
     // On a small disk a fixed 4 MiB from each end would overlap.
     const std::uint64_t clearBytes = alignDown(qMin(SignatureClearBytes, diskSize / 4), sector);
     if (clearBytes < sector) {
-        if (error) {
-            *error =
-                QStringLiteral("Disk %1 is too small to clear safely. Select a larger USB drive.").arg(m_diskNumber);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend", "Disk %1 is too small to clear safely. Select a larger USB drive."))
+                    .arg(m_diskNumber));
         }
         return false;
     }
 
-    if (!writeZeros(0, clearBytes, sector, error)) {
+    if (!writeZeros(0, clearBytes, sector, error, displayError)) {
         return false;
     }
-    if (!writeZeros(alignDown(diskSize - clearBytes, sector), clearBytes, sector, error)) {
+    if (!writeZeros(alignDown(diskSize - clearBytes, sector), clearBytes, sector, error, displayError)) {
         return false;
     }
 
@@ -323,15 +351,16 @@ bool RawDisk::clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSiz
     return true;
 }
 
-bool RawDisk::setRaw(QString *error)
+bool RawDisk::setRaw(QString *error, QString *displayError)
 {
     CREATE_DISK createDisk = {};
     createDisk.PartitionStyle = PARTITION_STYLE_RAW;
     DWORD unused = 0;
     if (!DeviceIoControl(
             m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("reset the partition table"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "reset the partition table")));
         }
         return false;
     }
@@ -339,44 +368,53 @@ bool RawDisk::setRaw(QString *error)
     return true;
 }
 
-bool RawDisk::replaceLayoutWithEmptyGpt(QString *error)
+bool RawDisk::replaceLayoutWithEmptyGpt(QString *error, QString *displayError)
 {
     // A RAW or MBR reset keeps the old boot code, and with its jump instruction Windows can take the
     // disk for a superfloppy again; the GPT's protective MBR replaces it.
     GUID diskId = {};
-    if (!createGptDisk(&diskId, error)) {
+    if (!createGptDisk(&diskId, error, displayError)) {
         return false;
     }
 
     QString readError;
+    QString displayReadError;
     for (int attempt = 0; attempt < 20; ++attempt) {
         refreshLayout(nullptr);
         bool hasPartitions = true;
         readError.clear();
-        if (layoutHasPartitions(&hasPartitions, &readError) && !hasPartitions) {
+        if (layoutHasPartitions(&hasPartitions, &readError, &displayReadError) && !hasPartitions) {
             return true;
         }
         Sleep(250);
     }
-    if (error) {
-        *error = readError.isEmpty()
-                     ? QStringLiteral(
-                           "Windows still lists a partition on disk %1 after an empty partition table was "
-                           "written. Unplug the USB disk, plug it back in and run the restore again.")
-                           .arg(m_diskNumber)
-                     : readError;
+    if (error || displayError) {
+        setRestoreError(
+            error,
+            displayError,
+            readError.isEmpty()
+                ? restoreText(QT_TRANSLATE_NOOP(
+                                  "usbrestore::Backend",
+                                  "Windows still lists a partition on disk %1 after an empty partition table was "
+                                  "written. Unplug the USB disk, plug it back in and run the restore again."))
+                      .arg(m_diskNumber)
+                : RestoreMessage{readError, displayReadError});
     }
     return false;
 }
 
-bool RawDisk::createGptDisk(GUID *diskId, QString *error)
+bool RawDisk::createGptDisk(GUID *diskId, QString *error, QString *displayError)
 {
     if (FAILED(CoCreateGuid(diskId))) {
-        if (error) {
-            *error = QStringLiteral(
-                         "Could not generate an identifier for a partition table on disk %1. Run the "
-                         "restore again.")
-                         .arg(m_diskNumber);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not generate an identifier for a partition table on disk %1. Run the "
+                                "restore again."))
+                    .arg(m_diskNumber));
         }
         return false;
     }
@@ -387,8 +425,11 @@ bool RawDisk::createGptDisk(GUID *diskId, QString *error)
     DWORD unused = 0;
     if (!DeviceIoControl(
             m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("write the GPT partition table"));
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "write the GPT partition table")));
         }
         return false;
     }
@@ -396,7 +437,7 @@ bool RawDisk::createGptDisk(GUID *diskId, QString *error)
 }
 
 // Fails rather than guessing when the layout cannot be read.
-bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error) const
+bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error, QString *displayError) const
 {
     constexpr int MaxEntries = 128;
     const int entriesOffset = static_cast<int>(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry));
@@ -411,17 +452,23 @@ bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error) const
             static_cast<DWORD>(buffer.size()),
             &returned,
             nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("read the partition table"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "read the partition table")));
         }
         return false;
     }
     if (returned < static_cast<DWORD>(entriesOffset)) {
-        if (error) {
-            *error = QStringLiteral(
-                         "Windows returned an incomplete partition table for disk %1. Unplug the drive, plug it back "
-                         "in and try again.")
-                         .arg(m_diskNumber);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend",
+                        "Windows returned an incomplete partition table for disk %1. Unplug the drive, plug it back "
+                        "in and try again."))
+                    .arg(m_diskNumber));
         }
         return false;
     }
@@ -440,26 +487,38 @@ bool RawDisk::layoutHasPartitions(bool *hasPartitions, QString *error) const
 }
 
 bool RawDisk::createSinglePartition(
-    PartitionStyle style, FileSystemType fileSystem, std::uint64_t diskSize, quint32 sectorSize, QString *error)
+    PartitionStyle style,
+    FileSystemType fileSystem,
+    std::uint64_t diskSize,
+    quint32 sectorSize,
+    QString *error,
+    QString *displayError)
 {
     const GptLayout layout = calculateGptLayout(diskSize, sectorSize);
-    if (const QString failure = partitionLayoutError(style, layout, sectorSize); !failure.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral(
-                         "Could not create a partition on disk %1: %2 Select a supported partition layout "
-                         "or a different USB drive.")
-                         .arg(m_diskNumber)
-                         .arg(failure);
+    if (const RestoreMessage failure{
+            partitionLayoutError(style, layout, sectorSize),
+            partitionLayoutError(style, layout, sectorSize, TextMode::Display)};
+        !failure.english.isEmpty()) {
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not create a partition on disk %1: %2 Select a supported partition layout "
+                                "or a different USB drive."))
+                    .arg(m_diskNumber)
+                    .arg(failure));
         }
         return false;
     }
 
     if (style == PartitionStyle::Mbr) {
-        return createSingleMbrPartition(layout, fileSystem, sectorSize, error);
+        return createSingleMbrPartition(layout, fileSystem, sectorSize, error, displayError);
     }
 
     GUID diskId = {};
-    if (!createGptDisk(&diskId, error) || !refreshLayout(error)) {
+    if (!createGptDisk(&diskId, error, displayError) || !refreshLayout(error, displayError)) {
         return false;
     }
 
@@ -480,9 +539,14 @@ bool RawDisk::createSinglePartition(
     partition.Gpt.PartitionType = BasicDataPartitionGuid;
     partition.Gpt.Attributes = 0;
     if (FAILED(CoCreateGuid(&partition.Gpt.PartitionId))) {
-        if (error) {
-            *error = QStringLiteral("Could not generate a partition identifier for disk %1. Run the restore again.")
-                         .arg(m_diskNumber);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not generate a partition identifier for disk %1. Run the restore again."))
+                    .arg(m_diskNumber));
         }
         return false;
     }
@@ -498,25 +562,31 @@ bool RawDisk::createSinglePartition(
             0,
             &unused,
             nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("create the GPT partition"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "create the GPT partition")));
         }
         return false;
     }
 
-    return refreshLayout(error);
+    return refreshLayout(error, displayError);
 }
 
 bool RawDisk::createSingleMbrPartition(
-    const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize, QString *error)
+    const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize, QString *error, QString *displayError)
 {
     const std::uint64_t sector = sectorSize;
 
     GUID signatureSource = {};
     if (FAILED(CoCreateGuid(&signatureSource))) {
-        if (error) {
-            *error = QStringLiteral("Could not generate an MBR signature for disk %1. Run the restore again.")
-                         .arg(m_diskNumber);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not generate an MBR signature for disk %1. Run the restore again."))
+                    .arg(m_diskNumber));
         }
         return false;
     }
@@ -528,12 +598,15 @@ bool RawDisk::createSingleMbrPartition(
     DWORD unused = 0;
     if (!DeviceIoControl(
             m_handle, IOCTL_DISK_CREATE_DISK, &createDisk, sizeof(createDisk), nullptr, 0, &unused, nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("write the MBR partition table"));
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "write the MBR partition table")));
         }
         return false;
     }
-    if (!refreshLayout(error)) {
+    if (!refreshLayout(error, displayError)) {
         return false;
     }
 
@@ -575,27 +648,36 @@ bool RawDisk::createSingleMbrPartition(
             0,
             &unused,
             nullptr)) {
-        if (error) {
-            *error = lastError(QStringLiteral("create the MBR partition"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "create the MBR partition")));
         }
         return false;
     }
 
-    return refreshLayout(error);
+    return refreshLayout(error, displayError);
 }
 
-bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error)
+bool RawDisk::writeZeros(
+    std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error, QString *displayError)
 {
     if (bytes == 0) {
         return true;
     }
 
-    const QString unaligned = unalignedZeroRangeError(offset, bytes, sectorSize);
-    if (!unaligned.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("Could not clear old signatures on disk %1: %2 Restart the app and try again.")
-                         .arg(m_diskNumber)
-                         .arg(unaligned);
+    const RestoreMessage unaligned{
+        unalignedZeroRangeError(offset, bytes, sectorSize),
+        unalignedZeroRangeError(offset, bytes, sectorSize, TextMode::Display)};
+    if (!unaligned.english.isEmpty()) {
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not clear old signatures on disk %1: %2 Restart the app and try again."))
+                    .arg(m_diskNumber)
+                    .arg(unaligned));
         }
         return false;
     }
@@ -603,8 +685,9 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
     LARGE_INTEGER pointer;
     pointer.QuadPart = static_cast<LONGLONG>(offset);
     if (!SetFilePointerEx(m_handle, pointer, nullptr, FILE_BEGIN)) {
-        if (error) {
-            *error = lastError(QStringLiteral("seek to the write position"));
+        if (error || displayError) {
+            setRestoreError(
+                error, displayError, lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "seek to the write position")));
         }
         return false;
     }
@@ -628,26 +711,40 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
                 Sleep(NotReadyRetryDelayMs);
                 pointer.QuadPart = static_cast<LONGLONG>(offset + (bytes - remaining));
                 if (!SetFilePointerEx(m_handle, pointer, nullptr, FILE_BEGIN)) {
-                    if (error) {
-                        *error = lastError(QStringLiteral("seek to the write position"));
+                    if (error || displayError) {
+                        setRestoreError(
+                            error,
+                            displayError,
+                            lastError(
+                                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "seek to the write position"))));
                     }
                     return false;
                 }
                 continue;
             }
-            if (error) {
-                *error = windowsDeviceErrorText(
-                    QStringLiteral("Could not clear old signatures on disk %1").arg(m_diskNumber), code);
+            if (error || displayError) {
+                setRestoreError(
+                    error,
+                    displayError,
+                    windowsDeviceErrorMessage(
+                        restoreText(
+                            QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not clear old signatures on disk %1"))
+                            .arg(m_diskNumber),
+                        code));
             }
             return false;
         }
         if (written == 0) {
-            if (error) {
-                *error = QStringLiteral(
-                             "Disk %1 stopped accepting writes while clearing old signatures. "
-                             "Unplug the drive, plug it back in and try again; if it keeps happening, "
-                             "try another USB port or replace the drive.")
-                             .arg(m_diskNumber);
+            if (error || displayError) {
+                setRestoreError(
+                    error,
+                    displayError,
+                    restoreText(QT_TRANSLATE_NOOP(
+                                    "usbrestore::Backend",
+                                    "Disk %1 stopped accepting writes while clearing old signatures. "
+                                    "Unplug the drive, plug it back in and try again; if it keeps happening, "
+                                    "try another USB port or replace the drive."))
+                        .arg(m_diskNumber));
             }
             return false;
         }
@@ -657,10 +754,14 @@ bool RawDisk::writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sect
     return true;
 }
 
-QString RawDisk::lastError(const QString &operation) const
+RestoreMessage RawDisk::lastError(const char *operation) const
 {
     const DWORD code = GetLastError();
-    return windowsDeviceErrorText(QStringLiteral("Could not %1 on disk %2").arg(operation).arg(m_diskNumber), code);
+    return windowsDeviceErrorMessage(
+        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
+            .arg(restoreText(operation))
+            .arg(m_diskNumber),
+        code);
 }
 
 } // namespace usbrestore

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/restore_message.h"
+
 #include <QString>
 #include <QStringList>
 
@@ -10,6 +12,11 @@ namespace usbrestore {
 QString windowsErrorMessage(DWORD error);
 QString windowsErrorMessage();
 QString windowsErrorMessage(const QString &context, DWORD error);
+
+RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD error);
+RestoreMessage windowsRestoreErrorMessage(
+    const RestoreMessage &context, const RestoreMessage &detail, const RestoreMessage &advice = {});
+RestoreMessage windowsErrorDetails(const RestoreMessage &context, DWORD error);
 
 QString windowsDeviceErrorText(const QString &context, DWORD error);
 // An empty advice falls back to closing programs, replugging and running the restore again.

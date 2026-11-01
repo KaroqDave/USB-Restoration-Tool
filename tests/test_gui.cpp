@@ -1,5 +1,6 @@
 #include "gui/main_window.h"
 #include "core/safety.h"
+#include "core/restore_protocol.h"
 #include "gui/restore_dialog.h"
 #include "gui/theme.h"
 #include "platform/translations.h"
@@ -36,6 +37,10 @@
 
 #include <atomic>
 #include <functional>
+
+// Dropping the embedded catalog is how a broken package fails to load German.
+extern int qInitResources_usb_gui_tests_translations();
+extern int qCleanupResources_usb_gui_tests_translations();
 
 using namespace usbrestore;
 
@@ -94,30 +99,71 @@ class ExampleService : public DiskService {
     DiskInfo disk = exampleDisk();
     bool diskPresent = true;
     QString scanError;
+    bool reportMessages = false;
+    bool holdRestore = false;
+    std::atomic_bool releaseHeldRestore{false};
+    RestoreMessage backendError;
+    QVector<RestoreMessage> backendSteps;
+    QStringList backendDetails;
 
     PrivilegeMode privilegeMode() const override { return PrivilegeMode::Helper; }
     QString privilegeHint() const override { return {}; }
-    QVector<DiskInfo> listUsbDisks(QString *error) const override
+    QVector<DiskInfo> listUsbDisks(QString *error, QString * = nullptr) const override
     {
         *error = scanError;
         return diskPresent && scanError.isEmpty() ? QVector<DiskInfo>{disk} : QVector<DiskInfo>{};
     }
-    bool refreshDisk(const DiskInfo &, DiskInfo *refreshedDisk, QString *) const override
+    bool refreshDisk(const DiskInfo &, DiskInfo *refreshedDisk, QString *, QString * = nullptr) const override
     {
         *refreshedDisk = disk;
         return true;
     }
     RestoreGuard restoreGuard() const override { return {}; }
     QVector<FileSystemType> supportedFileSystems() const override { return {FileSystemType::ExFat}; }
-    bool canFormatFileSystem(FileSystemType, const DiskInfo &, QString *) const override { return true; }
+    bool canFormatFileSystem(FileSystemType, const DiskInfo &, QString *, QString * = nullptr) const override
+    {
+        return true;
+    }
     const QVector<RestoreStep> &restorePlan() const override { return linuxRestorePlan(); }
     int totalRestoreSteps() const override { return static_cast<int>(restorePlan().size()); }
     int firstDestructiveStep() const override { return firstDestructiveStepOf(restorePlan()); }
-    bool
-    restore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error) override
+    bool restore(
+        const RestoreRequest &request,
+        RestoreReporter &reporter,
+        RestoreResult *result,
+        QString *error,
+        QString *displayError = nullptr) override
     {
         received = request;
         ++restores;
+        if (holdRestore) {
+            QElapsedTimer timeout;
+            timeout.start();
+            while (!releaseHeldRestore.load() && !reporter.cancelRequested() && timeout.elapsed() < 15000) {
+                QThread::msleep(1);
+            }
+            if (reporter.cancelRequested()) {
+                return false;
+            }
+            if (!releaseHeldRestore.load()) {
+                *error = QStringLiteral("Example hold timed out");
+                return false;
+            }
+            if (result) {
+                result->location = QStringLiteral("/dev/example1");
+            }
+            return true;
+        }
+        if (reportMessages) {
+            for (const auto &message : backendSteps) {
+                reporter.step(message);
+            }
+            for (const auto &detail : backendDetails) {
+                reporter.detail(detail);
+            }
+            setRestoreError(error, displayError, backendError);
+            return false;
+        }
         if (outcome == 1) {
             *error = QStringLiteral("Example restore failure");
             return false;
@@ -211,6 +257,137 @@ class GuiTests : public QObject {
         }
         QCOMPARE(RestoreDialog::tr("Confirm USB restore"), englishTitle);
         QCOMPARE(QLocale(), locale);
+    }
+
+    void activatesTheSavedLanguageWithoutChangingTheLocale()
+    {
+        const QLocale locale;
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = Language::German;
+        saveAppSettings(settings);
+        {
+            Translations translations;
+            QVERIFY(activateInterfaceLanguage(translations, loadAppSettings().language));
+            QCOMPARE(translations.language(), Language::German);
+            QCOMPARE(elevatedPermissionTitle(), QStringLiteral("Erhöhte Berechtigung erforderlich"));
+            QCOMPARE(
+                QCoreApplication::translate("usbrestore::Language", "Language: German"),
+                QStringLiteral("Sprache: Deutsch"));
+        }
+        settings.language = Language::English;
+        saveAppSettings(settings);
+        {
+            Translations translations;
+            QVERIFY(activateInterfaceLanguage(translations, loadAppSettings().language));
+            QCOMPARE(translations.language(), Language::English);
+            QCOMPARE(elevatedPermissionTitle(), QStringLiteral("Elevated permission required"));
+            QCOMPARE(
+                QCoreApplication::translate("usbrestore::Language", "Language: English"),
+                QStringLiteral("Language: English"));
+        }
+        {
+            Translations translations;
+            QVERIFY(translations.load(Language::German));
+            const auto restoreCatalog = qScopeGuard([]() { qInitResources_usb_gui_tests_translations(); });
+            qCleanupResources_usb_gui_tests_translations();
+            QVERIFY(!QFile::exists(QStringLiteral(":/i18n/usbrestore_de.qm")));
+            QVERIFY(!activateInterfaceLanguage(translations, Language::German));
+            QCOMPARE(translations.language(), Language::English);
+            QCOMPARE(elevatedPermissionTitle(), QStringLiteral("Elevated permission required"));
+        }
+        QCOMPARE(QLocale(), locale);
+    }
+
+    void switchesLanguageFromTheHeader()
+    {
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = Language::English;
+        saveAppSettings(settings);
+        Translations translations;
+        QVERIFY(translations.load(Language::English));
+        ExampleService service;
+        MainWindow window(service, Theme::Light, &translations);
+        window.show();
+        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        QVERIFY(language);
+        QCOMPARE(language->text(), QStringLiteral("Language: English"));
+        QCOMPARE(
+            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
+            QStringLiteral("A fresh start for your USB drive."));
+
+        language->click();
+        QCoreApplication::processEvents();
+        QCOMPARE(loadAppSettings().language, Language::German);
+        QCOMPARE(translations.language(), Language::German);
+        QCOMPARE(language->text(), QStringLiteral("Sprache: Deutsch"));
+        QCOMPARE(
+            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
+            QStringLiteral("Ein Neuanfang für Ihr USB-Laufwerk."));
+        QCOMPARE(
+            window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->text(),
+            QStringLiteral("USB wiederherstellen"));
+
+        language->click();
+        QCoreApplication::processEvents();
+        QCOMPARE(loadAppSettings().language, Language::System);
+        QCOMPARE(translations.language(), resolveLanguage(Language::System));
+        QCOMPARE(language->text(), languageButtonText(Language::System));
+
+        language->click();
+        QCoreApplication::processEvents();
+        QCOMPARE(loadAppSettings().language, Language::English);
+        QCOMPARE(translations.language(), Language::English);
+        QCOMPARE(
+            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
+            QStringLiteral("A fresh start for your USB drive."));
+        window.close();
+    }
+
+    void doesNotChangeLanguageDuringARestore()
+    {
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = Language::English;
+        saveAppSettings(settings);
+        Translations translations;
+        QVERIFY(translations.load(Language::English));
+        ExampleService service;
+        service.holdRestore = true;
+        MainWindow window(service, Theme::Light, &translations);
+        window.show();
+        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        QVERIFY(language);
+        QCOMPARE(language->text(), QStringLiteral("Language: English"));
+        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        auto *dialog = window.findChild<RestoreDialog *>();
+        QVERIFY(dialog);
+        confirmErase(*dialog);
+        QVERIFY(!language->isEnabled());
+        language->click();
+        QVERIFY(QMetaObject::invokeMethod(&window, "cycleLanguage"));
+        QCOMPARE(language->text(), QStringLiteral("Language: English"));
+        QCOMPARE(
+            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
+            QStringLiteral("A fresh start for your USB drive."));
+        QCOMPARE(loadAppSettings().language, Language::English);
+        const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
+        QVERIFY(log.contains(QStringLiteral("Restore requested for")));
+        QVERIFY(log.contains(QStringLiteral("32.00 GB")));
+        QVERIFY(!log.contains(QStringLiteral("32,00 GB")));
+        service.releaseHeldRestore.store(true);
+        QTRY_COMPARE(dialog->windowTitle(), QStringLiteral("Restore complete"));
+        QCOMPARE(
+            dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(),
+            QStringLiteral("The disk is now one exFAT volume labelled USB at /dev/example1."));
+        QVERIFY(language->isEnabled());
+        QCOMPARE(translations.language(), Language::English);
+        dialog->accept();
+        window.close();
     }
 
     void translatesSharedDescriptionsWithoutChangingLogs()
@@ -327,6 +504,127 @@ class GuiTests : public QObject {
         }
         QCOMPARE(service.restores.load(), 0);
         window.close();
+    }
+
+    void separatesBackendDisplayMessagesFromEnglishLogs_data()
+    {
+        QTest::addColumn<Language>("language");
+        QTest::newRow("english") << Language::English;
+        QTest::newRow("german") << Language::German;
+    }
+
+    void separatesBackendDisplayMessagesFromEnglishLogs()
+    {
+        QFETCH(Language, language);
+        Translations translations;
+        QVERIFY(translations.load(language));
+        ExampleService service;
+        service.reportMessages = true;
+        const auto request = exampleRequest();
+        service.backendSteps = {
+            restoreStepMessage(RestoreStep::VerifyDisk, request.style, request.fileSystem),
+            restoreStepMessage(RestoreStep::Format, request.style, request.fileSystem)};
+        const QString diagnostic = QStringLiteral("formatter detail: device /dev/example1, code 73, %1");
+        service.backendDetails = {diagnostic};
+        service.backendError = restoreText(QT_TRANSLATE_NOOP(
+                                               "usbrestore::Backend",
+                                               "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug "
+                                               "it back in and run the restore again."))
+                                   .arg(QStringLiteral("mkfs-test"), QStringLiteral("/dev/example1"), diagnostic);
+        RestoreWorker worker(service, request);
+        QSignalSpy logs(&worker, &RestoreWorker::logMessage);
+        QSignalSpy details(&worker, &RestoreWorker::logFileOnly);
+        QSignalSpy progress(&worker, &RestoreWorker::progress);
+        QSignalSpy failed(&worker, &RestoreWorker::failed);
+        worker.run();
+        QCOMPARE(logs.size(), 3);
+        QCOMPARE(progress.size(), 2);
+        QCOMPARE(logs.at(0).first().toString(), QStringLiteral("Verifying the selected USB disk"));
+        QCOMPARE(logs.at(1).first().toString(), QStringLiteral("Formatting as exFAT"));
+        QCOMPARE(logs.at(2).first().toString(), QStringLiteral("ERROR: ") + service.backendError.english);
+        QVERIFY(service.backendError.english.contains(diagnostic));
+        QVERIFY(service.backendError.display.contains(diagnostic));
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().first().toString(), service.backendError.display);
+        bool sawDetail = false;
+        for (const auto &line : details) {
+            sawDetail |= line.first().toString() == diagnostic;
+        }
+        QVERIFY(sawDetail);
+        QCOMPARE(progress.at(0).at(2).toString(), service.backendSteps.first().display);
+        if (language == Language::German) {
+            QCOMPARE(progress.at(1).at(2).toString(), QStringLiteral("Als exFAT formatieren"));
+            QVERIFY(failed.first().first().toString().contains(QStringLiteral("konnte das neue Volume")));
+        } else {
+            QCOMPARE(service.backendError.display, service.backendError.english);
+        }
+    }
+
+    void translatesTheFallbackFailureWithoutChangingItsLog()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        ExampleService service;
+        service.reportMessages = true;
+        RestoreWorker worker(service, exampleRequest());
+        QSignalSpy logs(&worker, &RestoreWorker::logMessage);
+        QSignalSpy failed(&worker, &RestoreWorker::failed);
+        worker.run();
+        QCOMPARE(logs.first().first().toString(), QStringLiteral("ERROR: The restore failed."));
+        QCOMPARE(failed.first().first().toString(), QStringLiteral("Die Wiederherstellung ist fehlgeschlagen."));
+    }
+
+    void translatesEveryBackendStepWithoutChangingItsLogText()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        for (const auto &plan : {linuxRestorePlan(), windowsRestorePlan()}) {
+            for (const RestoreStep step : plan) {
+                for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr}) {
+                    for (const auto fs :
+                         {FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs, FileSystemType::Ext4}) {
+                        const RestoreMessage message = restoreStepMessage(step, style, fs);
+                        QVERIFY2(!message.english.isEmpty(), qPrintable(message.display));
+                        QVERIFY2(message.display != message.english, qPrintable(message.english));
+                        if (step == RestoreStep::Format) {
+                            QVERIFY(message.display.contains(fileSystemTypeName(fs)));
+                        }
+                        if (step == RestoreStep::CreatePartition || step == RestoreStep::WritePartitionTable) {
+                            QVERIFY(message.display.contains(partitionStyleLabel(style)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void translatesHelperFailuresWithoutChangingProtocolOrDetails()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        HelperRunObservation run;
+        run.sawVersion = true;
+        run.versionAccepted = true;
+        run.exitCode = RestoreExitFailed;
+        run.helperStderr = QStringLiteral("Could not open /dev/example: errno 5");
+        QString english, display;
+        QCOMPARE(judgeHelperRun(run, &english), HelperRunVerdict::Failed);
+        QCOMPARE(judgeHelperRun(run, &display, TextMode::Display), HelperRunVerdict::Failed);
+        QCOMPARE(english, run.helperStderr);
+        QCOMPARE(display, QStringLiteral("Die Wiederherstellung ist fehlgeschlagen.\n\nDetails: ") + run.helperStderr);
+        const auto line = parseProtocolLine(
+            encodeVersionLine(RestoreProtocolVersion + 1, QStringLiteral("other"), linuxRestorePlan()));
+        QVERIFY(!acceptHelperAnnouncement(line, QStringLiteral("test"), linuxRestorePlan(), &english));
+        QVERIFY(
+            !acceptHelperAnnouncement(line, QStringLiteral("test"), linuxRestorePlan(), &display, TextMode::Display));
+        QVERIFY(english.contains(QStringLiteral("partly upgraded")));
+        QVERIFY(display.contains(QStringLiteral("teilweise aktualisiert")));
+        QCOMPARE(
+            encodeStepLine(1, 10, QStringLiteral("Verifying the selected USB disk")),
+            QStringLiteral("step 1/10 Verifying the selected USB disk"));
+        QVERIFY(translations.load(Language::English));
+        QCOMPARE(judgeHelperRun(run, &display, TextMode::Display), HelperRunVerdict::Failed);
+        QCOMPARE(display, run.helperStderr);
     }
 
     void keepsBackendErrorsInEnglishWhileTheDialogIsGerman()
@@ -1079,6 +1377,20 @@ class GuiTests : public QObject {
         QCOMPARE(
             themeButtonText(Theme::System),
             language == Language::German ? QStringLiteral("Design: Automatisch") : QStringLiteral("Theme: Auto"));
+        auto *languageButton = window.findChild<QPushButton *>(QStringLiteral("language"));
+        QVERIFY(languageButton);
+        QCOMPARE(languageButton->text(), languageButtonText(Language::System));
+        for (const QString &name :
+             {QStringLiteral("activity"),
+              QStringLiteral("theme"),
+              QStringLiteral("language"),
+              QStringLiteral("about")}) {
+            auto *button = window.findChild<QPushButton *>(name);
+            QVERIFY(button);
+            QVERIFY(button->isVisible());
+            QVERIFY2(
+                button->fontMetrics().horizontalAdvance(button->text()) < button->width(), qPrintable(button->text()));
+        }
         const QString output = qEnvironmentVariable("USBRESTORE_GUI_SNAPSHOTS");
         if (!output.isEmpty()) {
             QVERIFY(QDir().mkpath(output));

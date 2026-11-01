@@ -40,21 +40,22 @@ PrivilegeMode LinuxDiskService::privilegeMode() const
 QString LinuxDiskService::privilegeHint() const
 {
     // Only shown when not root and no helper is installed: an AppImage or build run without sudo.
-    return QStringLiteral(
-               "USB Restoration Tool cannot get permission to restore USB disks.\n\nInstall it, so that "
-               "it can ask for permission when a restore starts, or start it again with sudo:\n\n    "
-               "sudo %1")
+    return QCoreApplication::translate(
+               "usbrestore::DiskService",
+               "USB Restoration Tool cannot get permission to restore USB disks.\n\n"
+               "Install it, so that it can ask for permission when a restore starts, or start it again with sudo:\n\n"
+               "    sudo %1")
         .arg(QCoreApplication::applicationFilePath());
 }
 
-QVector<DiskInfo> LinuxDiskService::listUsbDisks(QString *error) const
+QVector<DiskInfo> LinuxDiskService::listUsbDisks(QString *error, QString *displayError) const
 {
-    return listUsbDiskInfos(error);
+    return listUsbDiskInfos(error, displayError);
 }
 
-bool LinuxDiskService::refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error) const
+bool LinuxDiskService::refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error, QString *displayError) const
 {
-    return refreshUsbDisk(disk.deviceId, current, error);
+    return refreshUsbDisk(disk.deviceId, current, error, DiskDetails::Display, displayError);
 }
 
 RestoreGuard LinuxDiskService::restoreGuard() const
@@ -67,10 +68,11 @@ QVector<FileSystemType> LinuxDiskService::supportedFileSystems() const
     return {FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs, FileSystemType::Ext4};
 }
 
-bool LinuxDiskService::canFormatFileSystem(FileSystemType type, const DiskInfo &disk, QString *reason) const
+bool LinuxDiskService::canFormatFileSystem(
+    FileSystemType type, const DiskInfo &disk, QString *reason, QString *displayReason) const
 {
     // Shared so the helper applies exactly this rule to the disk it re-derived.
-    return canCreateFileSystemOn(type, disk, reason);
+    return canCreateFileSystemOn(type, disk, reason, displayReason);
 }
 
 const QVector<RestoreStep> &LinuxDiskService::restorePlan() const
@@ -89,12 +91,16 @@ int LinuxDiskService::firstDestructiveStep() const
 }
 
 bool LinuxDiskService::restore(
-    const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
+    const RestoreRequest &request,
+    RestoreReporter &reporter,
+    RestoreResult *result,
+    QString *error,
+    QString *displayError)
 {
     if (runningAsRoot()) {
-        return performLinuxRestore(request, reporter, result, error);
+        return performLinuxRestore(request, reporter, result, error, displayError);
     }
-    return runHelperRestore(request, reporter, result, error);
+    return runHelperRestore(request, reporter, result, error, displayError);
 }
 
 } // namespace usbrestore

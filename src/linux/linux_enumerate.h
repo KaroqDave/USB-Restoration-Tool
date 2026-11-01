@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/restore_message.h"
+
 #include "core/disk.h"
 #include "core/safety.h"
 
@@ -18,11 +20,15 @@ QString devicePathFor(const QString &kernelName);
 // that is not a block device the kernel publishes.
 DiskInfo diskInfoFor(const QString &diskName, DiskDetails details = DiskDetails::Display);
 
-QVector<DiskInfo> listUsbDiskInfos(QString *error = nullptr);
+QVector<DiskInfo> listUsbDiskInfos(QString *error = nullptr, QString *displayError = nullptr);
 
 // Fails for a partition such as "/dev/sdb1", which has no /sys/block directory.
 bool refreshUsbDisk(
-    const QString &deviceId, DiskInfo *current, QString *error = nullptr, DiskDetails details = DiskDetails::Display);
+    const QString &deviceId,
+    DiskInfo *current,
+    QString *error = nullptr,
+    DiskDetails details = DiskDetails::Display,
+    QString *displayError = nullptr);
 
 RestoreGuard linuxRestoreGuard();
 

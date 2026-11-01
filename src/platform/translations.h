@@ -23,4 +23,9 @@ class Translations {
     Language m_language = Language::English;
 };
 
+// A missing catalog is not fatal: English stays installed and the caller still opens.
+bool activateInterfaceLanguage(Translations &translations, Language preference);
+
+QString elevatedPermissionTitle();
+
 } // namespace usbrestore

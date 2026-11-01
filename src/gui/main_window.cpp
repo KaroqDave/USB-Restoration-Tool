@@ -3,6 +3,7 @@
 #include "core/safety.h"
 #include "gui/restore_dialog.h"
 #include "platform/restore_worker.h"
+#include "platform/translations.h"
 
 #ifdef Q_OS_WIN
 #include "win/windows_util.h"
@@ -16,6 +17,7 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFrame>
@@ -127,8 +129,8 @@ void openExternally(const QString &target, bool isLocalFile)
 
 } // namespace
 
-MainWindow::MainWindow(DiskService &service, Theme initialTheme, QWidget *parent)
-    : QMainWindow(parent), m_service(service), m_theme(initialTheme)
+MainWindow::MainWindow(DiskService &service, Theme initialTheme, Translations *translations, QWidget *parent)
+    : QMainWindow(parent), m_service(service), m_translations(translations), m_theme(initialTheme)
 {
     setWindowTitle(QStringLiteral("USB Restoration Tool"));
     // Small enough to sit comfortably on a laptop screen.
@@ -228,53 +230,59 @@ QLayout *MainWindow::buildHeaderLayout()
     wordmark->setSpacing(2);
     auto *title = new QLabel(QStringLiteral("USB Restoration Tool"));
     title->setObjectName(QStringLiteral("title"));
-    auto *subtitle = new QLabel(tr("A fresh start for your USB drive."));
-    subtitle->setObjectName(QStringLiteral("subtitle"));
+    m_subtitle = new QLabel(tr("A fresh start for your USB drive."));
+    m_subtitle->setObjectName(QStringLiteral("subtitle"));
     wordmark->addWidget(title);
-    wordmark->addWidget(subtitle);
+    wordmark->addWidget(m_subtitle);
     brand->addWidget(mark);
     brand->addLayout(wordmark);
     brand->addStretch();
 
     // On an installed Linux build the helper, not this process, is root, so the
     // badge must not claim ROOT there.
-    auto *badge = new QLabel;
-    badge->setObjectName(QStringLiteral("adminBadge"));
+    m_privilegeBadge = new QLabel;
+    m_privilegeBadge->setObjectName(QStringLiteral("adminBadge"));
     switch (m_service.privilegeMode()) {
     case PrivilegeMode::Elevated:
 #ifdef Q_OS_WIN
-        badge->setText(QStringLiteral("ADMINISTRATOR"));
+        m_privilegeBadge->setText(QStringLiteral("ADMINISTRATOR"));
 #else
-        badge->setText(QStringLiteral("ROOT"));
+        m_privilegeBadge->setText(QStringLiteral("ROOT"));
 #endif
-        badge->setToolTip(tr("Raw disk access needs elevated permission, and this process runs with it."));
+        m_privilegeBadge->setToolTip(tr("Raw disk access needs elevated permission, and this process runs with it."));
         break;
     case PrivilegeMode::Helper:
-        badge->setText(tr("USER"));
-        badge->setToolTip(
+        m_privilegeBadge->setText(tr("USER"));
+        m_privilegeBadge->setToolTip(
             tr("The app runs as an ordinary user. When a restore starts, the system asks for permission "
                "and a separate root helper does the writing."));
         break;
     case PrivilegeMode::None:
         // Unreachable: main() refuses to open this window without a route to privilege.
-        badge->setText(tr("NO ACCESS"));
-        badge->setToolTip(m_service.privilegeHint());
+        m_privilegeBadge->setText(tr("NO ACCESS"));
+        m_privilegeBadge->setToolTip(m_service.privilegeHint());
         break;
     }
 
     auto *headerButtons = new QHBoxLayout();
     headerButtons->setSpacing(4);
     m_activityButton = styledButton(tr("Activity"), "text");
+    m_activityButton->setObjectName(QStringLiteral("activity"));
     m_activityButton->setToolTip(tr("Every step of this session, and a link to the log file."));
     connect(m_activityButton, &QPushButton::clicked, this, &MainWindow::showActivity);
+    m_languageButton = styledButton(languageButtonText(m_settings.language), "text");
+    m_languageButton->setObjectName(QStringLiteral("language"));
+    connect(m_languageButton, &QPushButton::clicked, this, &MainWindow::cycleLanguage);
     m_themeButton = styledButton(themeButtonText(m_theme), "text");
+    m_themeButton->setObjectName(QStringLiteral("theme"));
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
-    auto *aboutButton = styledButton(tr("About"), "text");
-    aboutButton->setObjectName(QStringLiteral("about"));
-    connect(aboutButton, &QPushButton::clicked, this, &MainWindow::showAbout);
+    m_aboutButton = styledButton(tr("About"), "text");
+    m_aboutButton->setObjectName(QStringLiteral("about"));
+    connect(m_aboutButton, &QPushButton::clicked, this, &MainWindow::showAbout);
     headerButtons->addWidget(m_activityButton);
+    headerButtons->addWidget(m_languageButton);
     headerButtons->addWidget(m_themeButton);
-    headerButtons->addWidget(aboutButton);
+    headerButtons->addWidget(m_aboutButton);
 
     auto *utilities = new QVBoxLayout;
     utilities->setSpacing(6);
@@ -284,7 +292,7 @@ QLayout *MainWindow::buildHeaderLayout()
     metadata->addStretch();
     metadata->addWidget(version);
     metadata->addSpacing(8);
-    metadata->addWidget(badge);
+    metadata->addWidget(m_privilegeBadge);
     utilities->addLayout(metadata);
     utilities->addLayout(headerButtons);
     header->addLayout(brand, 0, 0);
@@ -295,8 +303,8 @@ QLayout *MainWindow::buildHeaderLayout()
 
 QWidget *MainWindow::buildDiskSection()
 {
-    auto *box = card(tr("01 / Select a drive"));
-    auto *layout = new QGridLayout(box);
+    m_diskCard = card(tr("01 / Select a drive"));
+    auto *layout = new QGridLayout(m_diskCard);
     layout->setHorizontalSpacing(12);
     layout->setVerticalSpacing(10);
 
@@ -317,13 +325,13 @@ QWidget *MainWindow::buildDiskSection()
     layout->addWidget(m_diskCount, 1, 0);
     layout->addWidget(m_refreshButton, 1, 1, Qt::AlignRight);
     layout->setColumnStretch(0, 1);
-    return box;
+    return m_diskCard;
 }
 
 QWidget *MainWindow::buildDetailSection()
 {
-    auto *box = card(tr("Drive details"));
-    auto *layout = new QVBoxLayout(box);
+    m_detailCard = card(tr("Drive details"));
+    auto *layout = new QVBoxLayout(m_detailCard);
     layout->setSpacing(6);
 
     m_detailTitle = new QLabel(tr("No disk selected"));
@@ -337,13 +345,13 @@ QWidget *MainWindow::buildDetailSection()
 
     layout->addWidget(m_detailTitle);
     layout->addWidget(m_detailValues);
-    return box;
+    return m_detailCard;
 }
 
 QWidget *MainWindow::buildRestoreSection()
 {
-    auto *box = card(tr("02 / Set up your restore"));
-    auto *layout = new QGridLayout(box);
+    m_restoreCard = card(tr("02 / Set up your restore"));
+    auto *layout = new QGridLayout(m_restoreCard);
     layout->setHorizontalSpacing(12);
     layout->setVerticalSpacing(10);
 
@@ -394,9 +402,11 @@ QWidget *MainWindow::buildRestoreSection()
     m_restoreButton->setAccessibleName(tr("Restore the selected USB disk"));
     connect(m_restoreButton, &QPushButton::clicked, this, &MainWindow::startRestore);
 
-    layout->addWidget(fieldLabel(tr("Partition layout")), 0, 0);
+    m_partitionLabel = fieldLabel(tr("Partition layout"));
+    m_filesystemLabel = fieldLabel(tr("Filesystem"));
+    layout->addWidget(m_partitionLabel, 0, 0);
     layout->addWidget(m_styleCombo, 1, 0);
-    layout->addWidget(fieldLabel(tr("Filesystem")), 2, 0);
+    layout->addWidget(m_filesystemLabel, 2, 0);
     layout->addWidget(m_fileSystemCombo, 3, 0);
     layout->addWidget(m_planLabel, 4, 0);
     layout->setRowMinimumHeight(5, 6);
@@ -404,7 +414,7 @@ QWidget *MainWindow::buildRestoreSection()
     layout->addWidget(m_detailLabel, 7, 0);
     layout->setRowStretch(8, 1);
     layout->addWidget(m_restoreButton, 9, 0);
-    return box;
+    return m_restoreCard;
 }
 
 QWidget *MainWindow::buildFooterWarning()
@@ -414,16 +424,16 @@ QWidget *MainWindow::buildFooterWarning()
     auto *layout = new QVBoxLayout(banner);
     layout->setContentsMargins(16, 12, 16, 12);
     layout->setSpacing(3);
-    auto *title = new QLabel(tr("Restoring erases every partition and file on the selected drive."));
-    title->setObjectName(QStringLiteral("warningTitle"));
-    title->setWordWrap(true);
-    auto *warning = new QLabel(
+    m_warningTitle = new QLabel(tr("Restoring erases every partition and file on the selected drive."));
+    m_warningTitle->setObjectName(QStringLiteral("warningTitle"));
+    m_warningTitle->setWordWrap(true);
+    m_warningDetail = new QLabel(
         tr("Check the model and capacity before confirming. Boot, system, offline, read-only and non-USB disks "
            "are refused."));
-    warning->setObjectName(QStringLiteral("footnote"));
-    warning->setWordWrap(true);
-    layout->addWidget(title);
-    layout->addWidget(warning);
+    m_warningDetail->setObjectName(QStringLiteral("footnote"));
+    m_warningDetail->setWordWrap(true);
+    layout->addWidget(m_warningTitle);
+    layout->addWidget(m_warningDetail);
     return banner;
 }
 
@@ -442,23 +452,23 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    auto *caption = new QLabel(
+    m_activityCaption = new QLabel(
         tr("Every step of this session. The same lines are written to the log "
            "file, which survives a restart."));
-    caption->setObjectName(QStringLiteral("footnote"));
-    caption->setWordWrap(true);
-    layout->addWidget(caption);
+    m_activityCaption->setObjectName(QStringLiteral("footnote"));
+    m_activityCaption->setWordWrap(true);
+    layout->addWidget(m_activityCaption);
     layout->addWidget(m_log, 1);
     m_log->show();
 
     auto *buttons = new QHBoxLayout();
-    auto *openLogButton = styledButton(tr("Open log file"), "secondary");
-    connect(openLogButton, &QPushButton::clicked, this, &MainWindow::openLogFile);
-    auto *closeButton = styledButton(tr("Close"), "secondary");
-    connect(closeButton, &QPushButton::clicked, dialog, &QDialog::hide);
-    buttons->addWidget(openLogButton);
+    m_openLogButton = styledButton(tr("Open log file"), "secondary");
+    connect(m_openLogButton, &QPushButton::clicked, this, &MainWindow::openLogFile);
+    m_activityCloseButton = styledButton(tr("Close"), "secondary");
+    connect(m_activityCloseButton, &QPushButton::clicked, dialog, &QDialog::hide);
+    buttons->addWidget(m_openLogButton);
     buttons->addStretch();
-    buttons->addWidget(closeButton);
+    buttons->addWidget(m_activityCloseButton);
     layout->addLayout(buttons);
 
     m_activityDialog = dialog;
@@ -491,6 +501,9 @@ void MainWindow::loadSettings()
         if (index >= 0) {
             m_fileSystemCombo->setCurrentIndex(index);
         }
+    }
+    if (m_languageButton) {
+        m_languageButton->setText(languageButtonText(m_settings.language));
     }
 }
 
@@ -537,14 +550,16 @@ void MainWindow::refreshDisks()
     const QSignalBlocker blocker(*m_diskList);
     QString error;
     m_guard = m_service.restoreGuard();
-    m_disks = m_service.listUsbDisks(&error);
+    QString displayError;
+    m_disks = m_service.listUsbDisks(&error, &displayError);
     renderDisks();
     onSelectionChanged();
 
     // Reported last so the empty-list status cannot overwrite the failure.
     if (!error.isEmpty()) {
         m_logger.log(QStringLiteral("Scan failed: %1").arg(error));
-        setStatus(StatusKind::Error, tr("Could not scan for USB disks."), error);
+        setStatus(
+            StatusKind::Error, tr("Could not scan for USB disks."), displayError.isEmpty() ? error : displayError);
     }
 }
 
@@ -642,7 +657,7 @@ void MainWindow::updateRestoreState()
     }
 
     if (!canCreatePartitionLayout(selectedPartitionStyle(), *disk, &reason, TextMode::Display) ||
-        !m_service.canFormatFileSystem(selectedFileSystem(), *disk, &reason)) {
+        !m_service.canFormatFileSystem(selectedFileSystem(), *disk, nullptr, &reason)) {
         m_restoreButton->setEnabled(false);
         setStatus(StatusKind::Blocked, tr("This restore configuration cannot be used on this disk."), reason);
         return;
@@ -687,7 +702,7 @@ void MainWindow::startRestore()
     const PartitionStyle style = selectedPartitionStyle();
     const FileSystemType fileSystem = selectedFileSystem();
     if (!canCreatePartitionLayout(style, disk, &reason, TextMode::Display) ||
-        !m_service.canFormatFileSystem(fileSystem, disk, &reason)) {
+        !m_service.canFormatFileSystem(fileSystem, disk, nullptr, &reason)) {
         QMessageBox::critical(this, tr("Restore refused"), reason);
         updateRestoreState();
         return;
@@ -771,11 +786,10 @@ void MainWindow::onRestoreProgress(int step, int totalSteps, const QString &mess
     m_stallNoticeShown = false;
     if (m_restoreDialog && !m_restoreDialog->setProgress(step, totalSteps, message)) {
         m_logger.logFileOnly(QStringLiteral(
-                                 "Restore window ignored progress step %1 of %2 (\"%3\"); it does not "
+                                 "Restore window ignored progress step %1 of %2; it does not "
                                  "follow the step it is showing.")
                                  .arg(step)
-                                 .arg(totalSteps)
-                                 .arg(message));
+                                 .arg(totalSteps));
     }
 }
 
@@ -875,6 +889,7 @@ void MainWindow::setRunning(bool running)
 
     m_diskList->setEnabled(!running);
     m_refreshButton->setEnabled(!running);
+    m_languageButton->setEnabled(!running);
     m_styleCombo->setEnabled(!running && selectedDisk() != nullptr);
     m_fileSystemCombo->setEnabled(!running && selectedDisk() != nullptr);
 
@@ -915,6 +930,132 @@ void MainWindow::appendLog(const QString &message)
     if (m_log) {
         m_log->append(message);
     }
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    // The restore dialog stays modal for the whole attempt, so only this window is live.
+    if (event->type() == QEvent::LanguageChange) {
+        retranslateUi();
+    }
+    QMainWindow::changeEvent(event);
+}
+
+void MainWindow::retranslateUi()
+{
+    if (!m_subtitle || !m_restoreButton || !m_languageButton) {
+        return;
+    }
+
+    m_subtitle->setText(tr("A fresh start for your USB drive."));
+    if (m_privilegeBadge) {
+        switch (m_service.privilegeMode()) {
+        case PrivilegeMode::Elevated:
+            m_privilegeBadge->setToolTip(
+                tr("Raw disk access needs elevated permission, and this process runs with it."));
+            break;
+        case PrivilegeMode::Helper:
+            m_privilegeBadge->setText(tr("USER"));
+            m_privilegeBadge->setToolTip(
+                tr("The app runs as an ordinary user. When a restore starts, the system asks for permission "
+                   "and a separate root helper does the writing."));
+            break;
+        case PrivilegeMode::None:
+            m_privilegeBadge->setText(tr("NO ACCESS"));
+            m_privilegeBadge->setToolTip(m_service.privilegeHint());
+            break;
+        }
+    }
+    m_activityButton->setText(tr("Activity"));
+    m_activityButton->setToolTip(tr("Every step of this session, and a link to the log file."));
+    m_languageButton->setText(languageButtonText(m_settings.language));
+    m_themeButton->setText(themeButtonText(m_theme));
+    m_aboutButton->setText(tr("About"));
+    m_diskCard->setTitle(tr("01 / Select a drive"));
+    m_diskList->setAccessibleName(tr("Detected USB disks"));
+    m_refreshButton->setText(tr("&Refresh"));
+    m_detailCard->setTitle(tr("Drive details"));
+    m_restoreCard->setTitle(tr("02 / Set up your restore"));
+    m_partitionLabel->setText(tr("Partition layout"));
+    m_filesystemLabel->setText(tr("Filesystem"));
+    {
+        const QSignalBlocker styleBlocker(m_styleCombo);
+        const int gpt = m_styleCombo->findData(static_cast<int>(PartitionStyle::Gpt));
+        const int mbr = m_styleCombo->findData(static_cast<int>(PartitionStyle::Mbr));
+        if (gpt >= 0) {
+            m_styleCombo->setItemText(gpt, tr("GPT (recommended)"));
+        }
+        if (mbr >= 0) {
+            m_styleCombo->setItemText(mbr, tr("MBR (older devices)"));
+        }
+    }
+    m_styleCombo->setAccessibleName(tr("Partition style"));
+    m_styleCombo->setToolTip(
+        tr("GPT is what current systems expect and what Windows itself writes.\n"
+           "MBR is for devices that predate it and refuse to read a GPT stick:\n"
+           "BIOS-era PCs, car stereos, older TVs and set-top boxes."));
+    {
+        const QSignalBlocker filesystemBlocker(m_fileSystemCombo);
+        for (int index = 0; index < m_fileSystemCombo->count(); ++index) {
+            m_fileSystemCombo->setItemText(
+                index, fileSystemTypeLabel(static_cast<FileSystemType>(m_fileSystemCombo->itemData(index).toInt())));
+        }
+    }
+    m_fileSystemCombo->setAccessibleName(tr("Filesystem"));
+    m_fileSystemCombo->setToolTip(
+        tr("exFAT (recommended) works on Windows, Linux and macOS.\n"
+           "FAT32 is for older devices; files cannot be larger than 4 GB.\n"
+           "NTFS is Windows' own filesystem; some cameras and consoles will not read it.\n"
+           "ext4 is Linux-only; Windows will not mount it without extra software."));
+    m_statusLabel->setAccessibleName(tr("Restore status"));
+    m_restoreButton->setText(tr("Restore USB"));
+    m_restoreButton->setAccessibleName(tr("Restore the selected USB disk"));
+    m_warningTitle->setText(tr("Restoring erases every partition and file on the selected drive."));
+    m_warningDetail->setText(
+        tr("Check the model and capacity before confirming. Boot, system, offline, read-only and non-USB disks "
+           "are refused."));
+    m_log->setAccessibleName(tr("Activity log"));
+    if (m_activityDialog) {
+        m_activityDialog->setWindowTitle(tr("Activity"));
+        m_activityCaption->setText(
+            tr("Every step of this session. The same lines are written to the log "
+               "file, which survives a restart."));
+        m_openLogButton->setText(tr("Open log file"));
+        m_activityCloseButton->setText(tr("Close"));
+    }
+
+    const int row = m_diskList->currentRow();
+    renderDisks();
+    if (row >= 0 && row < m_diskList->count()) {
+        m_diskList->setCurrentRow(row);
+    }
+    renderSelectedDisk();
+    if (!m_restoreRunning) {
+        updateRestoreState();
+    }
+}
+
+void MainWindow::cycleLanguage()
+{
+    if (m_restoreRunning) {
+        return;
+    }
+    switch (m_settings.language) {
+    case Language::System:
+        m_settings.language = Language::English;
+        break;
+    case Language::English:
+        m_settings.language = Language::German;
+        break;
+    case Language::German:
+        m_settings.language = Language::System;
+        break;
+    }
+    saveSettings();
+    if (m_translations) {
+        m_translations->load(m_settings.language);
+    }
+    m_languageButton->setText(languageButtonText(m_settings.language));
 }
 
 void MainWindow::toggleTheme()

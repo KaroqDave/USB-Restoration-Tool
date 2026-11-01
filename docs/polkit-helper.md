@@ -67,7 +67,11 @@ always refuses the restore.
 
 Standard output carries `version`, `step`, `detail` and `result` lines. Control
 characters are stripped before encoding messages. Errors use standard error.
-The constants and exact encoding live in `src/core/restore_protocol.*`.
+Wire text remains English for logging. The client derives translated progress
+text from the shared plan; detailed helper failures remain English diagnostics
+under a translated heading until a separate display-language argument and error
+transport are added. The constants and exact encoding live in
+`src/core/restore_protocol.*`.
 
 | Exit code | Meaning |
 | --- | --- |

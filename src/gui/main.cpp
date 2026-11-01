@@ -3,6 +3,7 @@
 #include "gui/theme.h"
 #include "platform/disk_service.h"
 #include "platform/startup.h"
+#include "platform/translations.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -85,19 +86,23 @@ int main(int argc, char *argv[])
     QApplication::setDesktopFileName(QStringLiteral("usb-restoration-tool"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
 
+    const usbrestore::AppSettings settings = usbrestore::loadAppSettings();
+    // Lives for the process: widgets created below, including the privilege dialog, read it.
+    usbrestore::Translations translations;
+    usbrestore::activateInterfaceLanguage(translations, settings.language);
+
     const std::unique_ptr<usbrestore::DiskService> service = usbrestore::DiskService::create();
 
     // Windows elevates via the manifest; on Linux false means no helper and not root.
     // Either would otherwise fail partway through rather than up front.
     if (!service->isPrivileged()) {
-        QMessageBox::critical(nullptr, QStringLiteral("Elevated permission required"), service->privilegeHint());
+        QMessageBox::critical(nullptr, usbrestore::elevatedPermissionTitle(), service->privilegeHint());
         return 1;
     }
 
-    const usbrestore::AppSettings settings = usbrestore::loadAppSettings();
     usbrestore::applyTheme(app, settings.theme);
 
-    usbrestore::MainWindow window(*service, settings.theme);
+    usbrestore::MainWindow window(*service, settings.theme, &translations);
     window.show();
 
     return app.exec();
