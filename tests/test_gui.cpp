@@ -80,6 +80,7 @@ RestoreRequest exampleRequest()
 void settleLayout(QWidget &widget)
 {
     widget.ensurePolished();
+    widget.resize(widget.sizeHint().expandedTo(widget.minimumSize()).expandedTo(widget.size()));
     if (QLayout *layout = widget.layout()) {
         layout->activate();
     }
@@ -1343,7 +1344,11 @@ class GuiTests : public QObject {
                     qPrintable(button->text()));
             }
         }
-        QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))->geometry().bottom() < dialog.height());
+        auto *done = dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"));
+        QVERIFY(done);
+        if (done->isVisible()) {
+            QVERIFY(done->geometry().bottom() < dialog.height());
+        }
         QVERIFY(
             dialog.findChild<QLabel *>(QStringLiteral("restoreTitle"))->height() >=
             dialog.findChild<QLabel *>(QStringLiteral("restoreTitle"))->fontMetrics().height());

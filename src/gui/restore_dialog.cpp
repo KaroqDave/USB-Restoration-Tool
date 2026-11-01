@@ -355,7 +355,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     fitButton(m_cancelButton);
     fitButton(m_eraseButton);
     fitButton(m_doneButton);
-    setMinimumWidth(qMax(minimumWidth(), layout->minimumSize().width()));
+    setMinimumSize(layout->minimumSize().expandedTo(QSize(minimumWidth(), minimumHeight())));
 
     m_timer = new QTimer(this);
     const bool animate = QApplication::style()->styleHint(QStyle::SH_Widget_Animate);

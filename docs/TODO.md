@@ -6,6 +6,11 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
 
+- 2026-11-01: Windows Qt Test was writing its report to the debugger, so ctest saw an
+  empty failure. The Windows job now sets `QT_FORCE_STDERR_LOGGING=1`. The
+  restore dialog sizes itself to its layout, and the done-button check runs
+  only while that button is visible.
+
 - 2026-11-01: The Windows GUI tests failed with no assertion text. Header and dialog
   buttons now stay wide enough for their labels, Windows test output is
   unbuffered, and the test PATH is no longer split on semicolons. Not yet

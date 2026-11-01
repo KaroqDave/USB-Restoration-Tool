@@ -55,6 +55,9 @@ jobs:
         run: cmake --build build --config Release --target usb-restoration-tool usb-restoration-tool-tests
 
       - name: Test
+        env:
+          # Qt Test otherwise sends its report to the debugger and ctest sees an empty failure.
+          QT_FORCE_STDERR_LOGGING: "1"
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Build standalone bundle

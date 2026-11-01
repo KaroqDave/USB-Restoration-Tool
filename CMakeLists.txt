@@ -698,9 +698,9 @@ if(USBRESTORE_BUILD_TESTS)
         string(REPLACE ";" "\\;" _usbrestore_test_path "${_usbrestore_test_path}")
         set_target_properties(usb-gui-tests PROPERTIES WIN32_EXECUTABLE OFF)
         set_tests_properties(usb-gui-tests PROPERTIES
-            ENVIRONMENT "PATH=${_usbrestore_test_path}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
         set_property(TEST usb-gui-tests-scaled APPEND PROPERTY
-            ENVIRONMENT "PATH=${_usbrestore_test_path}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${_usbrestore_test_path}")
 
