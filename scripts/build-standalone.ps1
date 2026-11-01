@@ -99,7 +99,8 @@ $previousEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 try {
     foreach ($language in @("en", "de")) {
-        $line = (& $exe --show-translation $language)
+        # Pipe the GUI-subsystem executable so PowerShell redirects stdout and waits for exit.
+        $line = (& $exe --show-translation $language | Out-String)
         if ($LASTEXITCODE -ne 0 -or "$line".Trim() -ne $catalogLines[$language]) {
             throw "Catalog probe $language failed (exit $LASTEXITCODE): $line"
         }

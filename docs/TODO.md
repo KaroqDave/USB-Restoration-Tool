@@ -8,7 +8,8 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 - 2026-11-01: The Windows bundle probe saw an empty catalog line with exit 0. The GUI
   binary now writes that line to the inherited standard-output handle, and the
-  package script reads it as UTF-8.
+  package script pipes the GUI executable and reads the output as UTF-8 so
+  PowerShell waits for exit and captures standard output.
 
 - 2026-11-01: Windows Qt Test was writing its report to the debugger, so ctest saw an
   empty failure. The Windows job now sets `QT_FORCE_STDERR_LOGGING=1`. The
