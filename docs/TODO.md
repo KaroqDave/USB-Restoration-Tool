@@ -6,6 +6,12 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
 
+- 2026-11-02: Keep scan failures and their diagnostic details visible when the
+  interface language changes; only a new scan clears the failure state. Added
+  regressions for language cycling and recovery with or without a detected disk.
+  Linux build and all five ctest checks pass, plus the new regression at 200%
+  scaling. Privileged loop tests skipped; no physical drive accessed.
+
 - 2026-11-02: Closed the 1.9.0 branch review findings. `RestoreMessage::arg` and
   multi-argument error/status formatting now substitute all arguments in one pass
   so reordered German placeholders and `%N` tokens in device paths or diagnostics

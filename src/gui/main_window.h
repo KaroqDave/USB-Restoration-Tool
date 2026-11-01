@@ -87,6 +87,7 @@ class MainWindow : public QMainWindow {
     DiskService &m_service;
     Translations *m_translations = nullptr;
     QVector<DiskInfo> m_disks;
+    RestoreMessage m_scanError;
     RestoreGuard m_guard;
     Logger m_logger;
     AppSettings m_settings;

@@ -406,6 +406,72 @@ class GuiTests : public QObject {
         window.close();
     }
 
+    void preservesScanFailuresAcrossLanguageChanges_data()
+    {
+        QTest::addColumn<bool>("diskPresentAfterRefresh");
+        QTest::newRow("disk-found") << true;
+        QTest::newRow("no-disks") << false;
+    }
+
+    void preservesScanFailuresAcrossLanguageChanges()
+    {
+        QFETCH(bool, diskPresentAfterRefresh);
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = Language::English;
+        saveAppSettings(settings);
+        Translations translations;
+        QVERIFY(translations.load(Language::English));
+        ExampleService service;
+        const QString diagnostic = QStringLiteral("Example scan failure: errno 5");
+        service.scanError = diagnostic;
+        MainWindow window(service, Theme::Light, &translations);
+        window.show();
+        auto *status = window.findChild<QLabel *>(QStringLiteral("statusBadge"));
+        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"));
+        QVERIFY(status);
+        QVERIFY(restore);
+        QVERIFY(language);
+        QVERIFY(log);
+        QVERIFY(status->text().contains(QStringLiteral("Could not scan for USB disks.")));
+        QLabel *detail = nullptr;
+        for (auto *label : window.findChildren<QLabel *>()) {
+            if (label->text() == diagnostic) {
+                detail = label;
+            }
+        }
+        QVERIFY(detail);
+        const QString originalLog = log->toPlainText();
+
+        service.scanError.clear();
+        for (int change = 0; change < 3; ++change) {
+            language->click();
+            QCoreApplication::processEvents();
+            QVERIFY(status->text().contains(
+                QCoreApplication::translate("usbrestore::MainWindow", "Could not scan for USB disks.")));
+            QCOMPARE(detail->text(), diagnostic);
+            QVERIFY(!restore->isEnabled());
+            QCOMPARE(log->toPlainText(), originalLog);
+        }
+        QCOMPARE(translations.language(), Language::English);
+        QCOMPARE(service.restores.load(), 0);
+
+        service.diskPresent = diskPresentAfterRefresh;
+        QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
+        QVERIFY(!status->text().contains(QStringLiteral("Could not scan for USB disks.")));
+        QVERIFY(detail->text() != diagnostic);
+        QCOMPARE(restore->isEnabled(), diskPresentAfterRefresh);
+        if (diskPresentAfterRefresh) {
+            QVERIFY(status->text().contains(QStringLiteral("Ready to restore")));
+        } else {
+            QVERIFY(status->text().contains(QStringLiteral("Select a USB disk")));
+        }
+        window.close();
+    }
+
     void translatesSharedDescriptionsWithoutChangingLogs()
     {
         Translations translations;

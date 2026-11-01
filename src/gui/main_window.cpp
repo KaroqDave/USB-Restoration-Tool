@@ -577,18 +577,14 @@ void MainWindow::refreshDisks()
     }
 
     const QSignalBlocker blocker(*m_diskList);
-    QString error;
     m_guard = m_service.restoreGuard();
-    QString displayError;
-    m_disks = m_service.listUsbDisks(&error, &displayError);
+    m_scanError = {};
+    m_disks = m_service.listUsbDisks(&m_scanError.english, &m_scanError.display);
     renderDisks();
     onSelectionChanged();
 
-    // Reported last so the empty-list status cannot overwrite the failure.
-    if (!error.isEmpty()) {
-        m_logger.log(QStringLiteral("Scan failed: %1").arg(error));
-        setStatus(
-            StatusKind::Error, tr("Could not scan for USB disks."), displayError.isEmpty() ? error : displayError);
+    if (!m_scanError.english.isEmpty()) {
+        m_logger.log(QStringLiteral("Scan failed: %1").arg(m_scanError.english));
     }
 }
 
@@ -663,6 +659,17 @@ void MainWindow::updateRestoreState()
     const QString fileSystem = fileSystemTypeName(selectedFileSystem());
     m_planLabel->setText(tr("Erases all contents. Creates one %1 partition formatted %2, labelled %3.")
                              .arg(style, fileSystem, RestoreVolumeLabel));
+
+    if (!m_scanError.english.isEmpty()) {
+        m_styleCombo->setEnabled(false);
+        m_fileSystemCombo->setEnabled(false);
+        m_restoreButton->setEnabled(false);
+        setStatus(
+            StatusKind::Error,
+            tr("Could not scan for USB disks."),
+            m_scanError.display.isEmpty() ? m_scanError.english : m_scanError.display);
+        return;
+    }
 
     const DiskInfo *disk = selectedDisk();
     if (!disk) {
