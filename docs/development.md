@@ -272,6 +272,8 @@ package is `ntfsprogs`, not `ntfs-3g`. It does not install anything on the host.
 `BUILD_DIR` overrides the build directory; `CMAKE_BUILD_PARALLEL_LEVEL` sets
 parallelism (default: 2).
 
+The Fedora container image keeps only `en_US` files. CI sets `%_install_langs`
+to `all` before installing packages so the German `qtbase_de.qm` is unpacked.
 The shared Fedora CI/release workflow also checks an install, upgrade and
 removal in a disposable container. It installs a release-0.1 baseline built from
 the same binaries, upgrades it to the real release-1 RPM, verifies package

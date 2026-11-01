@@ -6,6 +6,12 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
 
+- 2026-11-01: Fixed the two CI failures from the 1.9.0 pull request. The Windows
+  retry path passed a finished message into `lastError`, which still expects
+  the source text. The Fedora container installs English files only, so the RPM
+  job now sets `%_install_langs` to `all` before installing Qt translations.
+  The AppImage linuxdeploy download returned 404 and was left unchanged.
+
 - 2026-11-01: Set `PROJECT_VERSION` to 1.9.0 and replaced the stale notes. The README
   has `What's New in 1.9.0 (unreleased)`; 1.8.0 is now `Previously`. The changelog
   has an undated 1.9.0 section and an empty Unreleased section. The helper example

@@ -715,8 +715,7 @@ bool RawDisk::writeZeros(
                         setRestoreError(
                             error,
                             displayError,
-                            lastError(
-                                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "seek to the write position"))));
+                            lastError(QT_TRANSLATE_NOOP("usbrestore::Backend", "seek to the write position")));
                     }
                     return false;
                 }
