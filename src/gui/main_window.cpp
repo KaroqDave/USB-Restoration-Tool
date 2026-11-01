@@ -83,6 +83,19 @@ QPushButton *styledButton(const QString &text, const char *variant)
     return button;
 }
 
+// The Windows style can size a button from a different font than the one that
+// draws it, and a narrow header then clips the German labels.
+void keepButtonTextVisible(QPushButton *button)
+{
+    if (!button) {
+        return;
+    }
+    button->ensurePolished();
+    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    button->setMinimumWidth(
+        qMax(button->sizeHint().width(), button->fontMetrics().horizontalAdvance(button->text()) + 8));
+}
+
 QString joinOrDash(const QStringList &values)
 {
     return values.isEmpty() ? QStringLiteral("—") : values.join(QStringLiteral(", "));
@@ -167,6 +180,22 @@ MainWindow::MainWindow(DiskService &service, Theme initialTheme, Translations *t
     } else if (!m_logger.isPortable()) {
         appendLog(QStringLiteral("The application folder is not writable, so the log is being kept at %1")
                       .arg(m_logger.path()));
+    }
+    keepButtonTextVisible(m_activityButton);
+    keepButtonTextVisible(m_languageButton);
+    keepButtonTextVisible(m_themeButton);
+    keepButtonTextVisible(m_aboutButton);
+    keepButtonTextVisible(m_restoreButton);
+    if (auto *scroll = qobject_cast<QScrollArea *>(centralWidget())) {
+        if (QWidget *page = scroll->widget()) {
+            const int needed = page->sizeHint().width() + 36;
+            if (needed > minimumWidth()) {
+                setMinimumWidth(needed);
+            }
+            if (width() < minimumWidth()) {
+                resize(minimumWidth(), height());
+            }
+        }
     }
     refreshDisks();
 }
@@ -972,6 +1001,10 @@ void MainWindow::retranslateUi()
     m_languageButton->setText(languageButtonText(m_settings.language));
     m_themeButton->setText(themeButtonText(m_theme));
     m_aboutButton->setText(tr("About"));
+    keepButtonTextVisible(m_activityButton);
+    keepButtonTextVisible(m_languageButton);
+    keepButtonTextVisible(m_themeButton);
+    keepButtonTextVisible(m_aboutButton);
     m_diskCard->setTitle(tr("01 / Select a drive"));
     m_diskList->setAccessibleName(tr("Detected USB disks"));
     m_refreshButton->setText(tr("&Refresh"));
@@ -1010,6 +1043,7 @@ void MainWindow::retranslateUi()
            "ext4 is Linux-only; Windows will not mount it without extra software."));
     m_statusLabel->setAccessibleName(tr("Restore status"));
     m_restoreButton->setText(tr("Restore USB"));
+    keepButtonTextVisible(m_restoreButton);
     m_restoreButton->setAccessibleName(tr("Restore the selected USB disk"));
     m_warningTitle->setText(tr("Restoring erases every partition and file on the selected drive."));
     m_warningDetail->setText(

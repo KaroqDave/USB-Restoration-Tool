@@ -17,6 +17,7 @@
 #include <QFrame>
 #include <QImage>
 #include <QLabel>
+#include <QLayout>
 #include <QLibraryInfo>
 #include <QListWidget>
 #include <QMessageBox>
@@ -36,6 +37,7 @@
 #include <QTimer>
 
 #include <atomic>
+#include <cstdio>
 #include <functional>
 
 // Dropping the embedded catalog is how a broken package fails to load German.
@@ -73,6 +75,15 @@ RestoreRequest exampleRequest()
     request.disk = exampleDisk();
     request.volumeLabel = QStringLiteral("USB");
     return request;
+}
+
+void settleLayout(QWidget &widget)
+{
+    widget.ensurePolished();
+    if (QLayout *layout = widget.layout()) {
+        layout->activate();
+    }
+    QCoreApplication::processEvents();
 }
 
 void confirmErase(RestoreDialog &dialog)
@@ -211,6 +222,10 @@ class GuiTests : public QObject {
   private slots:
     void initTestCase()
     {
+        // ctest captures a pipe. The Windows CRT buffers that fully, so a crash
+        // drops the assertion text.
+        setvbuf(stdout, nullptr, _IONBF, 0);
+        setvbuf(stderr, nullptr, _IONBF, 0);
         QLocale::setDefault(QLocale::c());
         QVERIFY(m_settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -1313,6 +1328,7 @@ class GuiTests : public QObject {
                                              : QStringLiteral("The restore stopped before erasing the disk."));
         }
         QTest::qWait(80);
+        settleLayout(dialog);
         if (!confirming) {
             const auto *messageArea = dialog.findChild<QScrollArea *>(QStringLiteral("restoreMessageArea"));
             const auto *counter = dialog.findChild<QLabel *>(QStringLiteral("restoreCounter"));
@@ -1362,6 +1378,7 @@ class GuiTests : public QObject {
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
         window.show();
         QTest::qWait(80);
+        settleLayout(window);
         auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
         QVERIFY(restore);
         QVERIFY(restore->isEnabled());

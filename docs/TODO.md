@@ -6,6 +6,11 @@ No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
 
+- 2026-11-01: The Windows GUI tests failed with no assertion text. Header and dialog
+  buttons now stay wide enough for their labels, Windows test output is
+  unbuffered, and the test PATH is no longer split on semicolons. Not yet
+  confirmed on a Windows runner.
+
 - 2026-11-01: Fixed the two CI failures from the 1.9.0 pull request. The Windows
   retry path passed a finished message into `lastError`, which still expects
   the source text. The Fedora container installs English files only, so the RPM

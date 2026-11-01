@@ -345,6 +345,17 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     connect(m_doneButton, &QPushButton::clicked, this, &QDialog::accept);
     buttons->addWidget(m_doneButton);
     layout->addLayout(buttons);
+    const auto fitButton = [](QPushButton *button) {
+        button->ensurePolished();
+        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        button->setMinimumWidth(
+            qMax(button->sizeHint().width(), button->fontMetrics().horizontalAdvance(button->text()) + 8));
+    };
+    fitButton(m_logButton);
+    fitButton(m_cancelButton);
+    fitButton(m_eraseButton);
+    fitButton(m_doneButton);
+    setMinimumWidth(qMax(minimumWidth(), layout->minimumSize().width()));
 
     m_timer = new QTimer(this);
     const bool animate = QApplication::style()->styleHint(QStyle::SH_Widget_Animate);
@@ -354,7 +365,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
         if (animate) {
             const int phase = static_cast<int>((m_elapsed.elapsed() % 1200) * 360 / 1200);
             m_indicator->setPhase(phase);
-            if (m_step > 0) {
+            if (m_step > 0 && m_step <= m_rows.size() && m_rows.at(m_step - 1).indicator) {
                 m_rows[m_step - 1].indicator->setPhase(phase);
             }
         }

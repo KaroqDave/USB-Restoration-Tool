@@ -693,12 +693,16 @@ if(USBRESTORE_BUILD_TESTS)
                 showsTranslatedSafetyRefusalsWithoutStartingARestore -platform offscreen)
     set_tests_properties(usb-gui-tests-scaled PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
     if(WIN32)
+        # ENVIRONMENT is a CMake list, so a raw Windows PATH would be split on ';'.
+        set(_usbrestore_test_path "${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+        string(REPLACE ";" "\\;" _usbrestore_test_path "${_usbrestore_test_path}")
+        set_target_properties(usb-gui-tests PROPERTIES WIN32_EXECUTABLE OFF)
         set_tests_properties(usb-gui-tests PROPERTIES
-            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path}")
         set_property(TEST usb-gui-tests-scaled APPEND PROPERTY
-            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path}")
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
-            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path}")
 
         add_executable(usb-wmi-tests tests/test_wmi.cpp src/platform/translations.cpp
             ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
@@ -712,7 +716,7 @@ if(USBRESTORE_BUILD_TESTS)
         add_dependencies(usb-restoration-tool-tests usb-wmi-tests)
         add_test(NAME usb-wmi-tests COMMAND usb-wmi-tests)
         set_tests_properties(usb-wmi-tests PROPERTIES
-            ENVIRONMENT "PATH=${QT_INSTALL_PREFIX}/bin;$ENV{PATH}")
+            ENVIRONMENT "PATH=${_usbrestore_test_path}")
     endif()
 
     # Writes a partition table into a sparse image so sgdisk and fdisk can be
