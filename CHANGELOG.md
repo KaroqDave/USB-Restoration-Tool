@@ -6,16 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.9.0
+
+German, English, or the system language for the interface. Logs stay English,
+and the language cannot change a safety decision or which disk is opened.
+
 ### Added
 
-- Translation groundwork for 1.9.0: saved system/English/German preference,
-  embedded application and Qt base catalogs, and German text for the main window,
-  About and activity dialog controls, theme/filesystem labels, restore dialog,
-  step titles, shared descriptions, safety/layout messages and restore
-  notices/results. German sizes and step durations use decimal commas while logs
-  remain English. Language selection is not activated in the application yet.
-- English and German restore-dialog rendering tests for both themes and step
-  plans, including a separate 200% scaling check through ctest.
+- A saved **Language: Auto**, **English**, or **German** choice. It is applied
+  at startup, including the privilege dialog, and the header cycles it. The
+  choice is not applied while a restore is running. Auto uses German or English
+  when that is a system language, and English otherwise.
+- German text for the main window, About and activity controls, themes,
+  filesystems, the restore dialog, step titles, disk descriptions, safety and
+  layout messages, and restore notices and results. German sizes and durations
+  use a decimal comma. The activity log and log file stay English.
+- The installed Linux helper receives the resolved display language as a required
+  `--language en` or `de` argument. Protocol 5 carries a translated refusal on a
+  `failure` line; stderr stays the English diagnostic. A missing catalog leaves
+  English installed, and the application or restore still runs.
+- Package builds run `--show-translation en` and `de` on the binary that performs
+  the restore. German must print its catalog line, and the probe exits before
+  opening a disk.
 
 ### Fixed
 

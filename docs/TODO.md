@@ -2,12 +2,19 @@
 
 ## Next
 
-### 1.9.0 — German support (in progress)
-
-- Prepare the 1.9.0 version bump, README release notes and changelog after the
-  feature and validation are complete; no release or tag yet.
+No open task. Version 1.9.0 is prepared and is not tagged.
 
 ## Recently completed
+
+- 2026-11-01: Set `PROJECT_VERSION` to 1.9.0 and replaced the stale notes. The README
+  has `What's New in 1.9.0 (unreleased)`; 1.8.0 is now `Previously`. The changelog
+  has an undated 1.9.0 section and an empty Unreleased section. The helper example
+  is `version 5 app 1.9.0 steps 10 destructive 5`. A local rebuild reports that
+  line, and `describesTheReleaseAndProjectVersion` passes in both themes, so the
+  header and About dialog show v1.9.0. Release-note extraction for 1.9.0 is
+  non-empty and stops before 1.8.0. Screenshots and packages were not rebuilt.
+  Nothing was tagged. Windows, Qt 6.4 and sanitizer CI were not run. No physical
+  drive accessed.
 
 - 2026-11-01: Added `--show-translation en` and `de` so each package can prove its
   restore binary loads the embedded catalog and exits before opening a disk.

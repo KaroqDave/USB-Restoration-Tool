@@ -117,6 +117,9 @@ sudo ./squashfs-root/AppRun
 3. Choose the partition style and filesystem. GPT and exFAT are the defaults.
 4. Select **Restore USB**, read the summary, tick the acknowledgement and confirm.
 
+The header cycles **Language: Auto**, **English**, and **German**; the choice is
+saved, and Auto uses German or English when that is the system language.
+
 **Cancel** stops the restore before destructive work begins. Existing volumes may
 need remounting or drive-letter reassignment. Once destructive work starts, leave
 the drive connected until the operation finishes.
@@ -134,7 +137,19 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.8.0
+## What's New in 1.9.0 (unreleased)
+
+- German covers the windows, privilege dialog, restore steps, and refusals. The
+  header cycles **Language: Auto**, **English**, and **German**; the saved choice
+  is not applied while a restore is running.
+- German sizes and durations use a decimal comma. The activity log and log file
+  stay English.
+- An installed Linux build passes that language to the helper. Upgrade the
+  application and helper together. Linux requirements are unchanged.
+- If the German catalog cannot load, the interface stays English and the
+  application still opens.
+
+### Previously, in 1.8.0
 
 - Confirmation, restore progress and the result now share one themed dialog,
   with animated steps, completed-step timings, elapsed time and stall guidance.
