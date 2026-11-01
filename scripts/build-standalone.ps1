@@ -95,11 +95,17 @@ $catalogLines = @{
     en = "Elevated permission required"
     de = "Erhöhte Berechtigung erforderlich"
 }
-foreach ($language in @("en", "de")) {
-    $line = (& $exe --show-translation $language)
-    if ($LASTEXITCODE -ne 0 -or "$line".Trim() -ne $catalogLines[$language]) {
-        throw "Catalog probe $language failed (exit $LASTEXITCODE): $line"
+$previousEncoding = [Console]::OutputEncoding
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+try {
+    foreach ($language in @("en", "de")) {
+        $line = (& $exe --show-translation $language)
+        if ($LASTEXITCODE -ne 0 -or "$line".Trim() -ne $catalogLines[$language]) {
+            throw "Catalog probe $language failed (exit $LASTEXITCODE): $line"
+        }
     }
+} finally {
+    [Console]::OutputEncoding = $previousEncoding
 }
 
 if ($Sign) {

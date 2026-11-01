@@ -15,7 +15,9 @@
 
 #ifdef Q_OS_WIN
 #include "win/wmi.h"
+
 #include <objbase.h>
+#include <windows.h>
 #endif
 
 #ifdef Q_OS_LINUX
@@ -52,6 +54,22 @@ class ComScope {
   private:
     bool m_initialized = false;
 };
+
+// A GUI-subsystem process does not connect C stdout to the pipe a caller
+// inherited, so the catalog probe has to write that handle itself.
+void writeCatalogLine(const QString &line)
+{
+    const QByteArray bytes = (line + QLatin1Char('\n')).toUtf8();
+    const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD written = 0;
+    if (out != nullptr && out != INVALID_HANDLE_VALUE &&
+        WriteFile(out, bytes.constData(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+        written == static_cast<DWORD>(bytes.size())) {
+        return;
+    }
+    QTextStream stream(stdout);
+    stream << line << '\n';
+}
 #endif
 
 } // namespace
@@ -96,8 +114,12 @@ int main(int argc, char *argv[])
     const usbrestore::CatalogProbe probe = usbrestore::catalogProbe(arguments);
     if (probe.kind != usbrestore::CatalogProbeKind::NotRequested) {
         if (probe.kind == usbrestore::CatalogProbeKind::Ready) {
+#ifdef Q_OS_WIN
+            writeCatalogLine(probe.line);
+#else
             QTextStream out(stdout);
             out << probe.line << '\n';
+#endif
             return usbrestore::RestoreExitSuccess;
         }
         return probe.kind == usbrestore::CatalogProbeKind::MissingCatalog ? usbrestore::RestoreExitFailed
