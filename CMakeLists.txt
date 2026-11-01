@@ -550,12 +550,21 @@ qt_add_translations(usb-restoration-tool
     QM_FILES_OUTPUT_VARIABLE USBRESTORE_QM_FILES)
 unset(_usbrestore_translation_source_targets)
 
+# Qt before 6.7 names this target after the executable rather than the project.
+set(USBRESTORE_LRELEASE_TARGET ${PROJECT_NAME}_lrelease)
+if(NOT TARGET ${USBRESTORE_LRELEASE_TARGET})
+    set(USBRESTORE_LRELEASE_TARGET usb-restoration-tool_lrelease)
+endif()
+
 find_file(USBRESTORE_QTBASE_DE_QM qtbase_de.qm
     HINTS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}"
           "${QT_INSTALL_PREFIX}/translations" "${QT_INSTALL_PREFIX}/share/qt6/translations"
     NO_DEFAULT_PATH REQUIRED)
 
 function(usbrestore_embed_translations target)
+    # Without this, parallel Makefile builds run lrelease once per target and rcc
+    # can read a catalog that another target is still rewriting.
+    add_dependencies(${target} ${USBRESTORE_LRELEASE_TARGET})
     qt_add_resources(${target} "${target}_translations"
         PREFIX "/i18n"
         BASE "${CMAKE_CURRENT_BINARY_DIR}"

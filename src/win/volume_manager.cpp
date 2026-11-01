@@ -143,11 +143,11 @@ bool VolumeManager::refreshDisk(
         QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (disks.isEmpty()) {
         if (error || displayError) {
-            const QString detail = m_storage.lastError();
+            const RestoreMessage detail = m_storage.lastError();
             setRestoreError(
                 error,
                 displayError,
-                detail.isEmpty()
+                detail.english.isEmpty()
                     ? restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Windows did not report USB disk %1."))
                           .arg(diskNumber)
                     : detail);
@@ -156,15 +156,16 @@ bool VolumeManager::refreshDisk(
     }
 
     QString outcome;
-    QString operationError;
+    RestoreMessage operationError;
     const bool refreshed = m_storage.callMethodAndWait(
         QStringLiteral("MSFT_Disk"),
         disks.first().objectPath(),
         L"Refresh",
         {},
         RefreshJobTimeoutMs,
-        &operationError,
-        &outcome);
+        &operationError.english,
+        &outcome,
+        &operationError.display);
     noteStorageCall(reporter, QStringLiteral("MSFT_Disk.Refresh"), outcome);
     if (!refreshed) {
         setRestoreError(error, displayError, operationError);
@@ -192,7 +193,7 @@ bool VolumeManager::deletePartitionsForDisk(
     const auto partitions =
         m_storage.query(QStringLiteral("SELECT * FROM MSFT_Partition WHERE DiskNumber = %1").arg(diskNumber));
     if (partitions.isEmpty()) {
-        if (!m_storage.lastError().isEmpty()) {
+        if (!m_storage.lastError().english.isEmpty()) {
             if (error || displayError) {
                 setRestoreError(error, displayError, m_storage.lastError());
             }
@@ -211,15 +212,16 @@ bool VolumeManager::deletePartitionsForDisk(
             continue;
         }
         QString outcome;
-        QString operationError;
+        RestoreMessage operationError;
         const bool deleted = m_storage.callMethodAndWait(
             QStringLiteral("MSFT_Partition"),
             partition.objectPath(),
             L"DeleteObject",
             {},
             DeleteJobTimeoutMs,
-            &operationError,
-            &outcome);
+            &operationError.english,
+            &outcome,
+            &operationError.display);
         noteStorageCall(reporter, QStringLiteral("MSFT_Partition.DeleteObject"), outcome);
         if (!deleted) {
             setRestoreError(error, displayError, operationError);
@@ -639,12 +641,12 @@ bool VolumeManager::formatVolume(
 
     const QString targetPath = normalizedVolumePath(volumeName);
     WmiObject targetVolume;
-    QString queryError;
+    RestoreMessage queryError;
     QElapsedTimer timer;
     timer.start();
     while (!targetVolume.isValid() && timer.elapsed() < 30 * 1000) {
         const auto volumes = m_storage.query(QStringLiteral("SELECT * FROM MSFT_Volume"));
-        if (!m_storage.lastError().isEmpty()) {
+        if (!m_storage.lastError().english.isEmpty()) {
             queryError = m_storage.lastError();
         }
 
@@ -665,7 +667,7 @@ bool VolumeManager::formatVolume(
             setRestoreError(
                 error,
                 displayError,
-                queryError.isEmpty()
+                queryError.english.isEmpty()
                     ? restoreText(QT_TRANSLATE_NOOP(
                                       "usbrestore::Backend", "Windows did not report the restored volume for disk %1."))
                           .arg(diskNumber)
@@ -685,15 +687,16 @@ bool VolumeManager::formatVolume(
         inputs.append({QStringLiteral("AllocationUnitSize"), allocationUnitSize});
     }
     QString outcome;
-    QString operationError;
+    RestoreMessage operationError;
     const bool formatted = m_storage.callMethodAndWait(
         QStringLiteral("MSFT_Volume"),
         targetVolume.objectPath(),
         L"Format",
         inputs,
         FormatJobTimeoutMs,
-        &operationError,
-        &outcome);
+        &operationError.english,
+        &outcome,
+        &operationError.display);
     noteStorageCall(reporter, QStringLiteral("MSFT_Volume.Format"), outcome);
     if (!formatted) {
         setRestoreError(error, displayError, operationError);

@@ -215,7 +215,8 @@ The package scripts run `--show-translation en` and `--show-translation de` on t
 binary that performs the restore. That is the helper in the Debian and Fedora
 packages, and the application itself in the AppImage and Windows bundle. The
 probe prints one line and exits before opening a disk. German must print
-`Erhöhte Berechtigung erforderlich`.
+`Erhöhte Berechtigung erforderlich`. The Windows script runs the probe with
+`__COMPAT_LAYER=RunAsInvoker`, so it needs no elevated shell.
 
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options

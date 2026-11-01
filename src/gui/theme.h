@@ -4,6 +4,7 @@
 #include <QString>
 
 class QApplication;
+class QPushButton;
 
 namespace usbrestore {
 
@@ -70,6 +71,10 @@ int themeToSettings(Theme theme);
 QString themeButtonText(Theme theme);
 
 void applyTheme(QApplication &app, Theme theme);
+
+// The Windows style can size a button from a different font than the one that
+// draws it, and a narrow row then clips the German labels.
+void keepButtonTextVisible(QPushButton *button);
 
 QString statusBadgePrefix(StatusKind status);
 QColor statusBadgeBackground(StatusKind status, const Palette &palette);

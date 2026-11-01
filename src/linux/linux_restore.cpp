@@ -69,8 +69,7 @@ QByteArray randomGuid()
 RestoreMessage formatLimitSize(std::uint64_t bytes)
 {
     const auto size = static_cast<qint64>(bytes);
-    const QLocale display(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "en_US"), TextMode::Display));
-    return {QLocale::c().formattedDataSize(size), display.formattedDataSize(size)};
+    return {QLocale::c().formattedDataSize(size), displayLocale().formattedDataSize(size)};
 }
 
 // "sdb" -> "sdb1", but a name ending in a digit takes a "p": "nvme0n1" -> "nvme0n1p1".

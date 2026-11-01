@@ -93,10 +93,15 @@ if (-not (Test-Path -LiteralPath $exe)) {
 Write-Step "Checking the embedded catalog"
 $catalogLines = @{
     en = "Elevated permission required"
-    de = "Erhöhte Berechtigung erforderlich"
+    # Built from the code point: Windows PowerShell 5.1 reads a BOM-less script as ANSI.
+    de = "Erh$([char]0x00F6)hte Berechtigung erforderlich"
 }
 $previousEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+# The manifest requires elevation, which a redirected process cannot prompt for.
+# The probe exits before it needs any, so it runs at this shell's own level.
+$previousCompatLayer = $env:__COMPAT_LAYER
+$env:__COMPAT_LAYER = "RunAsInvoker"
 try {
     foreach ($language in @("en", "de")) {
         # Pipe the GUI-subsystem executable so PowerShell redirects stdout and waits for exit.
@@ -106,6 +111,7 @@ try {
         }
     }
 } finally {
+    $env:__COMPAT_LAYER = $previousCompatLayer
     [Console]::OutputEncoding = $previousEncoding
 }
 

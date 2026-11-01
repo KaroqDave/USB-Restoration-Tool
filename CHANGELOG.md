@@ -19,8 +19,9 @@ and the language cannot change a safety decision or which disk is opened.
   when that is a system language, and English otherwise.
 - German text for the main window, About and activity controls, themes,
   filesystems, the restore dialog, step titles, disk descriptions, safety and
-  layout messages, and restore notices and results. German sizes and durations
-  use a decimal comma. The activity log and log file stay English.
+  layout messages, Windows storage failures, and restore notices and results.
+  German sizes and durations use a decimal comma. The activity log and log file
+  stay English.
 - The installed Linux helper receives the resolved display language as a required
   `--language en` or `de` argument. Protocol 5 carries a translated refusal on a
   `failure` line; stderr stays the English diagnostic. A missing catalog leaves

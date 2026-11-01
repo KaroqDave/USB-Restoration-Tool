@@ -300,7 +300,7 @@ class WmiTests : public QObject {
         QString error;
         QVERIFY(!waitForStorageJob(
             QString(),
-            [&](QString *) {
+            [&](RestoreMessage *) {
                 read = true;
                 return storageJob(7, 0);
             },
@@ -308,6 +308,46 @@ class WmiTests : public QObject {
             &error));
         QVERIFY(!read);
         QVERIFY(error.contains(QStringLiteral("without a job")));
+    }
+
+    // These sentences are the tool's own, and the person holding the stick reads them.
+    void translatesStorageJobFailuresWhileKeepingEnglishDiagnostics()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const auto failed = storageJob(8, 0);
+        const auto incomplete = storageJob(7, std::nullopt);
+        const auto running = storageJob(4, std::nullopt);
+        const auto refused = [](const WmiObject &job, int timeoutMs, QString *english, QString *display) {
+            return !waitForStorageJob(
+                QStringLiteral("job"), [&job](RestoreMessage *) { return job; }, timeoutMs, english, nullptr, display);
+        };
+
+        QString english, display;
+        QVERIFY(refused(failed, 1000, &english, &display));
+        QCOMPARE(english, QStringLiteral("A Windows storage job failed with state 8."));
+        QCOMPARE(display, QStringLiteral("Ein Windows-Speicherauftrag ist im Status 8 fehlgeschlagen."));
+
+        QVERIFY(refused(incomplete, 1000, &english, &display));
+        QVERIFY2(english.contains(QStringLiteral("error code unavailable")), qPrintable(english));
+        QVERIFY2(display.contains(QStringLiteral("Fehlercode nicht verfügbar")), qPrintable(display));
+
+        QVERIFY(refused(running, 0, &english, &display));
+        QCOMPARE(english, QStringLiteral("A Windows storage job did not finish within 0 seconds."));
+        QVERIFY2(display.contains(QStringLiteral("nicht innerhalb von 0 Sekunden")), qPrintable(display));
+
+        QVERIFY(!waitForStorageJob(
+            QStringLiteral("job"),
+            [](RestoreMessage *readError) {
+                *readError = RestoreMessage(QStringLiteral("Provider gone"), QStringLiteral("Anbieter fort"));
+                return WmiObject();
+            },
+            1000,
+            &english,
+            nullptr,
+            &display));
+        QVERIFY2(english.endsWith(QStringLiteral("Provider gone")), qPrintable(english));
+        QVERIFY2(display.endsWith(QStringLiteral("Anbieter fort")), qPrintable(display));
     }
 
     void refusesUnreadableStorageJobs()
@@ -319,7 +359,7 @@ class WmiTests : public QObject {
             QString error;
             QVERIFY(!waitForStorageJob(
                 QStringLiteral("job"),
-                [&failure](QString *readError) {
+                [&failure](RestoreMessage *readError) {
                     *readError = failure;
                     return WmiObject();
                 },
@@ -334,7 +374,8 @@ class WmiTests : public QObject {
         QString error;
         const auto completed = storageJob(7, 0);
         QVERIFY(completed.isValid());
-        QVERIFY(waitForStorageJob(QStringLiteral("job"), [&completed](QString *) { return completed; }, 1000, &error));
+        QVERIFY(waitForStorageJob(
+            QStringLiteral("job"), [&completed](RestoreMessage *) { return completed; }, 1000, &error));
         for (const auto &job :
              {storageJob(std::nullopt, 0),
               storageJob(7, std::nullopt),
@@ -344,16 +385,16 @@ class WmiTests : public QObject {
               storageJob(10, 0)}) {
             QVERIFY(job.isValid());
             error.clear();
-            QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&job](QString *) { return job; }, 1000, &error));
+            QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&job](RestoreMessage *) { return job; }, 1000, &error));
             QVERIFY(!error.isEmpty());
         }
         const auto running = storageJob(4, std::nullopt);
         QVERIFY(running.isValid());
         int reads = 0;
         QVERIFY(waitForStorageJob(
-            QStringLiteral("job"), [&](QString *) { return ++reads == 1 ? running : completed; }, 1000, &error));
+            QStringLiteral("job"), [&](RestoreMessage *) { return ++reads == 1 ? running : completed; }, 1000, &error));
         QCOMPARE(reads, 2);
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, &error));
+        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](RestoreMessage *) { return running; }, 0, &error));
         QVERIFY(error.contains(QStringLiteral("did not finish")));
     }
 
@@ -366,7 +407,7 @@ class WmiTests : public QObject {
         int reads = 0;
         QVERIFY(waitForStorageJob(
             QStringLiteral("job"),
-            [&](QString *) { return ++reads == 1 ? running : completed; },
+            [&](RestoreMessage *) { return ++reads == 1 ? running : completed; },
             1000,
             nullptr,
             &outcome));
@@ -374,13 +415,14 @@ class WmiTests : public QObject {
         QVERIFY2(outcome.contains(QStringLiteral("2 read(s), last state 7")), qPrintable(outcome));
 
         const auto noCode = storageJob(7, std::nullopt);
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return noCode; }, 1000, nullptr, &outcome));
+        QVERIFY(!waitForStorageJob(
+            QStringLiteral("job"), [&](RestoreMessage *) { return noCode; }, 1000, nullptr, &outcome));
         QVERIFY2(outcome.contains(QStringLiteral("ErrorCode missing")), qPrintable(outcome));
 
         reads = 0;
         QVERIFY(!waitForStorageJob(
             QStringLiteral("job"),
-            [&](QString *readError) {
+            [&](RestoreMessage *readError) {
                 if (++reads == 1) {
                     return running;
                 }
@@ -393,7 +435,8 @@ class WmiTests : public QObject {
         QVERIFY2(outcome.contains(QStringLiteral("could not be read (Object not found)")), qPrintable(outcome));
         QVERIFY2(outcome.contains(QStringLiteral("last state 4")), qPrintable(outcome));
 
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, nullptr, &outcome));
+        QVERIFY(
+            !waitForStorageJob(QStringLiteral("job"), [&](RestoreMessage *) { return running; }, 0, nullptr, &outcome));
         QVERIFY2(outcome.contains(QStringLiteral("still running")), qPrintable(outcome));
     }
 

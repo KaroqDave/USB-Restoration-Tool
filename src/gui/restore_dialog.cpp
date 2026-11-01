@@ -345,16 +345,10 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     connect(m_doneButton, &QPushButton::clicked, this, &QDialog::accept);
     buttons->addWidget(m_doneButton);
     layout->addLayout(buttons);
-    const auto fitButton = [](QPushButton *button) {
-        button->ensurePolished();
-        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        button->setMinimumWidth(
-            qMax(button->sizeHint().width(), button->fontMetrics().horizontalAdvance(button->text()) + 8));
-    };
-    fitButton(m_logButton);
-    fitButton(m_cancelButton);
-    fitButton(m_eraseButton);
-    fitButton(m_doneButton);
+    keepButtonTextVisible(m_logButton);
+    keepButtonTextVisible(m_cancelButton);
+    keepButtonTextVisible(m_eraseButton);
+    keepButtonTextVisible(m_doneButton);
     setMinimumSize(layout->minimumSize().expandedTo(QSize(minimumWidth(), minimumHeight())));
 
     m_timer = new QTimer(this);

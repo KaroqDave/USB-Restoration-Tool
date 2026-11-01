@@ -715,6 +715,142 @@ Details: %1</source>
 
 Details: %1</translation>
     </message>
+    <message>
+        <source>WMI reported a general failure</source>
+        <translation>WMI hat einen allgemeinen Fehler gemeldet</translation>
+    </message>
+    <message>
+        <source>WMI object not found</source>
+        <translation>WMI-Objekt nicht gefunden</translation>
+    </message>
+    <message>
+        <source>Access denied by WMI</source>
+        <translation>Zugriff durch WMI verweigert</translation>
+    </message>
+    <message>
+        <source>WMI parameter type mismatch</source>
+        <translation>WMI-Parametertyp stimmt nicht überein</translation>
+    </message>
+    <message>
+        <source>Invalid parameter passed to WMI</source>
+        <translation>Ungültiger Parameter an WMI übergeben</translation>
+    </message>
+    <message>
+        <source>Invalid WMI namespace</source>
+        <translation>Ungültiger WMI-Namespace</translation>
+    </message>
+    <message>
+        <source>Invalid WMI class</source>
+        <translation>Ungültige WMI-Klasse</translation>
+    </message>
+    <message>
+        <source>Invalid WMI query</source>
+        <translation>Ungültige WMI-Abfrage</translation>
+    </message>
+    <message>
+        <source>The WMI provider is not available</source>
+        <translation>Der WMI-Anbieter ist nicht verfügbar</translation>
+    </message>
+    <message>
+        <source>The WMI provider is shutting down</source>
+        <translation>Der WMI-Anbieter wird beendet</translation>
+    </message>
+    <message>
+        <source>WMI input parameter failed: %1: %2</source>
+        <translation>WMI-Eingabeparameter fehlgeschlagen: %1: %2</translation>
+    </message>
+    <message>
+        <source>CoInitializeEx failed</source>
+        <translation>CoInitializeEx ist fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>CoCreateInstance(IWbemLocator) failed</source>
+        <translation>CoCreateInstance(IWbemLocator) ist fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>WMI ConnectServer failed</source>
+        <translation>WMI-ConnectServer ist fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>CoSetProxyBlanket failed</source>
+        <translation>CoSetProxyBlanket ist fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>WMI query failed: %1</source>
+        <translation>WMI-Abfrage fehlgeschlagen: %1</translation>
+    </message>
+    <message>
+        <source>WMI result enumeration failed: %1</source>
+        <translation>Aufzählung der WMI-Ergebnisse fehlgeschlagen: %1</translation>
+    </message>
+    <message>
+        <source>WMI GetObject failed for %1</source>
+        <translation>WMI-GetObject für %1 fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>WMI GetObject failed for class %1</source>
+        <translation>WMI-GetObject für die Klasse %1 fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>WMI GetMethod failed for %1.%2</source>
+        <translation>WMI-GetMethod für %1.%2 fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>WMI input parameter object creation failed</source>
+        <translation>Das WMI-Objekt für die Eingabeparameter konnte nicht erstellt werden</translation>
+    </message>
+    <message>
+        <source>WMI method has no input parameter signature: %1</source>
+        <translation>Die WMI-Methode hat keine Signatur für Eingabeparameter: %1</translation>
+    </message>
+    <message>
+        <source>WMI ExecMethod failed for %1.%2</source>
+        <translation>WMI-ExecMethod für %1.%2 fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>Windows queued a storage operation without a job to monitor. Restore stopped.</source>
+        <translation>Windows hat einen Speichervorgang ohne überwachbaren Auftrag eingereiht. Die Wiederherstellung wurde angehalten.</translation>
+    </message>
+    <message>
+        <source>Could not confirm that the Windows storage job completed. Restore stopped.</source>
+        <translation>Der Abschluss des Windows-Speicherauftrags konnte nicht bestätigt werden. Die Wiederherstellung wurde angehalten.</translation>
+    </message>
+    <message>
+        <source>Could not confirm that the Windows storage job completed. Restore stopped. %1</source>
+        <translation>Der Abschluss des Windows-Speicherauftrags konnte nicht bestätigt werden. Die Wiederherstellung wurde angehalten. %1</translation>
+    </message>
+    <message>
+        <source>The Windows storage job reported no usable state. Restore stopped.</source>
+        <translation>Der Windows-Speicherauftrag hat keinen verwertbaren Status gemeldet. Die Wiederherstellung wurde angehalten.</translation>
+    </message>
+    <message>
+        <source>The Windows storage job did not confirm success (error code %1). %2</source>
+        <translation>Der Windows-Speicherauftrag hat den Erfolg nicht bestätigt (Fehlercode %1). %2</translation>
+    </message>
+    <message>
+        <source>unavailable</source>
+        <translation>nicht verfügbar</translation>
+    </message>
+    <message>
+        <source>A Windows storage job failed with state %1.</source>
+        <translation>Ein Windows-Speicherauftrag ist im Status %1 fehlgeschlagen.</translation>
+    </message>
+    <message>
+        <source>A Windows storage job failed: %1</source>
+        <translation>Ein Windows-Speicherauftrag ist fehlgeschlagen: %1</translation>
+    </message>
+    <message>
+        <source>A Windows storage job did not finish within %1 seconds.</source>
+        <translation>Ein Windows-Speicherauftrag wurde nicht innerhalb von %1 Sekunden abgeschlossen.</translation>
+    </message>
+    <message>
+        <source>%1 failed with return value %2.</source>
+        <translation>%1 ist mit dem Rückgabewert %2 fehlgeschlagen.</translation>
+    </message>
+    <message>
+        <source>%1 failed with return value %2. %3</source>
+        <translation>%1 ist mit dem Rückgabewert %2 fehlgeschlagen. %3</translation>
+    </message>
 </context>
 <context>
     <name>usbrestore::Core</name>

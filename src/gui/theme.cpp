@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QPalette>
+#include <QPushButton>
 #include <QStyleFactory>
 #include <QStyleHints>
 
@@ -458,6 +459,17 @@ QString themeButtonText(Theme theme)
         return QCoreApplication::translate("usbrestore::Theme", "Theme: Dark");
     }
     return QCoreApplication::translate("usbrestore::Theme", "Theme");
+}
+
+void keepButtonTextVisible(QPushButton *button)
+{
+    if (!button) {
+        return;
+    }
+    button->ensurePolished();
+    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    button->setMinimumWidth(
+        qMax(button->sizeHint().width(), button->fontMetrics().horizontalAdvance(button->text()) + 8));
 }
 
 QString statusBadgePrefix(StatusKind status)

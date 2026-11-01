@@ -2,128 +2,40 @@
 
 ## Next
 
-No open task. Version 1.9.0 is prepared and is not tagged.
+- Confirm the PR #12 review fixes in CI. `build-windows` is the first real compile
+  of the WMI and restore changes, and `build-deb` the first Qt 6.4 run of the
+  `lrelease` dependency.
+- On Windows, run `./scripts/build-standalone.ps1` from an unelevated Windows
+  PowerShell 5.1. CI cannot cover this: its runners are elevated and use `pwsh`.
+- Before tagging 1.9.0: rebuild the screenshots and packages, date the changelog
+  and README notes, then merge PR #12 and tag `v1.9.0`.
 
 ## Recently completed
 
-- 2026-11-02: Keep scan failures and their diagnostic details visible when the
-  interface language changes; only a new scan clears the failure state. Added
-  regressions for language cycling and recovery with or without a detected disk.
-  Linux build and all five ctest checks pass, plus the new regression at 200%
-  scaling. Privileged loop tests skipped; no physical drive accessed.
-
-- 2026-11-02: Closed the 1.9.0 branch review findings. `RestoreMessage::arg` and
-  multi-argument error/status formatting now substitute all arguments in one pass
-  so reordered German placeholders and `%N` tokens in device paths or diagnostics
-  cannot collide. `usb-core-fuzz` checks `encodeFailureLine`, the `args-*` and
-  version-line fuzz seeds include protocol v5 `--language`, Windows test
-  environments share the escaped `PATH` and `QT_FORCE_STDERR_LOGGING=1`, and
-  `SECURITY.md` lists `1.9.x` as the supported release line.
-
-- 2026-11-01: The Windows bundle probe saw an empty catalog line with exit 0. The GUI
-  binary now writes that line to the inherited standard-output handle, and the
-  package script pipes the GUI executable and reads the output as UTF-8 so
-  PowerShell waits for exit and captures standard output.
-
-- 2026-11-01: Windows Qt Test was writing its report to the debugger, so ctest saw an
-  empty failure. The Windows job now sets `QT_FORCE_STDERR_LOGGING=1`. The
-  restore dialog sizes itself to its layout, and the done-button check runs
-  only while that button is visible.
-
-- 2026-11-01: The Windows GUI tests failed with no assertion text. Header and dialog
-  buttons now stay wide enough for their labels, Windows test output is
-  unbuffered, and the test PATH is no longer split on semicolons. Not yet
-  confirmed on a Windows runner.
-
-- 2026-11-01: Fixed the two CI failures from the 1.9.0 pull request. The Windows
-  retry path passed a finished message into `lastError`, which still expects
-  the source text. The Fedora container installs English files only, so the RPM
-  job now sets `%_install_langs` to `all` before installing Qt translations.
-  The AppImage linuxdeploy download returned 404 and was left unchanged.
-
-- 2026-11-01: Set `PROJECT_VERSION` to 1.9.0 and replaced the stale notes. The README
-  has `What's New in 1.9.0 (unreleased)`; 1.8.0 is now `Previously`. The changelog
-  has an undated 1.9.0 section and an empty Unreleased section. The helper example
-  is `version 5 app 1.9.0 steps 10 destructive 5`. A local rebuild reports that
-  line, and `describesTheReleaseAndProjectVersion` passes in both themes, so the
-  header and About dialog show v1.9.0. Release-note extraction for 1.9.0 is
-  non-empty and stops before 1.8.0. Screenshots and packages were not rebuilt.
-  Nothing was tagged. Windows, Qt 6.4 and sanitizer CI were not run. No physical
-  drive accessed.
-
-- 2026-11-01: Added `--show-translation en` and `de` so each package can prove its
-  restore binary loads the embedded catalog and exits before opening a disk.
-  German must print `Erhöhte Berechtigung erforderlich`; a missing catalog fails
-  instead of falling back to English. The helper handles it before the root
-  check, and the GUI handles it before the privilege dialog. Debian, RPM,
-  AppImage and Windows package scripts run the probe. A German restore-failure
-  dialog keeps the English diagnostic in the activity log. Linux build and all
-  five ctest checks pass, including the GUI suite at 100% and 200%. The local
-  RPM build passed its catalog probe and was not installed. Debian, AppImage,
-  Windows, Qt 6.4 and sanitizer CI were not run. Privileged loop tests skipped.
-  The 1.9.0 notes remain open. No physical drive accessed.
-
-- 2026-11-01: Passed the resolved display language to the helper as a required
-  `--language en` or `de` argument and raised the protocol to version 5. A
-  refusal travels on a `failure` line; stderr stays English for the log. The
-  language cannot change a safety result or which disk is opened. A missing
-  catalog leaves English installed and the restore still runs. Linux build and
-  all five ctest checks pass; privileged loop tests skipped. Package checks,
-  Windows, Qt 6.4, sanitizer CI and the 1.9.0 notes remain open. No physical
-  drive accessed.
-
-- 2026-11-01: Activated the saved system/English/German choice at startup and added the
-  main-window language cycle. The choice is saved with the other settings and is
-  not applied while a restore is running. The privilege dialog is translated;
-  a missing catalog leaves English in place and the application still opens.
-  Helper protocol, packaging and the 1.9.0 notes remain open. Linux build and
-  all five ctest checks pass, including the GUI suite at 100% and 200% scaling;
-  privileged loop tests skipped. Windows, Qt 6.4 and sanitizer CI were not run.
-  One disposable stick was restored and looked fine.
-
-- 2026-10-31: Split backend display text from English logs with paired restore
-  messages and optional display-error outputs. Added German native Linux and
-  Windows explanations, shared progress wording, and translated helper-client
-  launch/protocol errors. Paths, error codes and formatter/OS details are retained;
-  helper wire output stays English and the client derives display steps from the
-  shared plan. Detailed helper refusals await its language/transport work above.
-  Added worker/channel, native failure and formatter-detail regressions. Linux
-  build and all five ctest checks pass; privileged loop tests skipped. Startup
-  activation, Windows/Qt 6.4/sanitizer CI and package validation remain pending.
-  Partition-tool verification could not run locally because `sgdisk` is missing;
-  partition-table bytes are unchanged. No physical drive accessed.
-
-- 2026-10-31: Translated shared disk descriptions, decimal size/duration
-  formatting, safety/identity refusals, layout errors and large-drive warnings.
-  Core messages use an explicit display mode; existing backend/log calls default
-  to English, and display formatting leaves the process locale unchanged. Added
-  safety-decision invariance, German refusal/warning UI checks in both themes
-  and scales, and English restore-log checks with German UI. Linux build and all
-  five ctest checks pass; privileged loop tests skipped. Startup, backend
-  messages, helper protocol and package/CI validation remain open. No physical
-  drive accessed.
-
-- 2026-10-31: Added 72 German display strings for the main window, About and
-  activity dialog controls, theme/filesystem labels and caller-supplied restore
-  notices and results (138 catalog entries total). English logs and protocol
-  tokens remain unchanged; startup activation is still disabled. Added main
-  window rendering and dialog/scan-error checks in both themes at 100% and 200%,
-  plus German success/cancellation checks through the example service. Linux
-  build and all five ctest checks pass; German main-window previews reviewed at
-  both scales. Privileged loop tests skipped. Shared descriptions, safety
-  messages, backend translations and package/CI validation remain open. No
-  physical drive accessed.
-
-- 2026-10-31: Started 1.9.0 translation groundwork: stable language preferences,
-  embedded application/Qt base catalogs through `qt_add_translations`, and 66
-  German restore-dialog strings including both plans' step titles. Startup
-  activation, the selector and backend translations remain open above. Fixed
-  long errors overlapping progress details in compact dialogs. Linux build and
-  all five ctest checks pass, including English/German rendering in both themes
-  and plans at 100% and 200%; reviewed German previews at both scales. Catalog
-  extraction, placeholders, formatting and diff checks pass. Privileged loop
-  tests skipped; packages, Windows and sanitizers were not run. No physical
-  drive accessed.
+- 2026-11-02: Closed the PR #12 review findings: a single `lrelease` run across
+  targets, a Windows catalog probe that works unelevated and under PowerShell 5.1,
+  a minimum width that follows the language, one source for main-window text,
+  translated WMI and storage-job failures, a shared display locale and button
+  helper, and per-step failure text in the Windows restore. Linux build and all
+  five ctest checks pass; `src/win` was type-checked with MinGW headers only.
+- 2026-11-02: Scan failures and their details stay visible across language changes.
+- 2026-11-02: Closed the 1.9.0 branch review findings: one-pass argument
+  substitution, protocol v5 fuzz seeds, Windows test environment fixes and `1.9.x`
+  in `SECURITY.md`.
+- 2026-11-01: Fixed the Windows CI failures: catalog probe output, `ctest` reporting
+  through `QT_FORCE_STDERR_LOGGING`, the unsplit test `PATH`, clipped header and
+  dialog buttons, and `lastError` receiving finished text. The RPM job now installs
+  all languages.
+- 2026-11-01: Set `PROJECT_VERSION` to 1.9.0 with unreleased README and changelog notes.
+- 2026-11-01: Added `--show-translation en` and `de` so each package proves its
+  restore binary loads the embedded catalog.
+- 2026-11-01: Passed the display language to the helper as a required `--language`
+  argument on protocol 5, with refusals on a `failure` line.
+- 2026-11-01: Activated the saved language at startup and added the header control.
+- 2026-10-31: Split backend display text from English logs and translated native
+  Linux and Windows errors, shared disk text, safety refusals and layout errors.
+- 2026-10-31: Added the embedded catalogs and German text for the main window and
+  restore dialog.
 
 - 2026-10-31: Published 1.8.0 as the latest stable release. Squash-merged
   [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11) as

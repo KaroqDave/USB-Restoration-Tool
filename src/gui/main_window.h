@@ -70,6 +70,9 @@ class MainWindow : public QMainWindow {
     void saveSettings();
     void applyCurrentTheme();
     void retranslateUi();
+    void applyTranslatedText();
+    void applyActivityDialogText();
+    void fitMinimumWidthToContent();
     void refreshStatusBadge();
 
     void renderDisks();

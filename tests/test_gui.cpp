@@ -109,6 +109,8 @@ class ExampleService : public DiskService {
     int outcome = 0;
     RestoreRequest received;
     DiskInfo disk = exampleDisk();
+    QVector<DiskInfo> extraDisks;
+    mutable int formatChecks = 0;
     bool diskPresent = true;
     QString scanError;
     bool reportMessages = false;
@@ -123,7 +125,7 @@ class ExampleService : public DiskService {
     QVector<DiskInfo> listUsbDisks(QString *error, QString * = nullptr) const override
     {
         *error = scanError;
-        return diskPresent && scanError.isEmpty() ? QVector<DiskInfo>{disk} : QVector<DiskInfo>{};
+        return diskPresent && scanError.isEmpty() ? QVector<DiskInfo>{disk} + extraDisks : QVector<DiskInfo>{};
     }
     bool refreshDisk(const DiskInfo &, DiskInfo *refreshedDisk, QString *, QString * = nullptr) const override
     {
@@ -134,6 +136,7 @@ class ExampleService : public DiskService {
     QVector<FileSystemType> supportedFileSystems() const override { return {FileSystemType::ExFat}; }
     bool canFormatFileSystem(FileSystemType, const DiskInfo &, QString *, QString * = nullptr) const override
     {
+        ++formatChecks;
         return true;
     }
     const QVector<RestoreStep> &restorePlan() const override { return linuxRestorePlan(); }
@@ -360,6 +363,85 @@ class GuiTests : public QObject {
         QCOMPARE(
             window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
             QStringLiteral("A fresh start for your USB drive."));
+        window.close();
+    }
+
+    void keepsTheHeaderReachableAfterChangingLanguage_data()
+    {
+        QTest::addColumn<Language>("start");
+        QTest::newRow("from-english") << Language::English;
+        QTest::newRow("from-german") << Language::German;
+    }
+
+    // Which language needs more room depends on the font, and with horizontal scrolling
+    // off a window shrunk to the narrower one would cut off the header in the wider one.
+    void keepsTheHeaderReachableAfterChangingLanguage()
+    {
+        QFETCH(Language, start);
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = start;
+        settings.geometry.clear();
+        saveAppSettings(settings);
+        Translations translations;
+        QVERIFY(translations.load(start));
+        ExampleService service;
+        MainWindow window(service, Theme::Light, &translations);
+        window.resize(window.minimumWidth(), window.height());
+        window.show();
+        QCoreApplication::processEvents();
+        const int startingMinimum = window.minimumWidth();
+
+        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *scroll = qobject_cast<QScrollArea *>(window.centralWidget());
+        QVERIFY(language && scroll);
+        for (int click = 0; click < 3; ++click) {
+            language->click();
+            QCoreApplication::processEvents();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+            QCoreApplication::processEvents();
+            QVERIFY2(
+                scroll->viewport()->width() >= scroll->widget()->minimumSizeHint().width(),
+                qPrintable(QStringLiteral("viewport %1, page needs %2")
+                               .arg(scroll->viewport()->width())
+                               .arg(scroll->widget()->minimumSizeHint().width())));
+        }
+        QCOMPARE(translations.language(), start);
+        QCOMPARE(window.minimumWidth(), startingMinimum);
+        window.close();
+    }
+
+    void reactsOnceToTheSelectedDiskWhenTheLanguageChanges()
+    {
+        const AppSettings original = loadAppSettings();
+        const auto restoreSettings = qScopeGuard([original]() { saveAppSettings(original); });
+        AppSettings settings = original;
+        settings.language = Language::English;
+        saveAppSettings(settings);
+        Translations translations;
+        QVERIFY(translations.load(Language::English));
+        ExampleService service;
+        DiskInfo second = service.disk;
+        second.deviceId = QStringLiteral("/dev/example-second");
+        second.displayId = QStringLiteral("example-second");
+        service.extraDisks = {second};
+        MainWindow window(service, Theme::Light, &translations);
+        window.show();
+        auto *disks = window.findChild<QListWidget *>();
+        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        QVERIFY(disks && language);
+        QCOMPARE(disks->count(), 2);
+        disks->setCurrentRow(1);
+
+        QSignalSpy selection(disks, &QListWidget::currentRowChanged);
+        service.formatChecks = 0;
+        language->click();
+        QCoreApplication::processEvents();
+        QCOMPARE(translations.language(), Language::German);
+        QCOMPARE(disks->currentRow(), 1);
+        QCOMPARE(service.formatChecks, 1);
+        QCOMPARE(selection.count(), 0);
         window.close();
     }
 

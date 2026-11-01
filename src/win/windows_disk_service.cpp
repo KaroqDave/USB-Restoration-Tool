@@ -155,76 +155,74 @@ bool WindowsDiskService::restore(
     QString *displayError)
 {
     DiskInfo disk = request.disk;
+    // Emptied at each step, so a failure with only English text cannot show an earlier step's display text.
+    RestoreMessage failure;
+    const auto stepFailure = [&failure]() {
+        return failure.display.isEmpty() ? RestoreMessage(failure.english) : failure;
+    };
+    const auto refuse = [&stepFailure, error, displayError]() {
+        setRestoreError(error, displayError, stepFailure());
+        return false;
+    };
     const auto failOperation =
-        [&disk, error, displayError](
-            const RestoreMessage &operation, const RestoreMessage &detail, const RestoreMessage &advice = {}) {
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    windowsRestoreErrorMessage(
-                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
-                            .arg(operation, disk.number),
-                        detail,
-                        advice));
-            }
+        [&disk, &stepFailure, error, displayError](const RestoreMessage &operation, const RestoreMessage &advice = {}) {
+            setRestoreError(
+                error,
+                displayError,
+                windowsRestoreErrorMessage(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
+                        .arg(operation, disk.number),
+                    stepFailure(),
+                    advice));
             return false;
         };
-    QString reason;
-    QString displayReason;
     if (!checkRestoreError(
-            &reason,
-            &displayReason,
+            &failure.english,
+            &failure.display,
             [&](QString *text, TextMode mode) { return isSafeRestoreTarget(disk, request.guard, text, mode); }) ||
-        !checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
+        !checkRestoreError(&failure.english, &failure.display, [&](QString *text, TextMode mode) {
             return canCreatePartitionLayout(request.style, disk, text, mode);
         })) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
-        return false;
+        return refuse();
     }
 
     RestoreStepCounter steps(windowsRestorePlan());
+    const auto beginStep = [&](RestoreStep step) {
+        failure = {};
+        reportPlannedStep(steps, reporter, step, request);
+    };
 
-    reportPlannedStep(steps, reporter, RestoreStep::VerifyDisk, request);
+    beginStep(RestoreStep::VerifyDisk);
     DiskInfo currentDisk;
-    if (!m_enumerator.diskByNumber(disk.number, &currentDisk, &reason, DiskDetails::Restore, &displayReason)) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "verify the selected drive")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+    if (!m_enumerator.diskByNumber(
+            disk.number, &currentDisk, &failure.english, DiskDetails::Restore, &failure.display)) {
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "verify the selected drive")));
     }
     if (!checkRestoreError(
-            &reason,
-            &displayReason,
+            &failure.english,
+            &failure.display,
             [&](QString *text, TextMode mode) { return isSameRestoreTarget(disk, currentDisk, text, mode); }) ||
-        !checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
+        !checkRestoreError(&failure.english, &failure.display, [&](QString *text, TextMode mode) {
             return isSafeRestoreTarget(currentDisk, request.guard, text, mode);
         })) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
-        return false;
+        return refuse();
     }
     disk = currentDisk;
 
     // Checked against the re-derived disk, not the one handed in.
     if (!checkRestoreError(
-            &reason,
-            &displayReason,
+            &failure.english,
+            &failure.display,
             [&](QString *text, TextMode mode) { return canCreatePartitionLayout(request.style, disk, text, mode); }) ||
-        !canFormatFileSystem(request.fileSystem, disk, &reason, &displayReason)) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
-        return false;
+        !canFormatFileSystem(request.fileSystem, disk, &failure.english, &failure.display)) {
+        return refuse();
     }
     const quint32 allocationUnitSize =
         request.fileSystem == FileSystemType::Fat32 ? windowsFat32AllocationUnitSize(disk) : 0;
 
     // Kept open for the whole restore so raw operations hit the verified device,
     // not whatever \\.\PhysicalDriveN names later.
-    reportPlannedStep(steps, reporter, RestoreStep::OpenDrive, request);
+    beginStep(RestoreStep::OpenDrive);
     RawDisk rawDisk(disk.number);
     if (!rawDisk.open(error, displayError) || !rawDisk.verifyIdentity(disk, error, displayError)) {
         return false;
@@ -234,21 +232,18 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::RefreshMetadata, request);
+    beginStep(RestoreStep::RefreshMetadata);
     VolumeManager volumes;
-    if (!volumes.refreshDisk(disk.number, &reason, &reporter, &displayReason)) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "refresh Windows disk metadata")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+    if (!volumes.refreshDisk(disk.number, &failure.english, &reporter, &failure.display)) {
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "refresh Windows disk metadata")));
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::DetachDriveLetters, request);
+    beginStep(RestoreStep::DetachDriveLetters);
     // Letterless volumes first, so a volume whose letter is about to be removed is not counted twice.
-    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, &reason, &reporter, &displayReason) ||
-        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, &reason, &displayReason)) {
+    if (!volumes.dismountUnletteredVolumesOnDisk(disk.number, &failure.english, &reporter, &failure.display) ||
+        !volumes.removeMountPointsForDisk(disk.number, request.guard.mountPoints, &failure.english, &failure.display)) {
         return failOperation(
             restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "detach the existing volumes and drive letters")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason},
             restoreText(QT_TRANSLATE_NOOP(
                 "usbrestore::Backend",
                 "Close any files, File Explorer windows and programs using the drive and run the restore again")));
@@ -264,12 +259,11 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::DeletePartitions, request);
+    beginStep(RestoreStep::DeletePartitions);
     bool partitionAtDiskStart = false;
-    if (!volumes.deletePartitionsForDisk(disk.number, &partitionAtDiskStart, &reason, &reporter, &displayReason)) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "delete the existing partitions")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+    if (!volumes.deletePartitionsForDisk(
+            disk.number, &partitionAtDiskStart, &failure.english, &reporter, &failure.display)) {
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "delete the existing partitions")));
     }
     if (partitionAtDiskStart) {
         reporter.detail(QStringLiteral(
@@ -292,7 +286,7 @@ bool WindowsDiskService::restore(
                             .arg(OldVolumeTimeoutMs / 1000));
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::LockDrive, request);
+    beginStep(RestoreStep::LockDrive);
     QString lockError;
     if (!rawDisk.lock(&lockError)) {
         reporter.detail(QStringLiteral("Physical-drive lock skipped: %1").arg(lockError));
@@ -307,7 +301,7 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures, request);
+    beginStep(RestoreStep::ClearSignatures);
     const bool cleared = rawDisk.clearPartitionSignatures(disk.size, disk.sectorSize, error, displayError);
     if (rawDisk.notReadyRetries() > 0) {
         reporter.detail(QStringLiteral(
@@ -320,32 +314,28 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::ResetToRaw, request);
+    beginStep(RestoreStep::ResetToRaw);
     if (!rawDisk.setRaw(error, displayError)) {
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::CreatePartition, request);
+    beginStep(RestoreStep::CreatePartition);
     if (!rawDisk.createSinglePartition(
             request.style, request.fileSystem, disk.size, disk.sectorSize, error, displayError)) {
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::WaitForVolume, request);
+    beginStep(RestoreStep::WaitForVolume);
     const QString volumeName =
-        volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, &reason, &reporter, &displayReason);
+        volumes.waitForVolumeOnDisk(disk.number, NewVolumeTimeoutMs, &failure.english, &reporter, &failure.display);
     if (volumeName.isEmpty()) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "find the new volume")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "find the new volume")));
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::RefreshNewVolume, request);
-    if (!volumes.refreshDisk(disk.number, &reason, &reporter, &displayReason) ||
-        !volumes.volumePathBelongsToDisk(volumeName, disk.number, &reason, &displayReason)) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "verify the new volume")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+    beginStep(RestoreStep::RefreshNewVolume);
+    if (!volumes.refreshDisk(disk.number, &failure.english, &reporter, &failure.display) ||
+        !volumes.volumePathBelongsToDisk(volumeName, disk.number, &failure.english, &failure.display)) {
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "verify the new volume")));
     }
 
     // The rest goes by disk number alone; a live handle that still reports it
@@ -354,19 +344,18 @@ bool WindowsDiskService::restore(
         return false;
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::AssignDriveLetter, request);
-    const QString driveRoot = volumes.mountVolume(volumeName, &reason, &displayReason);
+    beginStep(RestoreStep::AssignDriveLetter);
+    const QString driveRoot = volumes.mountVolume(volumeName, &failure.english, &failure.display);
     if (driveRoot.isEmpty()) {
         return failOperation(
             restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "assign a drive letter")),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason},
             restoreText(QT_TRANSLATE_NOOP(
                 "usbrestore::Backend",
                 "If every drive letter is in use, eject another drive to free one. Then unplug this drive, plug it "
                 "back in and run the restore again")));
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::Format, request);
+    beginStep(RestoreStep::Format);
     if (!confirmStillSelected(rawDisk, disk, error, displayError)) {
         return false;
     }
@@ -377,16 +366,14 @@ bool WindowsDiskService::restore(
             request.fileSystem,
             allocationUnitSize,
             request.volumeLabel,
-            &reason,
+            &failure.english,
             &reporter,
-            &displayReason)) {
-        return failOperation(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "format as %1"))
-                .arg(fileSystemTypeName(request.fileSystem)),
-            RestoreMessage{reason, displayReason.isEmpty() ? reason : displayReason});
+            &failure.display)) {
+        return failOperation(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "format as %1"))
+                                 .arg(fileSystemTypeName(request.fileSystem)));
     }
 
-    reportPlannedStep(steps, reporter, RestoreStep::Complete, request);
+    beginStep(RestoreStep::Complete);
     if (result) {
         result->location = driveRoot;
     }
