@@ -111,8 +111,12 @@ bool isValidVolumeLabel(const QString &label)
     return true;
 }
 
-QStringList
-buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel)
+QStringList buildRestoreArguments(
+    const DiskInfo &disk,
+    PartitionStyle style,
+    FileSystemType fileSystem,
+    const QString &volumeLabel,
+    Language language)
 {
     QStringList arguments;
     arguments << QStringLiteral("--device") << disk.deviceId;
@@ -138,6 +142,11 @@ buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType
     appendIfKnown(QStringLiteral("--expect-path"), disk.path);
     appendIfKnown(QStringLiteral("--expect-name"), disk.name);
 
+    // Resolved here so a System preference cannot cross pkexec, which clears the environment.
+    const Language resolved = resolveLanguage(language);
+    arguments << QStringLiteral("--language")
+              << (resolved == Language::German ? QStringLiteral("de") : QStringLiteral("en"));
+
     return arguments;
 }
 
@@ -150,6 +159,7 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     QString size;
     QString sectorSize;
     QStringList seen;
+    bool sawLanguage = false;
 
     for (int index = 0; index < arguments.size(); index += 2) {
         const QString flag = arguments.at(index);
@@ -188,6 +198,15 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
             result.expected.path = value;
         } else if (flag == QStringLiteral("--expect-name")) {
             result.expected.name = value;
+        } else if (flag == QStringLiteral("--language")) {
+            if (value == QStringLiteral("en")) {
+                result.displayLanguage = Language::English;
+            } else if (value == QStringLiteral("de")) {
+                result.displayLanguage = Language::German;
+            } else {
+                return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+            }
+            sawLanguage = true;
         } else {
             return fail(error, QStringLiteral("%1 is not a recognised option.").arg(flag));
         }
@@ -222,6 +241,10 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
         return fail(error, QStringLiteral("--expect-sector-size must be the logical sector size in bytes."));
     }
     result.expected.sectorSize = static_cast<quint32>(number);
+
+    if (!sawLanguage) {
+        return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+    }
 
     result.expected.deviceId = device;
     result.expected.displayId = device;
@@ -340,6 +363,10 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error,
         return HelperRunVerdict::Cancelled;
     }
     if (run.exitCode != RestoreExitSuccess) {
+        // Reaching here means the version line was accepted. A rejected helper cannot supply the UI text.
+        if (mode == TextMode::Display && run.versionAccepted && !run.displayFailure.isEmpty()) {
+            return failWith(run.displayFailure);
+        }
         return failWith(describeRestoreExit(run.exitCode, run.helperStderr, mode));
     }
 
@@ -406,6 +433,11 @@ QString encodeStepLine(int step, int totalSteps, const QString &message)
 QString encodeDetailLine(const QString &message)
 {
     return QStringLiteral("detail %1").arg(sanitizeProtocolText(message));
+}
+
+QString encodeFailureLine(const QString &message)
+{
+    return QStringLiteral("failure %1").arg(sanitizeProtocolText(message));
 }
 
 QString encodeResultLine(const QString &location)
@@ -488,6 +520,12 @@ ProtocolLine parseProtocolLine(const QString &line)
 
     if (keyword == QStringLiteral("detail")) {
         parsed.kind = ProtocolLineKind::Detail;
+        parsed.text = remainder;
+        return parsed;
+    }
+
+    if (keyword == QStringLiteral("failure")) {
+        parsed.kind = ProtocolLineKind::Failure;
         parsed.text = remainder;
         return parsed;
     }

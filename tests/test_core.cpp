@@ -5,6 +5,8 @@
 #include "core/restore_steps.h"
 #include "core/safety.h"
 
+#include <QScopeGuard>
+#include <QTranslator>
 #include <QtTest/QtTest>
 
 #include <limits>
@@ -1186,6 +1188,131 @@ class CoreTests : public QObject {
         QVERIFY2(reason.contains(flag), qPrintable(reason));
     }
 
+    void acceptsOnlyADisplayLanguageArgument()
+    {
+        const DiskInfo disk = healthyUsbDisk();
+        const QStringList english = buildRestoreArguments(
+            disk, PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"), Language::English);
+        const QStringList german = buildRestoreArguments(
+            disk, PartitionStyle::Gpt, FileSystemType::ExFat, QStringLiteral("USB"), Language::German);
+        const int englishLanguage = english.indexOf(QStringLiteral("--language"));
+        const int germanLanguage = german.indexOf(QStringLiteral("--language"));
+        QCOMPARE(english.at(englishLanguage + 1), QStringLiteral("en"));
+        QCOMPARE(german.at(germanLanguage + 1), QStringLiteral("de"));
+
+        RestoreArguments parsedEnglish;
+        RestoreArguments parsedGerman;
+        QVERIFY(parseRestoreArguments(english, &parsedEnglish));
+        QVERIFY(parseRestoreArguments(german, &parsedGerman));
+        QCOMPARE(parsedEnglish.displayLanguage, Language::English);
+        QCOMPARE(parsedGerman.displayLanguage, Language::German);
+
+        const DiskInfo &claimedEnglish = parsedEnglish.expected;
+        const DiskInfo &claimedGerman = parsedGerman.expected;
+        QCOMPARE(claimedEnglish.deviceId, claimedGerman.deviceId);
+        QCOMPARE(claimedEnglish.displayId, claimedGerman.displayId);
+        QCOMPARE(claimedEnglish.number, claimedGerman.number);
+        QCOMPARE(claimedEnglish.busType, 0u);
+        QCOMPARE(claimedGerman.busType, 0u);
+        QCOMPARE(claimedEnglish.name, claimedGerman.name);
+        QCOMPARE(claimedEnglish.uniqueId, claimedGerman.uniqueId);
+        QCOMPARE(claimedEnglish.serialNumber, claimedGerman.serialNumber);
+        QCOMPARE(claimedEnglish.path, claimedGerman.path);
+        QCOMPARE(claimedEnglish.deviceSequence, claimedGerman.deviceSequence);
+        QCOMPARE(claimedEnglish.size, claimedGerman.size);
+        QCOMPARE(claimedEnglish.sectorSize, claimedGerman.sectorSize);
+        QCOMPARE(claimedEnglish.health, claimedGerman.health);
+        QCOMPARE(claimedEnglish.partitionStyle, claimedGerman.partitionStyle);
+        QCOMPARE(claimedEnglish.mountPoints, claimedGerman.mountPoints);
+        QCOMPARE(claimedEnglish.labels, claimedGerman.labels);
+        QCOMPARE(claimedEnglish.fileSystems, claimedGerman.fileSystems);
+        QCOMPARE(claimedEnglish.isBoot, claimedGerman.isBoot);
+        QCOMPARE(claimedEnglish.isSystem, claimedGerman.isSystem);
+        QCOMPARE(claimedEnglish.isReadOnly, claimedGerman.isReadOnly);
+        QCOMPARE(claimedEnglish.isOffline, claimedGerman.isOffline);
+        QCOMPARE(parsedEnglish.style, parsedGerman.style);
+        QCOMPARE(parsedEnglish.fileSystem, parsedGerman.fileSystem);
+        QCOMPARE(parsedEnglish.volumeLabel, parsedGerman.volumeLabel);
+
+        QString englishReason;
+        QString germanReason;
+        QVERIFY(!isSafeRestoreTarget(claimedEnglish, {}, &englishReason));
+        QVERIFY(!isSafeRestoreTarget(claimedGerman, {}, &germanReason));
+        QCOMPARE(englishReason, germanReason);
+
+        const auto refuses = [](const QStringList &arguments, const QString &expected) {
+            QString reason;
+            return !parseRestoreArguments(arguments, nullptr, &reason) && reason.contains(expected);
+        };
+
+        QStringList missing = english;
+        missing.removeAt(englishLanguage + 1);
+        missing.removeAt(englishLanguage);
+        QVERIFY(refuses(missing, QStringLiteral("--language")));
+        QVERIFY(refuses(
+            english + QStringList{QStringLiteral("--language"), QStringLiteral("de")},
+            QStringLiteral("more than once")));
+        QVERIFY(refuses(english + QStringList{QStringLiteral("--language")}, QStringLiteral("without a value")));
+
+        for (const QString &value :
+             {QStringLiteral("system"), QStringLiteral("fr"), QStringLiteral("EN"), QString(), QStringLiteral("de ")}) {
+            QStringList arguments = english;
+            arguments[englishLanguage + 1] = value;
+            QVERIFY2(refuses(arguments, QStringLiteral("--language")), qPrintable(value));
+        }
+    }
+
+    void keepsSafetyRefusalsWhenTheDisplayCatalogIsLoaded()
+    {
+        DiskInfo disk = healthyUsbDisk();
+        disk.isReadOnly = true;
+        QString english;
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &english));
+        QCOMPARE(english, QStringLiteral("/dev/sdb is read-only."));
+
+        const QLocale locale;
+        QTranslator translator;
+        QVERIFY(translator.load(QStringLiteral(":/i18n/usbrestore_de.qm")));
+        QVERIFY(QCoreApplication::installTranslator(&translator));
+        const auto remove = qScopeGuard([&translator]() { QCoreApplication::removeTranslator(&translator); });
+
+        QString stillEnglish;
+        QString german;
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &stillEnglish));
+        QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &german, TextMode::Display));
+        QCOMPARE(stillEnglish, english);
+        QCOMPARE(german, QStringLiteral("/dev/sdb ist schreibgeschützt."));
+        QCOMPARE(QLocale(), locale);
+    }
+
+    void prefersTheHelpersDisplayFailure()
+    {
+        HelperRunObservation failed;
+        failed.sawVersion = true;
+        failed.versionAccepted = true;
+        failed.exitCode = RestoreExitFailed;
+        failed.helperStderr = QStringLiteral("/dev/sdb is read-only.");
+        failed.displayFailure = QStringLiteral("/dev/sdb ist schreibgeschützt.");
+
+        QString english;
+        QString display;
+        QCOMPARE(judgeHelperRun(failed, &english), HelperRunVerdict::Failed);
+        QCOMPARE(english, failed.helperStderr);
+        QCOMPARE(judgeHelperRun(failed, &display, TextMode::Display), HelperRunVerdict::Failed);
+        QCOMPARE(display, failed.displayFailure);
+
+        failed.displayFailure.clear();
+        QCOMPARE(judgeHelperRun(failed, &display, TextMode::Display), HelperRunVerdict::Failed);
+        QCOMPARE(display, describeRestoreExit(RestoreExitFailed, failed.helperStderr, TextMode::Display));
+
+        HelperRunObservation rejected = failed;
+        rejected.versionAccepted = false;
+        rejected.displayFailure = QStringLiteral("/dev/sdb ist schreibgeschützt.");
+        rejected.versionError = QStringLiteral("protocol mismatch");
+        QCOMPARE(judgeHelperRun(rejected, &display, TextMode::Display), HelperRunVerdict::Failed);
+        QCOMPARE(display, rejected.versionError);
+    }
+
     void refusesUnrecognisedFlagSpellings_data()
     {
         QTest::addColumn<QStringList>("extra");
@@ -1510,6 +1637,10 @@ class CoreTests : public QObject {
         const ProtocolLine result = overTheWire(encodeResultLine(message));
         QCOMPARE(result.kind, ProtocolLineKind::Result);
         QCOMPARE(result.text, expected);
+
+        const ProtocolLine failure = overTheWire(encodeFailureLine(message));
+        QCOMPARE(failure.kind, ProtocolLineKind::Failure);
+        QCOMPARE(failure.text, expected);
     }
 
     // Cutting a surrogate pair in half would leave text that no longer survives

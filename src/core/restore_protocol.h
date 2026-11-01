@@ -12,7 +12,7 @@ namespace usbrestore {
 // the helper checks against its own enumeration, never grants (docs/polkit-helper.md).
 
 // Bump whenever the meaning of any argument or output line changes.
-inline constexpr int RestoreProtocolVersion = 4;
+inline constexpr int RestoreProtocolVersion = 5;
 
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
 
@@ -40,7 +40,10 @@ struct HelperRunObservation {
     QString versionError;
     bool killRequested = false;
     QString location;
+    // English diagnostic. The log uses this, not the display line.
     QString helperStderr;
+    // Translated refusal from a `failure` line. Empty when the helper sent none.
+    QString displayFailure;
 };
 
 enum class HelperRunVerdict {
@@ -61,6 +64,8 @@ struct RestoreArguments {
     PartitionStyle style = PartitionStyle::Gpt;
     FileSystemType fileSystem = FileSystemType::ExFat;
     QString volumeLabel;
+    // Display only. Never copied onto the claimed disk or passed to a safety check.
+    Language displayLanguage = Language::English;
 };
 
 // Only rejects the obviously malformed; the path must still name a directory under
@@ -71,7 +76,11 @@ bool isValidVolumeLabel(const QString &label);
 
 // Excludes the program name.
 QStringList buildRestoreArguments(
-    const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel);
+    const DiskInfo &disk,
+    PartitionStyle style,
+    FileSystemType fileSystem,
+    const QString &volumeLabel,
+    Language language = Language::English);
 
 // Refuses anything unrecognised, repeated or missing rather than guessing.
 bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parsed = nullptr, QString *error = nullptr);
@@ -81,6 +90,7 @@ enum class ProtocolLineKind {
     Version,
     Step,
     Detail,
+    Failure,
     Result,
 };
 
@@ -92,7 +102,7 @@ struct ProtocolLine {
     int firstDestructiveStep = 0;
     int step = 0;
     int totalSteps = 0;
-    // The step message, the detail text, or the restored location.
+    // The step message, the detail text, the failure explanation, or the restored location.
     QString text;
 };
 
@@ -103,6 +113,7 @@ QString sanitizeProtocolText(const QString &text);
 QString encodeVersionLine(int version, const QString &appVersion, const QVector<RestoreStep> &plan);
 QString encodeStepLine(int step, int totalSteps, const QString &message);
 QString encodeDetailLine(const QString &message);
+QString encodeFailureLine(const QString &message);
 QString encodeResultLine(const QString &location);
 
 ProtocolLine parseProtocolLine(const QString &line);

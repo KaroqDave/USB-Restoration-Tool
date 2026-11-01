@@ -8,6 +8,10 @@
         <translation>Die Wiederherstellung ist fehlgeschlagen.</translation>
     </message>
     <message>
+        <source>The restore stopped. Unplug the drive, plug it back in and try again.</source>
+        <translation>Die Wiederherstellung ist stehen geblieben. Ziehen Sie das Laufwerk ab, stecken Sie es wieder ein und versuchen Sie es erneut.</translation>
+    </message>
+    <message>
         <source>the loop driver is busy with another mapping</source>
         <translation>der Loop-Treiber wird von einer anderen Zuordnung verwendet</translation>
     </message>

@@ -155,10 +155,9 @@ changing the default locale. A catalog that fails to load leaves English in
 place and the application still opens.
 
 `qt_add_translations` compiles `translations/usbrestore_de.ts`. The application
-catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI and translation tests;
-loading never searches user-writable directories or environment-supplied paths.
-The helper still needs its own embedded catalogs when its display protocol is
-extended. Update the catalog after marking more UI text for translation:
+catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI, the helper and
+translation tests; loading never searches user-writable directories or
+environment-supplied paths. Update the catalog after marking more UI text for translation:
 
 ```bash
 cmake --build build-linux --target update_translations
@@ -172,11 +171,12 @@ Backend `QString *error` outputs remain English. Optional `displayError` outputs
 carry UI explanations, and `RestoreWorker` emits them only through progress and
 failure signals. Log-only reporter details never pass through a translator.
 
-The helper still emits English protocol messages. Its client logs them unchanged
-and derives display progress from the shared step plan. Launch/protocol errors
-are translated locally; detailed helper refusals remain English diagnostics under
-a translated failure heading until the helper has its own display-language
-argument, catalogs and separate display-error transport.
+The helper embeds the same catalogs. The GUI passes the resolved `en` or `de`
+choice as `--language`, because pkexec clears the environment. Progress lines
+and stderr stay English for the log; a translated refusal travels on a `failure`
+line. Launch and protocol errors are still translated by the client. A missing
+catalog leaves the helper in English and the restore still runs. The language
+never decides whether a restore is allowed or which device is opened.
 
 Shared core descriptions, safety reasons and layout errors accept `TextMode::Display`; their default is English
 for backend and log callers. The catalog supplies the display number locale,

@@ -4,21 +4,23 @@
 
 ### 1.9.0 — German support (in progress)
 
-- Pass the resolved language to the helper as a strictly validated, display-only
-  argument because pkexec clears the environment. Carry its translated failure
-  explanation separately from English diagnostics; until then, detailed helper
-  refusals remain English under a translated failure heading. Never use the language
-  for safety or device identity decisions. Test missing, invalid and repeated arguments and
-  unchanged safety refusals; update the protocol version when its arguments or
-  output change.
-- Embed the catalogs in the helper as well as the GUI, verify all four package
-  formats, and extend German rendering checks to the main window and real error
-  paths. Keep both themes at 100% and 200% scaling and English wording tests on a
-  fixed locale. Windows, Qt 6.4 and sanitizer validation remain to be run in CI.
+- Verify all four package formats carry the helper catalogs, and extend German
+  rendering checks to real error paths. Keep both themes at 100% and 200% scaling
+  and English wording tests on a fixed locale. Windows, Qt 6.4 and sanitizer
+  validation remain to be run in CI.
 - Prepare the 1.9.0 version bump, README release notes and changelog after the
   feature and validation are complete; no release or tag yet.
 
 ## Recently completed
+
+- 2026-11-01: Passed the resolved display language to the helper as a required
+  `--language en` or `de` argument and raised the protocol to version 5. A
+  refusal travels on a `failure` line; stderr stays English for the log. The
+  language cannot change a safety result or which disk is opened. A missing
+  catalog leaves English installed and the restore still runs. Linux build and
+  all five ctest checks pass; privileged loop tests skipped. Package checks,
+  Windows, Qt 6.4, sanitizer CI and the 1.9.0 notes remain open. No physical
+  drive accessed.
 
 - 2026-11-01: Activated the saved system/English/German choice at startup and added the
   main-window language cycle. The choice is saved with the other settings and is

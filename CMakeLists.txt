@@ -538,7 +538,7 @@ endif()
 qt_add_translations(usb-restoration-tool
     ${_usbrestore_translation_source_targets}
     TS_FILES translations/usbrestore_de.ts
-    SOURCES src/gui/main.cpp src/gui/restore_dialog.cpp src/gui/restore_dialog.h
+    SOURCES src/gui/main.cpp src/helper/main.cpp src/gui/restore_dialog.cpp src/gui/restore_dialog.h
         src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/platform/translations.cpp
         src/core/disk.cpp
         src/core/language.cpp src/core/restore_message.cpp src/core/safety.cpp
@@ -594,6 +594,7 @@ if(NOT WIN32)
         ${USBRESTORE_LINUX_RESTORE_SOURCES}
         src/platform/disk_service.h
         src/platform/startup.h
+        src/platform/translations.cpp
         src/helper/main.cpp
     )
     target_include_directories(usb-restoration-helper PRIVATE src)
@@ -601,6 +602,7 @@ if(NOT WIN32)
         USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
     )
     target_link_libraries(usb-restoration-helper PRIVATE Qt6::Core)
+    usbrestore_embed_translations(usb-restoration-helper)
     usbrestore_harden(usb-restoration-helper)
 endif()
 
@@ -623,6 +625,7 @@ if(USBRESTORE_BUILD_TESTS)
         ${USBRESTORE_CORE_SOURCES}
         tests/test_core.cpp
     )
+    usbrestore_embed_translations(usb-restoration-tool-tests)
     target_include_directories(usb-restoration-tool-tests PRIVATE src)
     target_link_libraries(usb-restoration-tool-tests PRIVATE Qt6::Core Qt6::Test)
     if(MSVC)

@@ -714,6 +714,7 @@ void MainWindow::startRestore()
     request.fileSystem = fileSystem;
     request.volumeLabel = RestoreVolumeLabel;
     request.guard = m_guard;
+    request.displayLanguage = m_translations ? m_translations->language() : Language::English;
 
     delete m_restoreDialog.data();
     m_restoreDialog = new RestoreDialog(request, m_service.restorePlan(), this);

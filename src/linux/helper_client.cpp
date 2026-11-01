@@ -150,8 +150,12 @@ bool runHelperRestore(
     QProcess process;
     process.setProgram(pkexec);
     process.setArguments(
-        QStringList{helper} +
-        buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
+        QStringList{helper} + buildRestoreArguments(
+                                  request.disk,
+                                  request.style,
+                                  request.fileSystem,
+                                  request.volumeLabel,
+                                  resolveLanguage(request.displayLanguage)));
     // Merged channels would let mkfs output be read as a protocol line.
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start();
@@ -170,6 +174,7 @@ bool runHelperRestore(
 
     QByteArray buffer;
     QString location;
+    QString displayFailure;
     bool sawVersion = false;
     bool versionAccepted = false;
     QString versionError;
@@ -217,6 +222,12 @@ bool runHelperRestore(
             case ProtocolLineKind::Detail:
                 reporter.detail(parsed.text);
                 break;
+            case ProtocolLineKind::Failure:
+                // The first explanation after an accepted version. A later line must not replace it.
+                if (versionAccepted && displayFailure.isEmpty() && !parsed.text.isEmpty()) {
+                    displayFailure = parsed.text;
+                }
+                break;
             case ProtocolLineKind::Result:
                 location = parsed.text;
                 break;
@@ -260,6 +271,7 @@ bool runHelperRestore(
     run.killRequested = killRequested;
     run.location = location;
     run.helperStderr = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
+    run.displayFailure = displayFailure;
 
     QString verdictError;
     switch (judgeHelperRun(run, &verdictError)) {

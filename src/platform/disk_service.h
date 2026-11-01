@@ -19,6 +19,8 @@ struct RestoreRequest {
     FileSystemType fileSystem = FileSystemType::ExFat;
     QString volumeLabel;
     RestoreGuard guard;
+    // Resolved display language for the helper. Windows does not use it.
+    Language displayLanguage = Language::English;
 };
 
 struct RestoreResult {
