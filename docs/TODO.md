@@ -2,9 +2,6 @@
 
 ## Next
 
-- Confirm the PR #12 review fixes in CI. `build-windows` is the first real compile
-  of the WMI and restore changes, and `build-deb` the first Qt 6.4 run of the
-  `lrelease` dependency.
 - On Windows, run `./scripts/build-standalone.ps1` from an unelevated Windows
   PowerShell 5.1. CI cannot cover this: its runners are elevated and use `pwsh`.
 - Before tagging 1.9.0: rebuild the screenshots and packages, date the changelog
@@ -16,8 +13,8 @@
   targets, a Windows catalog probe that works unelevated and under PowerShell 5.1,
   a minimum width that follows the language, one source for main-window text,
   translated WMI and storage-job failures, a shared display locale and button
-  helper, and per-step failure text in the Windows restore. Linux build and all
-  five ctest checks pass; `src/win` was type-checked with MinGW headers only.
+  helper, and per-step failure text in the Windows restore. All six CI jobs pass
+  on `f016761`.
 - 2026-11-02: Scan failures and their details stay visible across language changes.
 - 2026-11-02: Closed the 1.9.0 branch review findings: one-pass argument
   substitution, protocol v5 fuzz seeds, Windows test environment fixes and `1.9.x`
