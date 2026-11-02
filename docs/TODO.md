@@ -2,12 +2,21 @@
 
 ## Next
 
-- On Windows, run `./scripts/build-standalone.ps1` from an unelevated Windows
-  PowerShell 5.1. CI cannot cover this: its runners are elevated and use `pwsh`.
-- Before tagging 1.9.0: rebuild the screenshots and packages, date the changelog
-  and README notes, then merge PR #12 and tag `v1.9.0`.
+- On Windows, run `./scripts/build-standalone.ps1` with `pwsh` from an unelevated
+  shell. CI cannot cover this: its runners are elevated.
+- To release 1.9.0: merge PR #12, tag `v1.9.0` on the merge commit, and verify
+  the published assets.
 
 ## Recently completed
+
+- 2026-11-02: Prepared the 1.9.0 release. The Windows packaging script now
+  requires PowerShell 7, which CI already uses, so Windows PowerShell 5.1 no
+  longer needs a separate check. Regenerated the main-window screenshots and
+  restore animations; the confirmation previews were unchanged. Dated the
+  changelog and README notes. Linux build and all five ctest suites pass. The
+  Fedora 44 RPM and the AppImage were built locally and pass their catalog probes
+  and checksums. The AppImage needed `PATCHELF` set to upstream patchelf `3e996db`
+  again. The `.deb` and Windows ZIP were not built locally.
 
 - 2026-11-02: Closed the PR #12 review findings: a single `lrelease` run across
   targets, a Windows catalog probe that works unelevated and under PowerShell 5.1,

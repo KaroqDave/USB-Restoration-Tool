@@ -137,7 +137,7 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.9.0 (unreleased)
+## What's New in 1.9.0
 
 - German covers the windows, privilege dialog, restore steps, and refusals. The
   header cycles **Language: Auto**, **English**, and **German**; the saved choice

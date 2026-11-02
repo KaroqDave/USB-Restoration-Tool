@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
-## 1.9.0
+## 1.9.0 - 2026-11-02
 
 German, English, or the system language for the interface. Logs stay English,
 and the language cannot change a safety decision or which disk is opened.
