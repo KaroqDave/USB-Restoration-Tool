@@ -66,7 +66,9 @@ USBRESTORE_GUI_SNAPSHOTS=docs/images ./build-linux/usb-gui-tests rendersTheMainW
 
 That writes `app-light.png`, `app-dark.png`, `confirm-light.png` and
 `confirm-dark.png` with first-run settings. Review all four, and regenerate them
-whenever the main window or the confirmation dialog changes.
+whenever the main window or the confirmation dialog changes. It also writes
+`app-light-de.png` and `app-dark-de.png` for reviewing the German layout; the
+README does not use them, so do not commit them.
 
 The restore animation, `restore-light.gif` and `restore-dark.gif`, is recorded in
 real time and encoded with ffmpeg:
@@ -217,6 +219,9 @@ packages, and the application itself in the AppImage and Windows bundle. The
 probe prints one line and exits before opening a disk. German must print
 `Erhöhte Berechtigung erforderlich`. The Windows script runs the probe with
 `__COMPAT_LAYER=RunAsInvoker`, so it needs no elevated shell.
+
+The Windows script needs PowerShell 7. Run it with `pwsh`, not the Windows
+PowerShell 5.1 that ships with Windows; under 5.1 it stops before building.
 
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options

@@ -23,6 +23,8 @@
     ./scripts/build-standalone.ps1 -Sign -CertificateThumbprint ABC123... -RequireSignature
 #>
 
+#Requires -Version 7
+
 [CmdletBinding()]
 param(
     [string]$Config = "Release",
@@ -93,8 +95,7 @@ if (-not (Test-Path -LiteralPath $exe)) {
 Write-Step "Checking the embedded catalog"
 $catalogLines = @{
     en = "Elevated permission required"
-    # Built from the code point: Windows PowerShell 5.1 reads a BOM-less script as ANSI.
-    de = "Erh$([char]0x00F6)hte Berechtigung erforderlich"
+    de = "Erhöhte Berechtigung erforderlich"
 }
 $previousEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
