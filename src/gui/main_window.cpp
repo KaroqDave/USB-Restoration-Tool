@@ -1065,6 +1065,9 @@ void MainWindow::cycleLanguage()
         m_translations->load(m_settings.language);
     }
     m_languageButton->setText(languageButtonText(m_settings.language));
+    // Auto and English can resolve to the same catalog, and then no LanguageChange arrives to refit the header.
+    keepButtonTextVisible(m_languageButton);
+    fitMinimumWidthToContent();
 }
 
 void MainWindow::toggleTheme()

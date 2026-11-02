@@ -406,6 +406,7 @@ class GuiTests : public QObject {
                 qPrintable(QStringLiteral("viewport %1, page needs %2")
                                .arg(scroll->viewport()->width())
                                .arg(scroll->widget()->minimumSizeHint().width())));
+            QVERIFY2(language->minimumWidth() >= language->sizeHint().width(), qPrintable(language->text()));
         }
         QCOMPARE(translations.language(), start);
         QCOMPARE(window.minimumWidth(), startingMinimum);
