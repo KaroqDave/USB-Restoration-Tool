@@ -2,8 +2,9 @@
 
 ## Build
 
-Requirements: CMake 3.21+, Qt 6.4+ (`Core`, `Widgets`, and `Test` for tests), and a
-C++20 compiler. Use MSVC / Visual Studio 2022+ on Windows or GCC / Clang on Linux.
+Requirements: CMake 3.21+, Qt 6.4+ (`Core`, `Widgets`, `LinguistTools`, and `Test`
+for tests), the German Qt base translation catalog, and a C++20 compiler. Use
+MSVC / Visual Studio 2022+ on Windows or GCC / Clang on Linux.
 
 Set `CMAKE_PREFIX_PATH` to your Qt kit if CMake cannot find it. Windows builds
 also look for an MSVC kit under `C:\Qt` when no Qt location is configured.
@@ -65,7 +66,9 @@ USBRESTORE_GUI_SNAPSHOTS=docs/images ./build-linux/usb-gui-tests rendersTheMainW
 
 That writes `app-light.png`, `app-dark.png`, `confirm-light.png` and
 `confirm-dark.png` with first-run settings. Review all four, and regenerate them
-whenever the main window or the confirmation dialog changes.
+whenever the main window or the confirmation dialog changes. It also writes
+`app-light-de.png` and `app-dark-de.png` for reviewing the German layout; the
+README does not use them, so do not commit them.
 
 The restore animation, `restore-light.gif` and `restore-dark.gif`, is recorded in
 real time and encoded with ffmpeg:
@@ -77,6 +80,13 @@ real time and encoded with ffmpeg:
 It takes about 25 seconds. Regenerate it whenever the restore dialog changes.
 
 Set `QT_SCALE_FACTOR=2` to check 200% scaling.
+
+The restore-dialog rendering matrix covers English and German, both step plans,
+both themes and every outcome. Main-window previews also cover both languages
+and themes. ctest runs these and the German About/activity/scan-error checks at
+200% scaling as `usb-gui-tests-scaled`. German snapshots have a `-de` filename suffix. The German
+error and progress examples in this matrix are supplied by the test, not by a
+translated backend. Other wording tests fix their default locale to C.
 
 Linux also checks partition tables with `sgdisk` and `fdisk`:
 
@@ -136,6 +146,46 @@ attempt time in milliseconds, including failed or cancelled attempts. Use these
 to identify slow stages when checking performance on disposable media. Helper
 setup includes the time spent approving the authentication prompt.
 
+## Translations
+
+The GUI loads the saved language at startup, before any window.
+`AppSettings::language` stores `system`, `en` or `de`; missing and unknown values
+follow the system's preferred UI languages, falling back to English. The main
+window cycles those three choices and saves them. It does not switch language
+while a restore is running. `Translations` owns the Qt translators without
+changing the default locale. A catalog that fails to load leaves English in
+place and the application still opens.
+
+`qt_add_translations` compiles `translations/usbrestore_de.ts`. The application
+catalog and the Qt kit's `qtbase_de.qm` are embedded in the GUI, the helper and
+translation tests; loading never searches user-writable directories or
+environment-supplied paths. Update the catalog after marking more UI text for translation:
+
+```bash
+cmake --build build-linux --target update_translations
+```
+
+Review the new translations before building; unfinished entries fall back to
+English. Both platform source sets are listed explicitly for extraction on Qt 6.4.
+`RestoreMessage` carries English log text and translated display text; nested
+messages format each half separately and raw diagnostics populate both unchanged.
+Backend `QString *error` outputs remain English. Optional `displayError` outputs
+carry UI explanations, and `RestoreWorker` emits them only through progress and
+failure signals. Log-only reporter details never pass through a translator.
+
+The helper embeds the same catalogs. The GUI passes the resolved `en` or `de`
+choice as `--language`, because pkexec clears the environment. Progress lines
+and stderr stay English for the log; a translated refusal travels on a `failure`
+line. Launch and protocol errors are still translated by the client. A missing
+catalog leaves the helper in English and the restore still runs. The language
+never decides whether a restore is allowed or which device is opened.
+
+Shared core descriptions, safety reasons and layout errors accept `TextMode::Display`; their default is English
+for backend and log callers. The catalog supplies the display number locale,
+without changing the process-wide locale. Device IDs and protocol tokens are
+never translated. Language must never decide whether a restore is allowed or
+which device is opened.
+
 ## Install and package
 
 For an installed Linux build, configure the final prefix before building:
@@ -163,6 +213,16 @@ only `cmake --install --prefix` would break that relationship. See the
 | Debian package | `./scripts/build-deb.sh` | `.deb` and checksum under `standalone/` |
 | Fedora package | `./scripts/build-rpm.sh` | `.rpm` and checksum under `standalone/` |
 
+The package scripts run `--show-translation en` and `--show-translation de` on the
+binary that performs the restore. That is the helper in the Debian and Fedora
+packages, and the application itself in the AppImage and Windows bundle. The
+probe prints one line and exits before opening a disk. German must print
+`Erhöhte Berechtigung erforderlich`. The Windows script runs the probe with
+`__COMPAT_LAYER=RunAsInvoker`, so it needs no elevated shell.
+
+The Windows script needs PowerShell 7. Run it with `pwsh`, not the Windows
+PowerShell 5.1 that ships with Windows; under 5.1 it stops before building.
+
 The AppImage script needs `curl` and FUSE support for its build tools. It disables
 the installed helper; the resulting app runs as root. Windows signing options
 remain available in the packaging script's help.
@@ -185,7 +245,7 @@ The `.deb` is built by CPack from the `install()` rules, with the prefix fixed a
 against the distribution's Qt:
 
 ```bash
-sudo apt install cmake g++ qt6-base-dev dpkg-dev
+sudo apt install cmake g++ qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-translations-l10n dpkg-dev
 ./scripts/build-deb.sh
 ```
 
@@ -202,13 +262,15 @@ Build the RPM on Fedora 43 or later against the distribution's Qt (CI and
 releases use Fedora 43):
 
 ```bash
-sudo dnf install cmake gcc-c++ make qt6-qtbase-devel rpm-build binutils cpio
+sudo dnf install cmake gcc-c++ make qt6-qtbase-devel qt6-qttools-devel qt6-linguist qt6-qttranslations rpm-build binutils cpio
 ./scripts/build-rpm.sh
 ctest --test-dir build-rpm --output-on-failure
 ```
 
-Leave `CMAKE_PREFIX_PATH` unset for this build too. The script refuses Qt
-libraries that are not owned by an RPM, verifies the helper/policy/GUI paths,
+Leave `CMAKE_PREFIX_PATH` unset for this build too. Set `Qt6LinguistTools_DIR`
+when LinguistTools is unpacked but not installed; the Qt libraries themselves
+must still come from Fedora packages. The script refuses Qt libraries that
+are not owned by an RPM, verifies the helper/policy/GUI paths,
 file ownership and permissions, runtime dependencies and helper version, and
 writes a checksum. RPM's library dependency generator supplements explicit
 requirements for Qt plugins, polkit and the formatters; Fedora's NTFS formatter
@@ -216,6 +278,8 @@ package is `ntfsprogs`, not `ntfs-3g`. It does not install anything on the host.
 `BUILD_DIR` overrides the build directory; `CMAKE_BUILD_PARALLEL_LEVEL` sets
 parallelism (default: 2).
 
+The Fedora container image keeps only `en_US` files. CI sets `%_install_langs`
+to `all` before installing packages so the German `qtbase_de.qm` is unpacked.
 The shared Fedora CI/release workflow also checks an install, upgrade and
 removal in a disposable container. It installs a release-0.1 baseline built from
 the same binaries, upgrades it to the real release-1 RPM, verifies package

@@ -1,10 +1,11 @@
 #include "core/disk.h"
 
+#include <QCoreApplication>
 #include <QtGlobal>
 
 namespace usbrestore {
 
-QString formatByteSize(std::uint64_t bytes)
+QString formatByteSize(std::uint64_t bytes, TextMode mode)
 {
     static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
     double value = static_cast<double>(bytes);
@@ -16,10 +17,10 @@ QString formatByteSize(std::uint64_t bytes)
     if (unit == 0) {
         return QStringLiteral("%1 %2").arg(static_cast<qulonglong>(bytes)).arg(QLatin1String(units[unit]));
     }
-    return QStringLiteral("%1 %2").arg(value, 0, 'f', 2).arg(QLatin1String(units[unit]));
+    return QStringLiteral("%1 %2").arg(formatDecimal(value, 2, mode)).arg(QLatin1String(units[unit]));
 }
 
-QString partitionStyleName(quint16 style)
+QString partitionStyleName(quint16 style, TextMode mode)
 {
     switch (static_cast<PartitionStyle>(style)) {
     case PartitionStyle::Mbr:
@@ -31,23 +32,23 @@ QString partitionStyleName(quint16 style)
     }
     // RAW is what Windows shows for a disk whose partition table it cannot
     // read, which is the usual state of a drive an ISO writer has been over.
-    return QStringLiteral("RAW / unknown");
+    return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "RAW / unknown"), mode);
 }
 
-QString healthStatusName(quint16 status)
+QString healthStatusName(quint16 status, TextMode mode)
 {
     switch (static_cast<HealthStatus>(status)) {
     case HealthStatus::Healthy:
-        return QStringLiteral("Healthy");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Healthy"), mode);
     case HealthStatus::Warning:
-        return QStringLiteral("Warning");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Warning"), mode);
     case HealthStatus::Unhealthy:
-        return QStringLiteral("Unhealthy");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unhealthy"), mode);
     }
-    return QStringLiteral("Unknown");
+    return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
 }
 
-QString busTypeName(quint32 busType)
+QString busTypeName(quint32 busType, TextMode mode)
 {
     switch (busType) {
     case 1:
@@ -79,11 +80,11 @@ QString busTypeName(quint32 busType)
     case 17:
         return QStringLiteral("NVMe");
     default:
-        return QStringLiteral("Unknown");
+        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
     }
 }
 
-QString partitionStyleLabel(PartitionStyle style)
+QString partitionStyleLabel(PartitionStyle style, TextMode mode)
 {
     switch (style) {
     case PartitionStyle::Gpt:
@@ -93,7 +94,7 @@ QString partitionStyleLabel(PartitionStyle style)
     case PartitionStyle::Unknown:
         break;
     }
-    return QStringLiteral("Unknown");
+    return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
 }
 
 QString fileSystemTypeName(FileSystemType type)
@@ -115,15 +116,15 @@ QString fileSystemTypeLabel(FileSystemType type)
 {
     switch (type) {
     case FileSystemType::ExFat:
-        return QStringLiteral("exFAT (recommended)");
+        return QCoreApplication::translate("usbrestore::Disk", "exFAT (recommended)");
     case FileSystemType::Fat32:
-        return QStringLiteral("FAT32 (older devices)");
+        return QCoreApplication::translate("usbrestore::Disk", "FAT32 (older devices)");
     case FileSystemType::Ntfs:
-        return QStringLiteral("NTFS");
+        return QCoreApplication::translate("usbrestore::Disk", "NTFS");
     case FileSystemType::Ext4:
-        return QStringLiteral("ext4 (Linux)");
+        return QCoreApplication::translate("usbrestore::Disk", "ext4 (Linux)");
     }
-    return QStringLiteral("Unknown");
+    return QCoreApplication::translate("usbrestore::Disk", "Unknown");
 }
 
 QString fileSystemTypeToken(FileSystemType type)
@@ -161,11 +162,13 @@ bool parseFileSystemType(const QString &token, FileSystemType *type)
     return true;
 }
 
-QString describeDisk(const DiskInfo &disk)
+QString describeDisk(const DiskInfo &disk, TextMode mode)
 {
-    const QString name = disk.name.trimmed().isEmpty() ? QStringLiteral("USB disk") : disk.name.trimmed();
+    const QString name = disk.name.trimmed().isEmpty()
+                             ? coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "USB disk"), mode)
+                             : disk.name.trimmed();
     const QString identifier = disk.displayId.isEmpty() ? disk.deviceId : disk.displayId;
-    return QStringLiteral("%1 — %2 (%3)").arg(identifier, name, formatByteSize(disk.size));
+    return QStringLiteral("%1 — %2 (%3)").arg(identifier, name, formatByteSize(disk.size, mode));
 }
 
 } // namespace usbrestore

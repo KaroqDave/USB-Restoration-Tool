@@ -27,47 +27,47 @@ QString stepTitle(RestoreStep step)
 {
     switch (step) {
     case RestoreStep::VerifyDisk:
-        return QStringLiteral("Check drive safety");
+        return RestoreDialog::tr("Check drive safety");
     case RestoreStep::IdentifyDevice:
-        return QStringLiteral("Confirm drive identity");
+        return RestoreDialog::tr("Confirm drive identity");
     case RestoreStep::Unmount:
-        return QStringLiteral("Unmount existing volumes");
+        return RestoreDialog::tr("Unmount existing volumes");
     case RestoreStep::OpenExclusive:
-        return QStringLiteral("Claim exclusive access");
+        return RestoreDialog::tr("Claim exclusive access");
     case RestoreStep::OpenDrive:
-        return QStringLiteral("Open the drive");
+        return RestoreDialog::tr("Open the drive");
     case RestoreStep::RefreshMetadata:
-        return QStringLiteral("Refresh drive information");
+        return RestoreDialog::tr("Refresh drive information");
     case RestoreStep::DetachDriveLetters:
-        return QStringLiteral("Disconnect existing volumes");
+        return RestoreDialog::tr("Disconnect existing volumes");
     case RestoreStep::DeletePartitions:
-        return QStringLiteral("Remove old partitions");
+        return RestoreDialog::tr("Remove old partitions");
     case RestoreStep::LockDrive:
-        return QStringLiteral("Lock the drive");
+        return RestoreDialog::tr("Lock the drive");
     case RestoreStep::ClearSignatures:
-        return QStringLiteral("Clear old disk signatures");
+        return RestoreDialog::tr("Clear old disk signatures");
     case RestoreStep::ResetToRaw:
-        return QStringLiteral("Reset the disk layout");
+        return RestoreDialog::tr("Reset the disk layout");
     case RestoreStep::WritePartitionTable:
-        return QStringLiteral("Write the partition table");
+        return RestoreDialog::tr("Write the partition table");
     case RestoreStep::CreatePartition:
-        return QStringLiteral("Create the new partition");
+        return RestoreDialog::tr("Create the new partition");
     case RestoreStep::RereadPartitionTable:
-        return QStringLiteral("Reload the partition table");
+        return RestoreDialog::tr("Reload the partition table");
     case RestoreStep::WaitForPartition:
-        return QStringLiteral("Wait for the new partition");
+        return RestoreDialog::tr("Wait for the new partition");
     case RestoreStep::WaitForVolume:
-        return QStringLiteral("Wait for the new volume");
+        return RestoreDialog::tr("Wait for the new volume");
     case RestoreStep::RefreshNewVolume:
-        return QStringLiteral("Refresh the new volume");
+        return RestoreDialog::tr("Refresh the new volume");
     case RestoreStep::AssignDriveLetter:
-        return QStringLiteral("Assign a drive letter");
+        return RestoreDialog::tr("Assign a drive letter");
     case RestoreStep::Format:
-        return QStringLiteral("Format the filesystem");
+        return RestoreDialog::tr("Format the filesystem");
     case RestoreStep::Complete:
-        return QStringLiteral("Finish the restore");
+        return RestoreDialog::tr("Finish the restore");
     }
-    return QStringLiteral("Restore step");
+    return RestoreDialog::tr("Restore step");
 }
 
 QLabel *label(const QString &text, const char *name)
@@ -156,7 +156,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
 {
     const DiskInfo &disk = request.disk;
     setObjectName(QStringLiteral("restoreDialog"));
-    setWindowTitle(QStringLiteral("Confirm USB restore"));
+    setWindowTitle(tr("Confirm USB restore"));
     setWindowModality(Qt::WindowModal);
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     setMinimumSize(480, 520);
@@ -175,9 +175,9 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     hero->addWidget(m_indicator);
     auto *headings = new QVBoxLayout;
     headings->setSpacing(4);
-    m_eyebrow = label(QStringLiteral("CHECK BEFORE ERASING"), "restoreEyebrow");
+    m_eyebrow = label(tr("CHECK BEFORE ERASING"), "restoreEyebrow");
     headings->addWidget(m_eyebrow);
-    m_title = label(QStringLiteral("Erase this USB drive?"), "restoreTitle");
+    m_title = label(tr("Erase this USB drive?"), "restoreTitle");
     headings->addWidget(m_title);
     hero->addLayout(headings, 1);
     layout->addLayout(hero);
@@ -187,9 +187,9 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     auto *targetLayout = new QVBoxLayout(target);
     targetLayout->setContentsMargins(14, 12, 14, 12);
     targetLayout->setSpacing(4);
-    targetLayout->addWidget(label(describeDisk(disk), "detailTitle"));
+    targetLayout->addWidget(label(describeDisk(disk, TextMode::Display), "detailTitle"));
     targetLayout->addWidget(label(
-        QStringLiteral("%1  /  %2  /  Label: %3")
+        tr("%1  /  %2  /  Label: %3")
             .arg(partitionStyleLabel(request.style), fileSystemTypeName(request.fileSystem), request.volumeLabel),
         "footnote"));
     layout->addWidget(target);
@@ -212,21 +212,21 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     auto *warningLayout = new QVBoxLayout(warning);
     warningLayout->setContentsMargins(14, 12, 14, 12);
     warningLayout->setSpacing(6);
-    warningLayout->addWidget(label(QStringLiteral("This cannot be undone."), "warningTitle"));
+    warningLayout->addWidget(label(tr("This cannot be undone."), "warningTitle"));
     warningLayout->addWidget(
-        label(QStringLiteral("Every partition and file on this drive will be permanently erased."), "eraseWarning"));
+        label(tr("Every partition and file on this drive will be permanently erased."), "eraseWarning"));
     summaryLayout->addWidget(warning);
     summaryLayout->addWidget(label(
-        QStringLiteral("Creates one %1 partition formatted %2 and labelled %3.")
+        tr("Creates one %1 partition formatted %2 and labelled %3.")
             .arg(partitionStyleLabel(request.style), fileSystemTypeName(request.fileSystem), request.volumeLabel),
         "erasePlan"));
     const QString mounts =
         disk.mountPoints.isEmpty() ? QStringLiteral("—") : disk.mountPoints.join(QStringLiteral(", "));
     const QString labels = disk.labels.isEmpty() ? QStringLiteral("—") : disk.labels.join(QStringLiteral(", "));
-    auto *contents = label(QStringLiteral("Mounted at: %1\nVolume labels: %2").arg(mounts, labels), "eraseContents");
+    auto *contents = label(tr("Mounted at: %1\nVolume labels: %2").arg(mounts, labels), "eraseContents");
     contents->setTextInteractionFlags(Qt::TextSelectableByMouse);
     summaryLayout->addWidget(contents);
-    const QString largeWarning = largeRestoreTargetWarning(disk);
+    const QString largeWarning = largeRestoreTargetWarning(disk, TextMode::Display);
     if (!largeWarning.isEmpty()) {
         summaryLayout->addWidget(label(largeWarning, "warningTitle"));
     }
@@ -235,7 +235,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     confirmationLayout->addWidget(summaryArea, 1);
     const QString diskId = disk.displayId.isEmpty() ? disk.deviceId : disk.displayId;
     m_acknowledgement =
-        new QCheckBox(QStringLiteral("I understand that everything on %1\nwill be permanently erased.").arg(diskId));
+        new QCheckBox(tr("I understand that everything on %1\nwill be permanently erased.").arg(diskId));
     m_acknowledgement->setObjectName(QStringLiteral("eraseAcknowledgement"));
     confirmationLayout->addWidget(m_acknowledgement);
     m_pages->addWidget(confirmationPage);
@@ -244,26 +244,27 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     auto *progressLayout = new QVBoxLayout(progressPage);
     progressLayout->setContentsMargins(0, 0, 0, 0);
     progressLayout->setSpacing(16);
-    m_message = label(
-        QStringLiteral("Preparing the restore. Approve the system permission prompt if asked."), "restoreMessage");
+    m_message = label(tr("Preparing the restore. Approve the system permission prompt if asked."), "restoreMessage");
     m_messageArea = new QScrollArea;
+    m_messageArea->setObjectName(QStringLiteral("restoreMessageArea"));
     m_messageArea->setWidgetResizable(true);
     m_messageArea->setFrameShape(QFrame::NoFrame);
     m_messageArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_messageArea->setFixedHeight(48);
+    m_messageArea->setMinimumHeight(48);
+    m_messageArea->setMaximumHeight(48);
     m_messageArea->setWidget(m_message);
     progressLayout->addWidget(m_messageArea);
 
     auto *metrics = new QHBoxLayout;
-    m_counter = label(QStringLiteral("Preparing · %1 steps").arg(plan.size()), "restoreCounter");
-    m_clock = label(QStringLiteral("Elapsed 0:00"), "restoreClock");
+    m_counter = label(tr("Preparing · %1 steps").arg(plan.size()), "restoreCounter");
+    m_clock = label(tr("Elapsed 0:00"), "restoreClock");
     m_clock->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     metrics->addWidget(m_counter, 1);
     metrics->addWidget(m_clock);
     progressLayout->addLayout(metrics);
     m_progress = new QProgressBar;
     m_progress->setObjectName(QStringLiteral("restoreStepProgress"));
-    m_progress->setAccessibleName(QStringLiteral("Completed restore steps, not a time estimate"));
+    m_progress->setAccessibleName(tr("Completed restore steps, not a time estimate"));
     m_progress->setRange(0, static_cast<int>(plan.size()));
     m_progress->setValue(0);
     m_progress->setTextVisible(false);
@@ -288,7 +289,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
         rowLayout->setSpacing(10);
         auto *indicator = new RestoreStepIndicator(24, row);
         auto *title = label(stepTitle(plan.at(index)), "restoreStepTitle");
-        auto *state = label(QStringLiteral("Waiting"), "restoreStepState");
+        auto *state = label(tr("Waiting"), "restoreStepState");
         state->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         state->setMinimumWidth(88);
         rowLayout->addWidget(indicator);
@@ -301,22 +302,21 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     m_steps->setWidget(steps);
     progressLayout->addWidget(m_steps, 1);
 
-    m_notice = label(
-        QStringLiteral("Keep the drive connected. You can request cancellation before writing begins."),
-        "restoreNotice");
-    m_notice->setAccessibleName(QStringLiteral("Restore safety information"));
+    m_notice =
+        label(tr("Keep the drive connected. You can request cancellation before writing begins."), "restoreNotice");
+    m_notice->setAccessibleName(tr("Restore safety information"));
     progressLayout->addWidget(m_notice);
     m_pages->addWidget(progressPage);
     layout->addWidget(m_pages, 1);
     auto *buttons = new QHBoxLayout;
-    m_logButton = new QPushButton(QStringLiteral("Open log file"));
+    m_logButton = new QPushButton(tr("Open log file"));
     m_logButton->setProperty("variant", "text");
     m_logButton->setAutoDefault(false);
     m_logButton->hide();
     connect(m_logButton, &QPushButton::clicked, this, &RestoreDialog::openLogRequested);
     buttons->addWidget(m_logButton);
     buttons->addStretch();
-    m_cancelButton = new QPushButton(QStringLiteral("Cancel"));
+    m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setObjectName(QStringLiteral("cancelRestore"));
     m_cancelButton->setAutoDefault(false);
     m_cancelButton->setDefault(true);
@@ -328,7 +328,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
         }
     });
     buttons->addWidget(m_cancelButton);
-    m_eraseButton = new QPushButton(QStringLiteral("Erase and restore"));
+    m_eraseButton = new QPushButton(tr("Erase and restore"));
     m_eraseButton->setObjectName(QStringLiteral("confirmErase"));
     m_eraseButton->setProperty("variant", "danger");
     m_eraseButton->setAutoDefault(false);
@@ -338,13 +338,18 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
     });
     connect(m_eraseButton, &QPushButton::clicked, this, &RestoreDialog::confirmRestore);
     buttons->addWidget(m_eraseButton);
-    m_doneButton = new QPushButton(QStringLiteral("Done"));
+    m_doneButton = new QPushButton(tr("Done"));
     m_doneButton->setObjectName(QStringLiteral("restoreDone"));
     m_doneButton->setProperty("variant", "primary");
     m_doneButton->hide();
     connect(m_doneButton, &QPushButton::clicked, this, &QDialog::accept);
     buttons->addWidget(m_doneButton);
     layout->addLayout(buttons);
+    keepButtonTextVisible(m_logButton);
+    keepButtonTextVisible(m_cancelButton);
+    keepButtonTextVisible(m_eraseButton);
+    keepButtonTextVisible(m_doneButton);
+    setMinimumSize(layout->minimumSize().expandedTo(QSize(minimumWidth(), minimumHeight())));
 
     m_timer = new QTimer(this);
     const bool animate = QApplication::style()->styleHint(QStyle::SH_Widget_Animate);
@@ -354,7 +359,7 @@ RestoreDialog::RestoreDialog(const RestoreRequest &request, const QVector<Restor
         if (animate) {
             const int phase = static_cast<int>((m_elapsed.elapsed() % 1200) * 360 / 1200);
             m_indicator->setPhase(phase);
-            if (m_step > 0) {
+            if (m_step > 0 && m_step <= m_rows.size() && m_rows.at(m_step - 1).indicator) {
                 m_rows[m_step - 1].indicator->setPhase(phase);
             }
         }
@@ -372,12 +377,12 @@ void RestoreDialog::confirmRestore()
     m_eraseButton->hide();
     m_acknowledgement->setEnabled(false);
     m_cancelButton->setDefault(false);
-    m_cancelButton->setText(QStringLiteral("Cancel restore"));
+    m_cancelButton->setText(tr("Cancel restore"));
     m_logButton->show();
     m_pages->setCurrentIndex(1);
-    setWindowTitle(QStringLiteral("Restoring USB drive"));
-    m_eyebrow->setText(QStringLiteral("A FRESH START"));
-    m_title->setText(QStringLiteral("Restoring your USB"));
+    setWindowTitle(tr("Restoring USB drive"));
+    m_eyebrow->setText(tr("A FRESH START"));
+    m_title->setText(tr("Restoring your USB"));
     setState(m_indicator, QStringLiteral("active"));
     updateMessageGeometry();
     m_elapsed.start();
@@ -389,7 +394,7 @@ void RestoreDialog::confirmRestore()
 void RestoreDialog::updateClock()
 {
     const qint64 seconds = m_elapsed.elapsed() / 1000;
-    m_clock->setText(QStringLiteral("Elapsed %1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
+    m_clock->setText(tr("Elapsed %1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
 }
 
 void RestoreDialog::completeCurrentStep()
@@ -400,7 +405,8 @@ void RestoreDialog::completeCurrentStep()
     auto &row = m_rows[m_step - 1];
     setState(row.widget, QStringLiteral("complete"));
     setState(row.indicator, QStringLiteral("complete"));
-    row.state->setText(QStringLiteral("Done · %1 s").arg((m_elapsed.elapsed() - m_stepStartedMs) / 1000.0, 0, 'f', 1));
+    row.state->setText(
+        tr("Done · %1 s").arg(formatDecimal((m_elapsed.elapsed() - m_stepStartedMs) / 1000.0, 1, TextMode::Display)));
 }
 
 bool RestoreDialog::setProgress(int step, int totalSteps, const QString &message)
@@ -414,19 +420,19 @@ bool RestoreDialog::setProgress(int step, int totalSteps, const QString &message
     auto &row = m_rows[step - 1];
     setState(row.widget, QStringLiteral("active"));
     setState(row.indicator, QStringLiteral("active"));
-    row.state->setText(QStringLiteral("In progress"));
+    row.state->setText(tr("In progress"));
     m_message->setText(message);
     updateMessageGeometry();
-    m_counter->setText(QStringLiteral("Step %1 of %2").arg(step).arg(totalSteps));
+    m_counter->setText(tr("Step %1 of %2").arg(step).arg(totalSteps));
     // A step signal starts work; even the last step is not success until the worker finishes.
     m_progress->setValue(step - 1);
     m_steps->ensureWidgetVisible(row.widget, 0, 20);
     if (step >= m_firstDestructiveStep) {
         m_cancelButton->setEnabled(false);
-        m_cancelButton->setText(QStringLiteral("Writing in progress"));
-        m_notice->setText(QStringLiteral("The disk is being rewritten. Keep it connected and wait for the result."));
+        m_cancelButton->setText(tr("Writing in progress"));
+        m_notice->setText(tr("The disk is being rewritten. Keep it connected and wait for the result."));
     } else if (!m_cancelling) {
-        m_notice->setText(QStringLiteral("Keep the drive connected. Cancellation stops at the next safe checkpoint."));
+        m_notice->setText(tr("Keep the drive connected. Cancellation stops at the next safe checkpoint."));
     }
     return true;
 }
@@ -447,10 +453,10 @@ void RestoreDialog::setCancelling()
     }
     m_cancelling = true;
     m_cancelButton->setEnabled(false);
-    m_cancelButton->setText(QStringLiteral("Stopping…"));
-    m_notice->setText(QStringLiteral(
-        "Cancellation requested. Waiting for a safe checkpoint; if writing has already "
-        "begun, the restore will finish instead. Keep the drive connected."));
+    m_cancelButton->setText(tr("Stopping…"));
+    m_notice->setText(
+        tr("Cancellation requested. Waiting for a safe checkpoint; if writing has already "
+           "begun, the restore will finish instead. Keep the drive connected."));
 }
 
 void RestoreDialog::finish(const QString &title, const QString &message, const QString &outcome)
@@ -471,27 +477,23 @@ void RestoreDialog::finish(const QString &title, const QString &message, const Q
     if (outcome == QStringLiteral("complete")) {
         completeCurrentStep();
         m_progress->setValue(m_progress->maximum());
-        m_counter->setText(QStringLiteral("All %1 steps completed").arg(m_rows.size()));
-        m_notice->setText(
-            QStringLiteral("Your USB drive is ready to use. Eject it through your system before unplugging."));
+        m_counter->setText(tr("All %1 steps completed").arg(m_rows.size()));
+        m_notice->setText(tr("Your USB drive is ready to use. Eject it through your system before unplugging."));
     } else {
         if (m_step > 0) {
             auto &row = m_rows[m_step - 1];
             setState(row.widget, outcome);
             setState(row.indicator, outcome);
-            row.state->setText(
-                outcome == QStringLiteral("error") ? QStringLiteral("Failed") : QStringLiteral("Stopped"));
+            row.state->setText(outcome == QStringLiteral("error") ? tr("Failed") : tr("Stopped"));
         }
         m_counter->setText(
-            outcome == QStringLiteral("error") ? QStringLiteral("Restore not completed")
-                                               : QStringLiteral("Cancelled before erasing"));
+            outcome == QStringLiteral("error") ? tr("Restore not completed") : tr("Cancelled before erasing"));
         m_notice->setText(
             outcome == QStringLiteral("error")
-                ? QStringLiteral("Read the error above before retrying. The log file contains more details.")
-                : QStringLiteral(
-                      "Existing volumes may need to be mounted again or have their drive letters reassigned."));
+                ? tr("Read the error above before retrying. The log file contains more details.")
+                : tr("Existing volumes may need to be mounted again or have their drive letters reassigned."));
         for (int index = m_step; index < m_rows.size(); ++index) {
-            m_rows[index].state->setText(QStringLiteral("Not run"));
+            m_rows[index].state->setText(tr("Not run"));
         }
     }
     m_cancelButton->hide();
@@ -502,17 +504,17 @@ void RestoreDialog::finish(const QString &title, const QString &message, const Q
 
 void RestoreDialog::finishSuccess(const QString &message)
 {
-    finish(QStringLiteral("Restore complete"), message, QStringLiteral("complete"));
+    finish(tr("Restore complete"), message, QStringLiteral("complete"));
 }
 
 void RestoreDialog::finishFailure(const QString &message)
 {
-    finish(QStringLiteral("Restore failed"), message, QStringLiteral("error"));
+    finish(tr("Restore failed"), message, QStringLiteral("error"));
 }
 
 void RestoreDialog::finishCancelled(const QString &message)
 {
-    finish(QStringLiteral("Restore cancelled"), message, QStringLiteral("cancelled"));
+    finish(tr("Restore cancelled"), message, QStringLiteral("cancelled"));
 }
 
 void RestoreDialog::done(int result)
@@ -541,7 +543,8 @@ void RestoreDialog::updateMessageGeometry()
     }
     const int textHeight = m_message->heightForWidth(qMax(1, width() - 64));
     m_message->setMinimumHeight(textHeight);
-    m_messageArea->setFixedHeight(qBound(48, textHeight + 4, 140));
+    // Long translated errors must scroll instead of forcing the metrics out of a short dialog.
+    m_messageArea->setMaximumHeight(qBound(48, textHeight + 4, 140));
 }
 
 } // namespace usbrestore

@@ -55,6 +55,7 @@ QByteArray buildMbr(const PartitionTableRequest &request);
 // Exposed so tests can verify the headers rather than trust them.
 quint32 gptCrc32(const QByteArray &data);
 
-bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *reason = nullptr);
+bool isWritablePartitionRequest(
+    const PartitionTableRequest &request, QString *reason = nullptr, TextMode mode = TextMode::English);
 
 } // namespace usbrestore

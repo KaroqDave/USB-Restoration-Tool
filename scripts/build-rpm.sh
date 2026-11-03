@@ -44,11 +44,16 @@ done
 [[ "$(rpm -E '%{?fedora}')" =~ ^[0-9]+$ ]] || fail "build the RPM on Fedora against its system Qt"
 
 step "Configuring CMake"
-cmake -S "$RepoRoot" -B "$BuildDir" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_INSTALL_LIBEXECDIR=libexec \
-    -DUSBRESTORE_INSTALL_HELPER=ON
+cmake_args=(-S "$RepoRoot" -B "$BuildDir"
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCMAKE_INSTALL_LIBEXECDIR=libexec
+    -DUSBRESTORE_INSTALL_HELPER=ON)
+# Optional: a LinguistTools package that is not installed system-wide.
+if [[ -n "${Qt6LinguistTools_DIR:-}" ]]; then
+    cmake_args+=(-DQt6LinguistTools_DIR="$Qt6LinguistTools_DIR")
+fi
+cmake "${cmake_args[@]}"
 BuildDir="$(cd "$BuildDir" && pwd)"
 
 step "Building"
@@ -103,6 +108,16 @@ Protocol="$("$Extracted$HelperPath" --protocol-version)"
 [[ "$Protocol" == "version "* && "$Protocol" == *" app $Version steps "* ]] \
     || fail "the helper version does not match the RPM version $Version"
 echo "  GUI, helper and polkit action agree; helper reports: $Protocol"
+for language in en de; do
+    case "$language" in
+        en) expected="Elevated permission required" ;;
+        de) expected="Erhöhte Berechtigung erforderlich" ;;
+    esac
+    actual="$("$Extracted$HelperPath" --show-translation "$language")" \
+        || fail "the helper catalog probe failed for $language"
+    [[ "$actual" == "$expected" ]] || fail "the helper printed '$actual' for $language"
+done
+echo "  helper catalog probe passed"
 
 step "Writing package and checksum"
 mkdir -p "$OutputRoot"

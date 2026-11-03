@@ -2,6 +2,7 @@
 #include "win/windows_disk_service.h"
 #include "win/raw_disk.h"
 #include "win/windows_util.h"
+#include "platform/translations.h"
 
 #include <QElapsedTimer>
 #include <QtTest/QtTest>
@@ -81,6 +82,7 @@ class WmiTests : public QObject {
   private slots:
     void initTestCase()
     {
+        QLocale::setDefault(QLocale::c());
         m_comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         QVERIFY(m_comInitialized);
     }
@@ -92,14 +94,66 @@ class WmiTests : public QObject {
         }
     }
 
+    void translatesNativeErrorsWhileKeepingEnglishDiagnostics()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const auto context =
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not clear old signatures on disk %1")).arg(7);
+        for (const DWORD code :
+             {ERROR_WRITE_PROTECT, ERROR_IO_DEVICE, ERROR_NOT_READY, ERROR_SHARING_VIOLATION, ERROR_BAD_COMMAND}) {
+            const auto message = windowsDeviceErrorMessage(context, code);
+            QVERIFY(message.english.startsWith(QStringLiteral("Could not clear old signatures on disk 7")));
+            QVERIFY(message.display.startsWith(QStringLiteral("Alte Signaturen auf Datenträger 7")));
+            QVERIFY(message.english.contains(QString::number(code)));
+            QVERIFY(message.display.contains(QString::number(code)));
+        }
+        const QString diagnostic = QStringLiteral("MSFT_Volume.Format: HRESULT 0x80070005");
+        const auto error = windowsRestoreErrorMessage(context, diagnostic);
+        QVERIFY(error.english.contains(diagnostic));
+        QVERIFY(error.display.contains(diagnostic));
+        QVERIFY(error.display.contains(QStringLiteral("starten Sie die Wiederherstellung erneut")));
+        const auto reordered = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not %1 on disk %2"))
+                                   .arg(
+                                       restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "format as %1"))
+                                           .arg(QStringLiteral("FAT32-%2")),
+                                       7);
+        QCOMPARE(reordered.english, QStringLiteral("Could not format as FAT32-%2 on disk 7"));
+        QCOMPARE(
+            reordered.display,
+            QStringLiteral(
+                "Auf Datenträger 7 konnte folgende Aktion nicht ausgeführt werden: als FAT32-%2 formatieren"));
+        const auto percentDevice = windowsDeviceErrorMessage(
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open volume %1 before restore"))
+                .arg(QStringLiteral("\\\\?\\Volume{%2-%3-%4}")),
+            ERROR_WRITE_PROTECT);
+        for (const auto &text : {percentDevice.english, percentDevice.display}) {
+            QVERIFY2(text.contains(QStringLiteral("\\\\?\\Volume{%2-%3-%4}")), qPrintable(text));
+            QVERIFY2(text.contains(QString::number(ERROR_WRITE_PROTECT)), qPrintable(text));
+        }
+        RawDisk unopened(7);
+        QString english, display;
+        QVERIFY(!unopened.verifyIdentity({}, &english, &display));
+        QVERIFY(english.contains(QStringLiteral("drive is not open")));
+        QVERIFY(display.contains(QStringLiteral("nicht geöffnet")));
+        QCOMPARE(
+            WindowsDiskService().privilegeHint(),
+            QStringLiteral(
+                "USB Restoration Tool benötigt Administratorrechte, um USB-Laufwerke wiederherzustellen.\n\n"
+                "Schließen Sie dieses Fenster und starten Sie die Anwendung erneut. Bestätigen Sie dabei die "
+                "Windows-Berechtigungsabfrage."));
+    }
+
     void refusesOversizedMbrBeforeAnyBackendStep()
     {
         struct Reporter : RestoreReporter {
             int steps = 0;
-            void step(const QString &) override { ++steps; }
+            void step(const RestoreMessage &) override { ++steps; }
             void detail(const QString &) override {}
             bool cancelRequested() const override { return false; }
         } reporter;
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
         WindowsDiskService service;
         RestoreRequest request;
         request.disk.deviceId = QStringLiteral("synthetic-review-device");
@@ -108,10 +162,11 @@ class WmiTests : public QObject {
         request.disk.sectorSize = 512;
         request.style = PartitionStyle::Mbr;
         request.fileSystem = FileSystemType::ExFat;
-        QString error;
-        QVERIFY(!service.restore(request, reporter, nullptr, &error));
+        QString error, displayError;
+        QVERIFY(!service.restore(request, reporter, nullptr, &error, &displayError));
         QCOMPARE(reporter.steps, 0);
-        QVERIFY(error.contains(QStringLiteral("MBR")));
+        QVERIFY(error.contains(QStringLiteral("MBR cannot address")));
+        QVERIFY(displayError.contains(QStringLiteral("MBR kann eine Partition")));
     }
 
     void explainsDeviceFailuresInPlainLanguage()
@@ -245,7 +300,7 @@ class WmiTests : public QObject {
         QString error;
         QVERIFY(!waitForStorageJob(
             QString(),
-            [&](QString *) {
+            [&](RestoreMessage *) {
                 read = true;
                 return storageJob(7, 0);
             },
@@ -253,6 +308,46 @@ class WmiTests : public QObject {
             &error));
         QVERIFY(!read);
         QVERIFY(error.contains(QStringLiteral("without a job")));
+    }
+
+    // These sentences are the tool's own, and the person holding the stick reads them.
+    void translatesStorageJobFailuresWhileKeepingEnglishDiagnostics()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const auto failed = storageJob(8, 0);
+        const auto incomplete = storageJob(7, std::nullopt);
+        const auto running = storageJob(4, std::nullopt);
+        const auto refused = [](const WmiObject &job, int timeoutMs, QString *english, QString *display) {
+            return !waitForStorageJob(
+                QStringLiteral("job"), [&job](RestoreMessage *) { return job; }, timeoutMs, english, nullptr, display);
+        };
+
+        QString english, display;
+        QVERIFY(refused(failed, 1000, &english, &display));
+        QCOMPARE(english, QStringLiteral("A Windows storage job failed with state 8."));
+        QCOMPARE(display, QStringLiteral("Ein Windows-Speicherauftrag ist im Status 8 fehlgeschlagen."));
+
+        QVERIFY(refused(incomplete, 1000, &english, &display));
+        QVERIFY2(english.contains(QStringLiteral("error code unavailable")), qPrintable(english));
+        QVERIFY2(display.contains(QStringLiteral("Fehlercode nicht verfügbar")), qPrintable(display));
+
+        QVERIFY(refused(running, 0, &english, &display));
+        QCOMPARE(english, QStringLiteral("A Windows storage job did not finish within 0 seconds."));
+        QVERIFY2(display.contains(QStringLiteral("nicht innerhalb von 0 Sekunden")), qPrintable(display));
+
+        QVERIFY(!waitForStorageJob(
+            QStringLiteral("job"),
+            [](RestoreMessage *readError) {
+                *readError = RestoreMessage(QStringLiteral("Provider gone"), QStringLiteral("Anbieter fort"));
+                return WmiObject();
+            },
+            1000,
+            &english,
+            nullptr,
+            &display));
+        QVERIFY2(english.endsWith(QStringLiteral("Provider gone")), qPrintable(english));
+        QVERIFY2(display.endsWith(QStringLiteral("Anbieter fort")), qPrintable(display));
     }
 
     void refusesUnreadableStorageJobs()
@@ -264,7 +359,7 @@ class WmiTests : public QObject {
             QString error;
             QVERIFY(!waitForStorageJob(
                 QStringLiteral("job"),
-                [&failure](QString *readError) {
+                [&failure](RestoreMessage *readError) {
                     *readError = failure;
                     return WmiObject();
                 },
@@ -279,7 +374,8 @@ class WmiTests : public QObject {
         QString error;
         const auto completed = storageJob(7, 0);
         QVERIFY(completed.isValid());
-        QVERIFY(waitForStorageJob(QStringLiteral("job"), [&completed](QString *) { return completed; }, 1000, &error));
+        QVERIFY(waitForStorageJob(
+            QStringLiteral("job"), [&completed](RestoreMessage *) { return completed; }, 1000, &error));
         for (const auto &job :
              {storageJob(std::nullopt, 0),
               storageJob(7, std::nullopt),
@@ -289,16 +385,16 @@ class WmiTests : public QObject {
               storageJob(10, 0)}) {
             QVERIFY(job.isValid());
             error.clear();
-            QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&job](QString *) { return job; }, 1000, &error));
+            QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&job](RestoreMessage *) { return job; }, 1000, &error));
             QVERIFY(!error.isEmpty());
         }
         const auto running = storageJob(4, std::nullopt);
         QVERIFY(running.isValid());
         int reads = 0;
         QVERIFY(waitForStorageJob(
-            QStringLiteral("job"), [&](QString *) { return ++reads == 1 ? running : completed; }, 1000, &error));
+            QStringLiteral("job"), [&](RestoreMessage *) { return ++reads == 1 ? running : completed; }, 1000, &error));
         QCOMPARE(reads, 2);
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, &error));
+        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](RestoreMessage *) { return running; }, 0, &error));
         QVERIFY(error.contains(QStringLiteral("did not finish")));
     }
 
@@ -311,7 +407,7 @@ class WmiTests : public QObject {
         int reads = 0;
         QVERIFY(waitForStorageJob(
             QStringLiteral("job"),
-            [&](QString *) { return ++reads == 1 ? running : completed; },
+            [&](RestoreMessage *) { return ++reads == 1 ? running : completed; },
             1000,
             nullptr,
             &outcome));
@@ -319,13 +415,14 @@ class WmiTests : public QObject {
         QVERIFY2(outcome.contains(QStringLiteral("2 read(s), last state 7")), qPrintable(outcome));
 
         const auto noCode = storageJob(7, std::nullopt);
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return noCode; }, 1000, nullptr, &outcome));
+        QVERIFY(!waitForStorageJob(
+            QStringLiteral("job"), [&](RestoreMessage *) { return noCode; }, 1000, nullptr, &outcome));
         QVERIFY2(outcome.contains(QStringLiteral("ErrorCode missing")), qPrintable(outcome));
 
         reads = 0;
         QVERIFY(!waitForStorageJob(
             QStringLiteral("job"),
-            [&](QString *readError) {
+            [&](RestoreMessage *readError) {
                 if (++reads == 1) {
                     return running;
                 }
@@ -338,7 +435,8 @@ class WmiTests : public QObject {
         QVERIFY2(outcome.contains(QStringLiteral("could not be read (Object not found)")), qPrintable(outcome));
         QVERIFY2(outcome.contains(QStringLiteral("last state 4")), qPrintable(outcome));
 
-        QVERIFY(!waitForStorageJob(QStringLiteral("job"), [&](QString *) { return running; }, 0, nullptr, &outcome));
+        QVERIFY(
+            !waitForStorageJob(QStringLiteral("job"), [&](RestoreMessage *) { return running; }, 0, nullptr, &outcome));
         QVERIFY2(outcome.contains(QStringLiteral("still running")), qPrintable(outcome));
     }
 

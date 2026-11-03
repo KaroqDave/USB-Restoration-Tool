@@ -8,7 +8,8 @@ namespace usbrestore {
 // the caller supplies a request, never a conclusion.
 
 // Not on the DiskService so the GUI and the helper ask the same question.
-bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QString *reason);
+bool canCreateFileSystemOn(
+    FileSystemType fileSystem, const DiskInfo &disk, QString *reason, QString *displayReason = nullptr);
 
 bool formatLinuxPartition(
     FileSystemType fileSystem,
@@ -17,7 +18,8 @@ bool formatLinuxPartition(
     const QString &label,
     std::uint64_t partitionStartSector,
     RestoreReporter &reporter,
-    QString *error);
+    QString *error,
+    QString *displayError = nullptr);
 
 class BlockDevice;
 class LoopDevice;
@@ -33,10 +35,15 @@ bool formatAndRereadPartitionTable(
     RestoreStepCounter &steps,
     RestoreReporter &reporter,
     std::uint64_t *diskSequence,
-    QString *error);
+    QString *error,
+    QString *displayError = nullptr);
 
 // Reports its steps in the order of linuxRestorePlan().
 bool performLinuxRestore(
-    const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error);
+    const RestoreRequest &request,
+    RestoreReporter &reporter,
+    RestoreResult *result,
+    QString *error,
+    QString *displayError = nullptr);
 
 } // namespace usbrestore

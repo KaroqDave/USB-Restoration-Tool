@@ -1,7 +1,9 @@
 #include "gui/theme.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QPalette>
+#include <QPushButton>
 #include <QStyleFactory>
 #include <QStyleHints>
 
@@ -450,13 +452,24 @@ QString themeButtonText(Theme theme)
 {
     switch (theme) {
     case Theme::System:
-        return QStringLiteral("Theme: Auto");
+        return QCoreApplication::translate("usbrestore::Theme", "Theme: Auto");
     case Theme::Light:
-        return QStringLiteral("Theme: Light");
+        return QCoreApplication::translate("usbrestore::Theme", "Theme: Light");
     case Theme::Dark:
-        return QStringLiteral("Theme: Dark");
+        return QCoreApplication::translate("usbrestore::Theme", "Theme: Dark");
     }
-    return QStringLiteral("Theme");
+    return QCoreApplication::translate("usbrestore::Theme", "Theme");
+}
+
+void keepButtonTextVisible(QPushButton *button)
+{
+    if (!button) {
+        return;
+    }
+    button->ensurePolished();
+    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    button->setMinimumWidth(
+        qMax(button->sizeHint().width(), button->fontMetrics().horizontalAdvance(button->text()) + 8));
 }
 
 QString statusBadgePrefix(StatusKind status)

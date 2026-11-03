@@ -1,12 +1,14 @@
 // usb-restoration-helper: the root half of a Linux restore (docs/polkit-helper.md).
 // Any local process can start it, so argv is only a set of claims to check.
 
+#include "core/restore_message.h"
 #include "core/restore_protocol.h"
 #include "core/safety.h"
 #include "linux/linux_enumerate.h"
 #include "linux/linux_restore.h"
 #include "platform/disk_service.h"
 #include "platform/startup.h"
+#include "platform/translations.h"
 
 #include <QCoreApplication>
 #include <QString>
@@ -58,13 +60,22 @@ void writeError(const QString &message)
     err.flush();
 }
 
+// Stderr stays the English diagnostic. The display explanation is a separate stdout line.
+void writeFailure(const QString &english, const QString &display)
+{
+    writeError(english);
+    if (!display.isEmpty()) {
+        writeLine(usbrestore::encodeFailureLine(display));
+    }
+}
+
 class HelperReporter : public usbrestore::RestoreReporter {
   public:
-    void step(const QString &message) override
+    void step(const usbrestore::RestoreMessage &message) override
     {
         const int total = static_cast<int>(usbrestore::linuxRestorePlan().size());
         m_step = qMin(m_step + 1, total);
-        writeLine(usbrestore::encodeStepLine(m_step, total, message));
+        writeLine(usbrestore::encodeStepLine(m_step, total, message.english));
     }
 
     void detail(const QString &message) override
@@ -136,6 +147,17 @@ int main(int argc, char *argv[])
         return usbrestore::RestoreExitSuccess;
     }
 
+    // Before the root check: this only prints a catalog line and does not restore.
+    const usbrestore::CatalogProbe probe = usbrestore::catalogProbe(arguments);
+    if (probe.kind != usbrestore::CatalogProbeKind::NotRequested) {
+        if (probe.kind == usbrestore::CatalogProbeKind::Ready) {
+            writeLine(probe.line);
+            return usbrestore::RestoreExitSuccess;
+        }
+        return probe.kind == usbrestore::CatalogProbeKind::MissingCatalog ? usbrestore::RestoreExitFailed
+                                                                          : usbrestore::RestoreExitUsage;
+    }
+
     // Before any work, so a caller that rejects the version can still cancel.
     announceVersion();
 
@@ -153,24 +175,36 @@ int main(int argc, char *argv[])
         return usbrestore::RestoreExitUsage;
     }
 
+    // pkexec clears the environment, so this argument is the only language input.
+    // A missing catalog leaves English installed and does not refuse the restore.
+    usbrestore::Translations translations;
+    usbrestore::activateInterfaceLanguage(translations, parsed.displayLanguage);
+
     // Claims from argv are only ever used to refuse.
     const usbrestore::RestoreGuard guard = usbrestore::linuxRestoreGuard();
 
     usbrestore::DiskInfo disk;
-    if (!usbrestore::refreshUsbDisk(parsed.expected.deviceId, &disk, &error, usbrestore::DiskDetails::Restore)) {
-        writeError(error);
+    QString displayError;
+    if (!usbrestore::refreshUsbDisk(
+            parsed.expected.deviceId, &disk, &error, usbrestore::DiskDetails::Restore, &displayError)) {
+        writeFailure(error, displayError);
         return usbrestore::RestoreExitFailed;
     }
 
     // The defence against a malicious caller: judged on fresh facts only.
-    if (!usbrestore::isSafeRestoreTarget(disk, guard, &error)) {
-        writeError(error);
+    // The English check decides; the display check only fills the UI text.
+    if (!usbrestore::checkRestoreError(&error, &displayError, [&](QString *text, usbrestore::TextMode mode) {
+            return usbrestore::isSafeRestoreTarget(disk, guard, text, mode);
+        })) {
+        writeFailure(error, displayError);
         return usbrestore::RestoreExitFailed;
     }
 
     // Catches a stick swapped during the polkit prompt; not a defence against a dishonest caller.
-    if (!usbrestore::isSameRestoreTarget(parsed.expected, disk, &error)) {
-        writeError(error);
+    if (!usbrestore::checkRestoreError(&error, &displayError, [&](QString *text, usbrestore::TextMode mode) {
+            return usbrestore::isSameRestoreTarget(parsed.expected, disk, text, mode);
+        })) {
+        writeFailure(error, displayError);
         return usbrestore::RestoreExitFailed;
     }
 
@@ -183,16 +217,18 @@ int main(int argc, char *argv[])
 
     HelperReporter reporter;
     usbrestore::RestoreResult result;
-    if (!usbrestore::performLinuxRestore(request, reporter, &result, &error)) {
+    if (!usbrestore::performLinuxRestore(request, reporter, &result, &error, &displayError)) {
         // A distinct exit code, so the GUI need not guess from an empty stderr.
         if (reporter.cancelRequested() && error.isEmpty()) {
             return usbrestore::RestoreExitCancelled;
         }
-        writeError(
-            error.isEmpty() ? QStringLiteral(
-                                  "The restore stopped. Unplug the drive, plug it back in and try "
-                                  "again.")
-                            : error);
+        if (error.isEmpty()) {
+            const usbrestore::RestoreMessage stopped = usbrestore::restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "The restore stopped. Unplug the drive, plug it back in and try again."));
+            error = stopped.english;
+            displayError = stopped.display;
+        }
+        writeFailure(error, displayError);
         return usbrestore::RestoreExitFailed;
     }
 

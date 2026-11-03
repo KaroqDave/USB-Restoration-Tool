@@ -14,10 +14,12 @@ jobs:
 
     steps:
       - name: Install build and test dependencies
-        run: >-
-          dnf install -y
-          git cmake gcc-c++ make qt6-qtbase-devel rpm-build binutils cpio
-          dbus-daemon polkit glib2 libxml2 util-linux
+        run: |
+          # The image keeps only en_US files. qtbase_de.qm is tagged German.
+          printf '%s\n' '%_install_langs all' >> /etc/rpm/macros
+          dnf install -y \
+            git cmake gcc-c++ make qt6-qtbase-devel qt6-qttools-devel qt6-linguist qt6-qttranslations rpm-build binutils cpio \
+            dbus-daemon polkit glib2 libxml2 util-linux
 
       - name: Checkout
         uses: actions/checkout@v5

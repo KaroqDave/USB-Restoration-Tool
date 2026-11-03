@@ -12,7 +12,7 @@ namespace usbrestore {
 // the helper checks against its own enumeration, never grants (docs/polkit-helper.md).
 
 // Bump whenever the meaning of any argument or output line changes.
-inline constexpr int RestoreProtocolVersion = 4;
+inline constexpr int RestoreProtocolVersion = 5;
 
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
 
@@ -26,7 +26,7 @@ inline constexpr int RestoreExitCancelled = 3;
 
 // Empty for success and cancellation. Also covers pkexec's 126 and 127, which
 // cannot collide because the helper only exits 0 to 3.
-QString describeRestoreExit(int exitCode, const QString &helperStderr);
+QString describeRestoreExit(int exitCode, const QString &helperStderr, TextMode mode = TextMode::English);
 
 // `killRequested` means a SIGKILL was sent, not that it worked: once pkexec execs
 // the helper as root, an unprivileged parent's signal fails silently.
@@ -40,7 +40,10 @@ struct HelperRunObservation {
     QString versionError;
     bool killRequested = false;
     QString location;
+    // English diagnostic. The log uses this, not the display line.
     QString helperStderr;
+    // Translated refusal from a `failure` line. Empty when the helper sent none.
+    QString displayFailure;
 };
 
 enum class HelperRunVerdict {
@@ -52,7 +55,8 @@ enum class HelperRunVerdict {
 
 // The check order matters: a requested kill is only believed if the process died
 // without speaking, and a version mismatch outranks the exit code.
-HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error = nullptr);
+HelperRunVerdict
+judgeHelperRun(const HelperRunObservation &run, QString *error = nullptr, TextMode mode = TextMode::English);
 
 // Expectations to check against what the helper reads from sysfs, never a substitute.
 struct RestoreArguments {
@@ -60,6 +64,8 @@ struct RestoreArguments {
     PartitionStyle style = PartitionStyle::Gpt;
     FileSystemType fileSystem = FileSystemType::ExFat;
     QString volumeLabel;
+    // Display only. Never copied onto the claimed disk or passed to a safety check.
+    Language displayLanguage = Language::English;
 };
 
 // Only rejects the obviously malformed; the path must still name a directory under
@@ -70,7 +76,11 @@ bool isValidVolumeLabel(const QString &label);
 
 // Excludes the program name.
 QStringList buildRestoreArguments(
-    const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel);
+    const DiskInfo &disk,
+    PartitionStyle style,
+    FileSystemType fileSystem,
+    const QString &volumeLabel,
+    Language language = Language::English);
 
 // Refuses anything unrecognised, repeated or missing rather than guessing.
 bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parsed = nullptr, QString *error = nullptr);
@@ -80,6 +90,7 @@ enum class ProtocolLineKind {
     Version,
     Step,
     Detail,
+    Failure,
     Result,
 };
 
@@ -91,7 +102,7 @@ struct ProtocolLine {
     int firstDestructiveStep = 0;
     int step = 0;
     int totalSteps = 0;
-    // The step message, the detail text, or the restored location.
+    // The step message, the detail text, the failure explanation, or the restored location.
     QString text;
 };
 
@@ -102,6 +113,7 @@ QString sanitizeProtocolText(const QString &text);
 QString encodeVersionLine(int version, const QString &appVersion, const QVector<RestoreStep> &plan);
 QString encodeStepLine(int step, int totalSteps, const QString &message);
 QString encodeDetailLine(const QString &message);
+QString encodeFailureLine(const QString &message);
 QString encodeResultLine(const QString &location);
 
 ProtocolLine parseProtocolLine(const QString &line);
@@ -112,7 +124,8 @@ bool acceptHelperAnnouncement(
     const ProtocolLine &announcement,
     const QString &ourAppVersion,
     const QVector<RestoreStep> &plan,
-    QString *error = nullptr);
+    QString *error = nullptr,
+    TextMode mode = TextMode::English);
 
 // Written to the helper's stdin; honoured only while the restore is still reversible.
 inline constexpr char CancelRequestToken[] = "cancel";

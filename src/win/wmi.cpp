@@ -9,45 +9,46 @@ namespace usbrestore {
 namespace {
 
 // FormatMessage has no text for the WBEM facility, so _com_error would say "Unknown error".
-QString wbemStatusText(HRESULT result)
+RestoreMessage wbemStatusText(HRESULT result)
 {
     switch (static_cast<quint32>(result)) {
     case 0x80041001:
-        return QStringLiteral("WMI reported a general failure");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI reported a general failure"));
     case 0x80041002:
-        return QStringLiteral("WMI object not found");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI object not found"));
     case 0x80041003:
-        return QStringLiteral("Access denied by WMI");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Access denied by WMI"));
     case 0x80041005:
-        return QStringLiteral("WMI parameter type mismatch");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI parameter type mismatch"));
     case 0x80041008:
-        return QStringLiteral("Invalid parameter passed to WMI");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Invalid parameter passed to WMI"));
     case 0x8004100E:
-        return QStringLiteral("Invalid WMI namespace");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Invalid WMI namespace"));
     case 0x80041010:
-        return QStringLiteral("Invalid WMI class");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Invalid WMI class"));
     case 0x80041017:
-        return QStringLiteral("Invalid WMI query");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Invalid WMI query"));
     case 0x80041021:
-        return QStringLiteral("The WMI provider is not available");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The WMI provider is not available"));
     case 0x80041033:
-        return QStringLiteral("The WMI provider is shutting down");
+        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The WMI provider is shutting down"));
     default:
         return {};
     }
 }
 
-QString hresultMessage(HRESULT result)
+RestoreMessage hresultMessage(HRESULT result)
 {
-    const QString wbem = wbemStatusText(result);
-    if (!wbem.isEmpty()) {
-        return QStringLiteral("%1 (HRESULT 0x%2)").arg(wbem).arg(static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
+    const QString code = QStringLiteral("%1").arg(static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
+    const RestoreMessage wbem = wbemStatusText(result);
+    if (!wbem.english.isEmpty()) {
+        return RestoreMessage(QStringLiteral("%1 (HRESULT 0x%2)")).arg(wbem, code);
     }
 
+    // Windows already words this in the system language.
     const _com_error error(result);
-    return QStringLiteral("%1 (HRESULT 0x%2)")
-        .arg(QString::fromWCharArray(error.ErrorMessage()).trimmed())
-        .arg(static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
+    return RestoreMessage(QStringLiteral("%1 (HRESULT 0x%2)"))
+        .arg(QString::fromWCharArray(error.ErrorMessage()).trimmed(), code);
 }
 
 // The storage classes mix VARIANT types: BusType and similar arrive as uint16,
@@ -145,7 +146,7 @@ bool initializeComSecurity(QString *error)
     // RPC_E_TOO_LATE: process security was already set, which is fine to run with.
     if (FAILED(result) && result != RPC_E_TOO_LATE) {
         if (error) {
-            *error = QStringLiteral("CoInitializeSecurity failed: %1").arg(hresultMessage(result));
+            *error = QStringLiteral("CoInitializeSecurity failed: %1").arg(hresultMessage(result).english);
         }
         return false;
     }
@@ -270,13 +271,15 @@ QString WmiObject::objectPath() const
     return stringValue(L"__PATH");
 }
 
-bool WmiObject::setValue(const QString &name, const QVariant &value, QString *error)
+bool WmiObject::setValue(const QString &name, const QVariant &value, QString *error, QString *displayError)
 {
     const HRESULT result = m_object ? putInputValue(m_object, name, value) : E_POINTER;
     if (FAILED(result)) {
-        if (error) {
-            *error = QStringLiteral("WMI input parameter failed: %1: %2").arg(name, hresultMessage(result));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI input parameter failed: %1: %2"))
+                .arg(name, hresultMessage(result)));
         return false;
     }
     return true;
@@ -288,7 +291,7 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
     // does not. On the GUI thread Qt's STA stays and this returns RPC_E_CHANGED_MODE.
     HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(result) && result != RPC_E_CHANGED_MODE) {
-        setError(result, QStringLiteral("CoInitializeEx failed"));
+        setError(result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "CoInitializeEx failed")));
         return;
     }
     m_comInitialized = SUCCEEDED(result);
@@ -296,14 +299,15 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
     result = CoCreateInstance(
         CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<void **>(&m_locator));
     if (FAILED(result)) {
-        setError(result, QStringLiteral("CoCreateInstance(IWbemLocator) failed"));
+        setError(
+            result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "CoCreateInstance(IWbemLocator) failed")));
         return;
     }
 
     result =
         m_locator->ConnectServer(_bstr_t(namespacePath), nullptr, nullptr, nullptr, 0, nullptr, nullptr, &m_services);
     if (FAILED(result)) {
-        setError(result, QStringLiteral("WMI ConnectServer failed"));
+        setError(result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI ConnectServer failed")));
         m_services = nullptr;
         return;
     }
@@ -318,7 +322,7 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
         nullptr,
         EOAC_NONE);
     if (FAILED(result)) {
-        setError(result, QStringLiteral("CoSetProxyBlanket failed"));
+        setError(result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "CoSetProxyBlanket failed")));
         m_services->Release();
         m_services = nullptr;
     }
@@ -342,7 +346,7 @@ bool WmiConnection::isValid() const
     return m_services != nullptr;
 }
 
-QString WmiConnection::lastError() const
+RestoreMessage WmiConnection::lastError() const
 {
     return m_lastError;
 }
@@ -353,7 +357,7 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
     if (!m_services) {
         return objects;
     }
-    m_lastError.clear();
+    m_lastError = {};
 
     IEnumWbemClassObject *enumerator = nullptr;
     HRESULT result = m_services->ExecQuery(
@@ -363,7 +367,9 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
         nullptr,
         &enumerator);
     if (FAILED(result) || !enumerator) {
-        setError(FAILED(result) ? result : E_FAIL, QStringLiteral("WMI query failed: %1").arg(wql));
+        setError(
+            FAILED(result) ? result : E_FAIL,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI query failed: %1")).arg(wql));
         return objects;
     }
 
@@ -372,7 +378,9 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
         ULONG returned = 0;
         result = enumerator->Next(WBEM_INFINITE, 1, &object, &returned);
         if (FAILED(result)) {
-            setError(result, QStringLiteral("WMI result enumeration failed: %1").arg(wql));
+            setError(
+                result,
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI result enumeration failed: %1")).arg(wql));
             break;
         }
         if (returned == 0 || !object) {
@@ -390,13 +398,15 @@ WmiObject WmiConnection::getObject(const QString &objectPath) const
     if (!m_services || objectPath.isEmpty()) {
         return {};
     }
-    m_lastError.clear();
+    m_lastError = {};
 
     IWbemClassObject *object = nullptr;
     const HRESULT result =
         m_services->GetObject(_bstr_t(objectPath.toStdWString().c_str()), 0, nullptr, &object, nullptr);
     if (FAILED(result) || !object) {
-        setError(FAILED(result) ? result : E_FAIL, QStringLiteral("WMI GetObject failed for %1").arg(objectPath));
+        setError(
+            FAILED(result) ? result : E_FAIL,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI GetObject failed for %1")).arg(objectPath));
         return {};
     }
     return WmiObject(object);
@@ -412,7 +422,7 @@ WmiCallResult WmiConnection::callMethod(
     if (!m_services) {
         return callResult;
     }
-    m_lastError.clear();
+    m_lastError = {};
 
     IWbemClassObject *classObject = nullptr;
     IWbemClassObject *inSignature = nullptr;
@@ -422,13 +432,16 @@ WmiCallResult WmiConnection::callMethod(
     HRESULT result =
         m_services->GetObject(_bstr_t(className.toStdWString().c_str()), 0, nullptr, &classObject, nullptr);
     if (FAILED(result)) {
-        setError(result, QStringLiteral("WMI GetObject failed for class %1").arg(className));
+        setError(
+            result,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI GetObject failed for class %1")).arg(className));
     } else {
         result = classObject->GetMethod(methodName, 0, &inSignature, nullptr);
         if (FAILED(result)) {
             setError(
                 result,
-                QStringLiteral("WMI GetMethod failed for %1.%2").arg(className, QString::fromWCharArray(methodName)));
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI GetMethod failed for %1.%2"))
+                    .arg(className, QString::fromWCharArray(methodName)));
         }
     }
 
@@ -438,18 +451,21 @@ WmiCallResult WmiConnection::callMethod(
         inInstance = WmiObject(instance);
         if (FAILED(result) || !inInstance.isValid()) {
             result = FAILED(result) ? result : E_FAIL;
-            setError(result, QStringLiteral("WMI input parameter object creation failed"));
+            setError(
+                result,
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI input parameter object creation failed")));
         }
     } else if (SUCCEEDED(result) && !inputs.isEmpty()) {
         result = E_INVALIDARG;
         setError(
             result,
-            QStringLiteral("WMI method has no input parameter signature: %1").arg(QString::fromWCharArray(methodName)));
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI method has no input parameter signature: %1"))
+                .arg(QString::fromWCharArray(methodName)));
     }
 
     if (SUCCEEDED(result) && inInstance.isValid()) {
         for (const auto &input : inputs) {
-            if (!inInstance.setValue(input.first, input.second, &m_lastError)) {
+            if (!inInstance.setValue(input.first, input.second, &m_lastError.english, &m_lastError.display)) {
                 result = E_FAIL;
                 break;
             }
@@ -468,7 +484,8 @@ WmiCallResult WmiConnection::callMethod(
         if (FAILED(result)) {
             setError(
                 result,
-                QStringLiteral("WMI ExecMethod failed for %1.%2").arg(className, QString::fromWCharArray(methodName)));
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI ExecMethod failed for %1.%2"))
+                    .arg(className, QString::fromWCharArray(methodName)));
         }
     }
 
@@ -496,11 +513,12 @@ WmiCallResult WmiConnection::callMethod(
     return callResult;
 }
 
-bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *error, QString *outcome) const
+bool WmiConnection::waitForJob(
+    const QString &jobPath, int timeoutMs, QString *error, QString *outcome, QString *displayError) const
 {
     return waitForStorageJob(
         jobPath,
-        [this, &jobPath](QString *readError) {
+        [this, &jobPath](RestoreMessage *readError) {
             WmiObject job = getObject(jobPath);
             if (!job.isValid() && readError) {
                 *readError = lastError();
@@ -509,24 +527,29 @@ bool WmiConnection::waitForJob(const QString &jobPath, int timeoutMs, QString *e
         },
         timeoutMs,
         error,
-        outcome);
+        outcome,
+        displayError);
 }
 
 bool waitForStorageJob(
     const QString &jobPath,
-    const std::function<WmiObject(QString *)> &readJob,
+    const std::function<WmiObject(RestoreMessage *)> &readJob,
     int timeoutMs,
     QString *error,
-    QString *outcome)
+    QString *outcome,
+    QString *displayError)
 {
+    const auto fail = [error, displayError](const RestoreMessage &message) {
+        setRestoreError(error, displayError, message);
+        return false;
+    };
+
     if (jobPath.isEmpty()) {
         if (outcome) {
             *outcome = QStringLiteral("queued without a job path");
         }
-        if (error) {
-            *error = QStringLiteral("Windows queued a storage operation without a job to monitor. Restore stopped.");
-        }
-        return false;
+        return fail(restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend", "Windows queued a storage operation without a job to monitor. Restore stopped.")));
     }
 
     QElapsedTimer timer;
@@ -544,17 +567,21 @@ bool waitForStorageJob(
         }
     };
     for (;;) {
-        QString readError;
+        RestoreMessage readError;
         const WmiObject job = readJob(&readError);
         ++reads;
         if (!job.isValid()) {
             note(QStringLiteral("job object could not be read (%1)")
-                     .arg(readError.isEmpty() ? QStringLiteral("no detail") : readError));
-            if (error) {
-                *error = QStringLiteral("Could not confirm that the Windows storage job completed. Restore stopped.%1")
-                             .arg(readError.isEmpty() ? QString() : QStringLiteral(" %1").arg(readError));
-            }
-            return false;
+                     .arg(readError.english.isEmpty() ? QStringLiteral("no detail") : readError.english));
+            return fail(
+                readError.english.isEmpty()
+                    ? restoreText(QT_TRANSLATE_NOOP(
+                          "usbrestore::Backend",
+                          "Could not confirm that the Windows storage job completed. Restore stopped."))
+                    : restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend",
+                                      "Could not confirm that the Windows storage job completed. Restore stopped. %1"))
+                          .arg(readError));
         }
 
         const auto stateValue = job.optionalUint64Value(L"JobState");
@@ -562,10 +589,8 @@ bool waitForStorageJob(
         const QString codeText = code ? QString::number(*code) : QStringLiteral("missing");
         if (!stateValue || *stateValue < 2 || *stateValue > 12) {
             note(QStringLiteral("unusable JobState, ErrorCode %1").arg(codeText));
-            if (error) {
-                *error = QStringLiteral("The Windows storage job reported no usable state. Restore stopped.");
-            }
-            return false;
+            return fail(restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "The Windows storage job reported no usable state. Restore stopped.")));
         }
         const auto state = *stateValue;
         lastState = state;
@@ -577,31 +602,35 @@ bool waitForStorageJob(
             if (code && *code == 0) {
                 return true;
             }
-            if (error) {
-                *error = QStringLiteral("The Windows storage job did not confirm success (error code %1). %2")
-                             .arg(
-                                 code ? QString::number(*code) : QStringLiteral("unavailable"),
-                                 job.stringValue(L"ErrorDescription"))
-                             .trimmed();
-            }
-            return false;
+            // Windows words the description itself, and it is often empty.
+            const RestoreMessage message =
+                restoreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend", "The Windows storage job did not confirm success (error code %1). %2"))
+                    .arg(
+                        code ? RestoreMessage(QString::number(*code))
+                             : restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "unavailable")),
+                        job.stringValue(L"ErrorDescription"))
+                    .trimmed();
+            return fail(message);
         }
         if (state == JobStateTerminated || state == JobStateKilled || state == JobStateException) {
-            if (error) {
-                const QString detail = job.stringValue(L"ErrorDescription").trimmed();
-                *error = detail.isEmpty() ? QStringLiteral("A Windows storage job failed with state %1.").arg(state)
-                                          : QStringLiteral("A Windows storage job failed: %1").arg(detail);
-            }
-            return false;
+            const QString detail = job.stringValue(L"ErrorDescription").trimmed();
+            return fail(
+                detail.isEmpty()
+                    ? restoreText(
+                          QT_TRANSLATE_NOOP("usbrestore::Backend", "A Windows storage job failed with state %1."))
+                          .arg(state)
+                    : restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "A Windows storage job failed: %1"))
+                          .arg(detail));
         }
 
         if (timer.elapsed() >= timeoutMs) {
             note(QStringLiteral("still running at the timeout, ErrorCode %1").arg(codeText));
-            if (error) {
-                *error =
-                    QStringLiteral("A Windows storage job did not finish within %1 seconds.").arg(timeoutMs / 1000);
-            }
-            return false;
+            return fail(
+                restoreText(
+                    QT_TRANSLATE_NOOP("usbrestore::Backend", "A Windows storage job did not finish within %1 seconds."))
+                    .arg(timeoutMs / 1000));
         }
         QThread::msleep(250);
     }
@@ -614,7 +643,8 @@ bool WmiConnection::callMethodAndWait(
     const QVector<QPair<QString, QVariant>> &inputs,
     int timeoutMs,
     QString *error,
-    QString *outcome) const
+    QString *outcome,
+    QString *displayError) const
 {
     const WmiCallResult result = callMethod(className, objectPath, methodName, inputs);
     if (outcome) {
@@ -622,28 +652,28 @@ bool WmiConnection::callMethodAndWait(
                                            : QStringLiteral("returned %1").arg(result.returnValue);
     }
     if (!result.accepted()) {
-        if (error) {
-            const QString method = QStringLiteral("%1.%2").arg(className, QString::fromWCharArray(methodName));
-            QString detail = lastError();
-            if (detail.isEmpty()) {
-                detail = result.extendedStatus.trimmed();
-            }
-            *error = detail.isEmpty()
-                         ? QStringLiteral("%1 failed with return value %2.").arg(method).arg(result.returnValue)
-                         : QStringLiteral("%1 failed with return value %2. %3")
-                               .arg(method)
-                               .arg(result.returnValue)
-                               .arg(detail);
+        const QString method = QStringLiteral("%1.%2").arg(className, QString::fromWCharArray(methodName));
+        RestoreMessage detail = lastError();
+        if (detail.english.isEmpty()) {
+            detail = result.extendedStatus.trimmed();
         }
+        setRestoreError(
+            error,
+            displayError,
+            detail.english.isEmpty()
+                ? restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 failed with return value %2."))
+                      .arg(method, result.returnValue)
+                : restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 failed with return value %2. %3"))
+                      .arg(method, result.returnValue, detail));
         return false;
     }
 
-    return result.returnValue == 0 || waitForJob(result.jobPath, timeoutMs, error, outcome);
+    return result.returnValue == 0 || waitForJob(result.jobPath, timeoutMs, error, outcome, displayError);
 }
 
-void WmiConnection::setError(HRESULT result, const QString &context) const
+void WmiConnection::setError(HRESULT result, const RestoreMessage &context) const
 {
-    m_lastError = QStringLiteral("%1: %2").arg(context, hresultMessage(result));
+    m_lastError = RestoreMessage(QStringLiteral("%1: %2")).arg(context, hresultMessage(result));
 }
 
 } // namespace usbrestore

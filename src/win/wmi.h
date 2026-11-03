@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/restore_message.h"
+
 #include <QPair>
 #include <QString>
 #include <QVariant>
@@ -43,7 +45,8 @@ class WmiObject {
     QString objectPath() const;
 
     // Changes this local object; method execution is a separate operation.
-    bool setValue(const QString &name, const QVariant &value, QString *error = nullptr);
+    bool
+    setValue(const QString &name, const QVariant &value, QString *error = nullptr, QString *displayError = nullptr);
 
   private:
     QVariant value(const wchar_t *name) const;
@@ -63,10 +66,11 @@ struct WmiCallResult {
 // `outcome` describes what the job did, success or not, for the restore log.
 bool waitForStorageJob(
     const QString &jobPath,
-    const std::function<WmiObject(QString *)> &readJob,
+    const std::function<WmiObject(RestoreMessage *)> &readJob,
     int timeoutMs,
     QString *error,
-    QString *outcome = nullptr);
+    QString *outcome = nullptr,
+    QString *displayError = nullptr);
 
 class WmiConnection {
   public:
@@ -77,7 +81,7 @@ class WmiConnection {
     WmiConnection &operator=(const WmiConnection &) = delete;
 
     bool isValid() const;
-    QString lastError() const;
+    RestoreMessage lastError() const;
 
     QVector<WmiObject> query(const QString &wql) const;
     WmiObject getObject(const QString &objectPath) const;
@@ -96,16 +100,22 @@ class WmiConnection {
         const QVector<QPair<QString, QVariant>> &inputs,
         int timeoutMs,
         QString *error,
-        QString *outcome = nullptr) const;
+        QString *outcome = nullptr,
+        QString *displayError = nullptr) const;
 
-    bool waitForJob(const QString &jobPath, int timeoutMs, QString *error, QString *outcome = nullptr) const;
+    bool waitForJob(
+        const QString &jobPath,
+        int timeoutMs,
+        QString *error,
+        QString *outcome = nullptr,
+        QString *displayError = nullptr) const;
 
   private:
-    void setError(HRESULT result, const QString &context) const;
+    void setError(HRESULT result, const RestoreMessage &context) const;
 
     IWbemLocator *m_locator = nullptr;
     IWbemServices *m_services = nullptr;
-    mutable QString m_lastError;
+    mutable RestoreMessage m_lastError;
     bool m_comInitialized = false;
 };
 

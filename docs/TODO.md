@@ -2,17 +2,46 @@
 
 ## Next
 
-- 1.9.0: Add German to everything the user sees: the GUI, step names, refusal
-  reasons and the restore errors shown in the dialog, including those raised by
-  the Linux helper and Windows backend. The log stays English. Use
-  `qt_add_translations` with `usbrestore_de.ts` and the Qt base translations.
-  Follow the system language, with a manual override in `AppSettings` and the
-  interface. The helper needs the language as a display-only argument, since
-  pkexec clears the environment; it must never affect a safety decision. Ship
-  translations in every package, render German in GUI tests at 100% and 200%
-  scaling in both themes, and keep English wording tests on a fixed locale.
+- On Windows, run `./scripts/build-standalone.ps1` with `pwsh` from an unelevated
+  shell. CI cannot cover this: its runners are elevated.
+- To release 1.9.0: merge PR #12, tag `v1.9.0` on the merge commit, and verify
+  the published assets.
 
 ## Recently completed
+
+- 2026-11-02: Prepared the 1.9.0 release. The Windows packaging script now
+  requires PowerShell 7, which CI already uses, so Windows PowerShell 5.1 no
+  longer needs a separate check. Regenerated the main-window screenshots and
+  restore animations; the confirmation previews were unchanged. Dated the
+  changelog and README notes. Linux build and all five ctest suites pass. The
+  Fedora 44 RPM and the AppImage were built locally and pass their catalog probes
+  and checksums. The AppImage needed `PATCHELF` set to upstream patchelf `3e996db`
+  again. The `.deb` and Windows ZIP were not built locally.
+
+- 2026-11-02: Closed the PR #12 review findings: a single `lrelease` run across
+  targets, a Windows catalog probe that works unelevated and under PowerShell 5.1,
+  a minimum width that follows the language, one source for main-window text,
+  translated WMI and storage-job failures, a shared display locale and button
+  helper, and per-step failure text in the Windows restore. All six CI jobs pass
+  on `f016761`.
+- 2026-11-02: Scan failures and their details stay visible across language changes.
+- 2026-11-02: Closed the 1.9.0 branch review findings: one-pass argument
+  substitution, protocol v5 fuzz seeds, Windows test environment fixes and `1.9.x`
+  in `SECURITY.md`.
+- 2026-11-01: Fixed the Windows CI failures: catalog probe output, `ctest` reporting
+  through `QT_FORCE_STDERR_LOGGING`, the unsplit test `PATH`, clipped header and
+  dialog buttons, and `lastError` receiving finished text. The RPM job now installs
+  all languages.
+- 2026-11-01: Set `PROJECT_VERSION` to 1.9.0 with unreleased README and changelog notes.
+- 2026-11-01: Added `--show-translation en` and `de` so each package proves its
+  restore binary loads the embedded catalog.
+- 2026-11-01: Passed the display language to the helper as a required `--language`
+  argument on protocol 5, with refusals on a `failure` line.
+- 2026-11-01: Activated the saved language at startup and added the header control.
+- 2026-10-31: Split backend display text from English logs and translated native
+  Linux and Windows errors, shared disk text, safety refusals and layout errors.
+- 2026-10-31: Added the embedded catalogs and German text for the main window and
+  restore dialog.
 
 - 2026-10-31: Published 1.8.0 as the latest stable release. Squash-merged
   [PR #11](https://github.com/KaroqDave/USB-Restoration-Tool/pull/11) as

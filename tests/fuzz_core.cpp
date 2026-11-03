@@ -108,6 +108,9 @@ void fuzzProtocolLines(Input &input)
     const ProtocolLine detail = overTheWire(encodeDetailLine(text));
     FUZZ_REQUIRE(detail.kind == ProtocolLineKind::Detail && detail.text == expected);
 
+    const ProtocolLine failure = overTheWire(encodeFailureLine(text));
+    FUZZ_REQUIRE(failure.kind == ProtocolLineKind::Failure && failure.text == expected);
+
     const ProtocolLine result = overTheWire(encodeResultLine(text));
     FUZZ_REQUIRE(result.kind == ProtocolLineKind::Result && result.text == expected);
 
@@ -165,12 +168,15 @@ void fuzzRestoreArguments(Input &input)
 
     RestoreArguments again;
     FUZZ_REQUIRE(parseRestoreArguments(
-        buildRestoreArguments(claimed, parsed.style, parsed.fileSystem, parsed.volumeLabel), &again));
+        buildRestoreArguments(claimed, parsed.style, parsed.fileSystem, parsed.volumeLabel, parsed.displayLanguage),
+        &again));
     FUZZ_REQUIRE(again.expected.deviceId == claimed.deviceId);
     FUZZ_REQUIRE(again.expected.deviceSequence == claimed.deviceSequence);
     FUZZ_REQUIRE(again.expected.size == claimed.size && again.expected.sectorSize == claimed.sectorSize);
     FUZZ_REQUIRE(again.style == parsed.style && again.fileSystem == parsed.fileSystem);
     FUZZ_REQUIRE(again.volumeLabel == parsed.volumeLabel);
+    FUZZ_REQUIRE(again.displayLanguage == parsed.displayLanguage);
+    FUZZ_REQUIRE(parsed.displayLanguage == Language::English || parsed.displayLanguage == Language::German);
     FUZZ_REQUIRE(again.expected.serialNumber == knownOrEmpty(claimed.serialNumber));
     FUZZ_REQUIRE(again.expected.uniqueId == knownOrEmpty(claimed.uniqueId));
     FUZZ_REQUIRE(again.expected.path == knownOrEmpty(claimed.path));

@@ -44,13 +44,15 @@ QString findPkexec()
     return {};
 }
 
-bool acceptAnnouncement(const ProtocolLine &line, QString *error)
+bool acceptAnnouncement(const ProtocolLine &line, QString *error, QString *displayError)
 {
-    return acceptHelperAnnouncement(line, QStringLiteral(USBRESTORE_APP_VERSION), linuxRestorePlan(), error);
+    return checkRestoreError(error, displayError, [&](QString *text, TextMode mode) {
+        return acceptHelperAnnouncement(line, QStringLiteral(USBRESTORE_APP_VERSION), linuxRestorePlan(), text, mode);
+    });
 }
 
 // Unprivileged, so a mismatched helper is caught before the password prompt.
-bool helperSpeaksOurProtocol(const QString &helper, QString *error)
+bool helperSpeaksOurProtocol(const QString &helper, QString *error, QString *displayError)
 {
     QProcess process;
     process.setProgram(helper);
@@ -59,14 +61,18 @@ bool helperSpeaksOurProtocol(const QString &helper, QString *error)
     if (!process.waitForStarted(VersionProbeTimeoutMs) || !process.waitForFinished(VersionProbeTimeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
-        if (error) {
-            *error = QStringLiteral("The restore helper at %1 could not be started.").arg(helper);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore helper at %1 could not be started."))
+                    .arg(helper));
         }
         return false;
     }
 
     return acceptAnnouncement(
-        parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed()), error);
+        parseProtocolLine(QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed()), error, displayError);
 }
 
 // Leaves a partial last line in the buffer for the next read.
@@ -100,56 +106,79 @@ bool isHelperAvailable()
     return helper.exists() && helper.isExecutable() && !helper.isDir() && !findPkexec().isEmpty();
 }
 
-bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, RestoreResult *result, QString *error)
+bool runHelperRestore(
+    const RestoreRequest &request,
+    RestoreReporter &reporter,
+    RestoreResult *result,
+    QString *error,
+    QString *displayError)
 {
     const QString helper = helperExecutablePath();
     const QFileInfo helperInfo(helper);
     if (!helperInfo.exists() || !helperInfo.isExecutable() || helperInfo.isDir()) {
-        if (error) {
-            *error = QStringLiteral(
-                         "The restore helper was not found at %1. USB Restoration Tool has to be "
-                         "installed to restore a drive without running the whole application as root.")
-                         .arg(helper);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "The restore helper was not found at %1. USB Restoration Tool has to be "
+                                "installed to restore a drive without running the whole application as root."))
+                    .arg(helper));
         }
         return false;
     }
 
     const QString pkexec = findPkexec();
     if (pkexec.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral(
-                "pkexec was not found, so permission to restore the drive cannot be "
-                "requested. Install polkit, or run USB Restoration Tool with sudo.");
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                    "usbrestore::Backend",
+                    "pkexec was not found, so permission to restore the drive cannot be "
+                    "requested. Install polkit, or run USB Restoration Tool with sudo.")));
         }
         return false;
     }
 
-    if (!helperSpeaksOurProtocol(helper, error)) {
+    if (!helperSpeaksOurProtocol(helper, error, displayError)) {
         return false;
     }
 
     QProcess process;
     process.setProgram(pkexec);
     process.setArguments(
-        QStringList{helper} +
-        buildRestoreArguments(request.disk, request.style, request.fileSystem, request.volumeLabel));
+        QStringList{helper} + buildRestoreArguments(
+                                  request.disk,
+                                  request.style,
+                                  request.fileSystem,
+                                  request.volumeLabel,
+                                  resolveLanguage(request.displayLanguage)));
     // Merged channels would let mkfs output be read as a protocol line.
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start();
     if (!process.waitForStarted(ProcessStartTimeoutMs)) {
-        if (error) {
-            *error = QStringLiteral(
-                "pkexec could not be started, so permission to restore the drive could not be "
-                "requested.");
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                    "usbrestore::Backend",
+                    "pkexec could not be started, so permission to restore the drive could not be "
+                    "requested.")));
         }
         return false;
     }
 
     QByteArray buffer;
     QString location;
+    QString displayFailure;
     bool sawVersion = false;
     bool versionAccepted = false;
     QString versionError;
+    QString displayVersionError;
     bool cancelTokenWritten = false;
     bool killRequested = false;
 
@@ -171,7 +200,7 @@ bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, 
             switch (parsed.kind) {
             case ProtocolLineKind::Version:
                 // A second announcement is a malfunction, and must not undo a refusal.
-                versionAccepted = !sawVersion && acceptAnnouncement(parsed, &versionError);
+                versionAccepted = !sawVersion && acceptAnnouncement(parsed, &versionError, &displayVersionError);
                 sawVersion = true;
                 // Stop now, before the disk is touched; the helper is root, so the
                 // cancel token is the only lever. Reachable only if the binary changed.
@@ -179,11 +208,25 @@ bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, 
                     askHelperToStop();
                 }
                 break;
-            case ProtocolLineKind::Step:
-                reporter.step(parsed.text);
+            case ProtocolLineKind::Step: {
+                RestoreMessage message(parsed.text);
+                const auto &plan = linuxRestorePlan();
+                if (versionAccepted && parsed.totalSteps == plan.size() && parsed.step >= 1 &&
+                    parsed.step <= plan.size()) {
+                    message.display =
+                        restoreStepMessage(plan.at(parsed.step - 1), request.style, request.fileSystem).display;
+                }
+                reporter.step(message);
                 break;
+            }
             case ProtocolLineKind::Detail:
                 reporter.detail(parsed.text);
+                break;
+            case ProtocolLineKind::Failure:
+                // The first explanation after an accepted version. A later line must not replace it.
+                if (versionAccepted && displayFailure.isEmpty() && !parsed.text.isEmpty()) {
+                    displayFailure = parsed.text;
+                }
                 break;
             case ProtocolLineKind::Result:
                 location = parsed.text;
@@ -228,6 +271,7 @@ bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, 
     run.killRequested = killRequested;
     run.location = location;
     run.helperStderr = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
+    run.displayFailure = displayFailure;
 
     QString verdictError;
     switch (judgeHelperRun(run, &verdictError)) {
@@ -235,8 +279,12 @@ bool runHelperRestore(const RestoreRequest &request, RestoreReporter &reporter, 
         // RestoreWorker reads "false with no error" as a cancellation.
         return false;
     case HelperRunVerdict::Failed:
-        if (error) {
-            *error = verdictError;
+        if (error || displayError) {
+            HelperRunObservation displayRun = run;
+            displayRun.versionError = displayVersionError;
+            QString displayVerdictError;
+            judgeHelperRun(displayRun, &displayVerdictError, TextMode::Display);
+            setRestoreError(error, displayError, {verdictError, displayVerdictError});
         }
         return false;
     case HelperRunVerdict::Succeeded:

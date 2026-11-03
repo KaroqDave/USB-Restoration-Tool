@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/restore_message.h"
+
 #include "core/disk.h"
 
 #include <QVector>
@@ -11,11 +13,15 @@ class WmiObject;
 class DiskEnumerator {
   public:
     // An empty list with no error means no USB disk is attached.
-    QVector<DiskInfo> listUsbDisks(QString *error = nullptr) const;
+    QVector<DiskInfo> listUsbDisks(RestoreMessage *error = nullptr) const;
 
     // Fails if the disk is no longer on the USB bus.
     bool diskByNumber(
-        quint32 diskNumber, DiskInfo *disk, QString *error = nullptr, DiskDetails details = DiskDetails::Display) const;
+        quint32 diskNumber,
+        DiskInfo *disk,
+        QString *error = nullptr,
+        DiskDetails details = DiskDetails::Display,
+        QString *displayError = nullptr) const;
 
   private:
     DiskInfo diskInfoFromObject(const WmiObject &object, DiskDetails details = DiskDetails::Display) const;

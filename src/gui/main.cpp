@@ -3,15 +3,21 @@
 #include "gui/theme.h"
 #include "platform/disk_service.h"
 #include "platform/startup.h"
+#include "platform/translations.h"
+
+#include "core/restore_protocol.h"
 
 #include <QApplication>
 #include <QIcon>
 #include <QMessageBox>
+#include <QTextStream>
 #include <QtGlobal>
 
 #ifdef Q_OS_WIN
 #include "win/wmi.h"
+
 #include <objbase.h>
+#include <windows.h>
 #endif
 
 #ifdef Q_OS_LINUX
@@ -48,6 +54,22 @@ class ComScope {
   private:
     bool m_initialized = false;
 };
+
+// A GUI-subsystem process does not connect C stdout to the pipe a caller
+// inherited, so the catalog probe has to write that handle itself.
+void writeCatalogLine(const QString &line)
+{
+    const QByteArray bytes = (line + QLatin1Char('\n')).toUtf8();
+    const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD written = 0;
+    if (out != nullptr && out != INVALID_HANDLE_VALUE &&
+        WriteFile(out, bytes.constData(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+        written == static_cast<DWORD>(bytes.size())) {
+        return;
+    }
+    QTextStream stream(stdout);
+    stream << line << '\n';
+}
 #endif
 
 } // namespace
@@ -85,19 +107,42 @@ int main(int argc, char *argv[])
     QApplication::setDesktopFileName(QStringLiteral("usb-restoration-tool"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
 
+    QStringList arguments = QCoreApplication::arguments();
+    if (!arguments.isEmpty()) {
+        arguments.removeFirst();
+    }
+    const usbrestore::CatalogProbe probe = usbrestore::catalogProbe(arguments);
+    if (probe.kind != usbrestore::CatalogProbeKind::NotRequested) {
+        if (probe.kind == usbrestore::CatalogProbeKind::Ready) {
+#ifdef Q_OS_WIN
+            writeCatalogLine(probe.line);
+#else
+            QTextStream out(stdout);
+            out << probe.line << '\n';
+#endif
+            return usbrestore::RestoreExitSuccess;
+        }
+        return probe.kind == usbrestore::CatalogProbeKind::MissingCatalog ? usbrestore::RestoreExitFailed
+                                                                          : usbrestore::RestoreExitUsage;
+    }
+
+    const usbrestore::AppSettings settings = usbrestore::loadAppSettings();
+    // Lives for the process: widgets created below, including the privilege dialog, read it.
+    usbrestore::Translations translations;
+    usbrestore::activateInterfaceLanguage(translations, settings.language);
+
     const std::unique_ptr<usbrestore::DiskService> service = usbrestore::DiskService::create();
 
     // Windows elevates via the manifest; on Linux false means no helper and not root.
     // Either would otherwise fail partway through rather than up front.
     if (!service->isPrivileged()) {
-        QMessageBox::critical(nullptr, QStringLiteral("Elevated permission required"), service->privilegeHint());
+        QMessageBox::critical(nullptr, usbrestore::elevatedPermissionTitle(), service->privilegeHint());
         return 1;
     }
 
-    const usbrestore::AppSettings settings = usbrestore::loadAppSettings();
     usbrestore::applyTheme(app, settings.theme);
 
-    usbrestore::MainWindow window(*service, settings.theme);
+    usbrestore::MainWindow window(*service, settings.theme, &translations);
     window.show();
 
     return app.exec();

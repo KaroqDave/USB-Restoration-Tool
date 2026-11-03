@@ -83,22 +83,32 @@ HANDLE openVolumePath(const QString &path, DWORD access)
 }
 
 // The handle must already be proven to sit on the target disk.
-bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error)
+bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error, QString *displayError)
 {
     DWORD unused = 0;
     if (!DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
         const DWORD code = GetLastError();
-        if (error) {
-            *error =
-                windowsErrorMessage(QStringLiteral("Could not lock volume %1 before restore").arg(volumePath), code);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                windowsErrorDetails(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not lock volume %1 before restore"))
+                        .arg(volumePath),
+                    code));
         }
         return false;
     }
     if (!DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, nullptr, 0, nullptr, 0, &unused, nullptr)) {
         const DWORD code = GetLastError();
-        if (error) {
-            *error = windowsErrorMessage(
-                QStringLiteral("Could not dismount volume %1 before restore").arg(volumePath), code);
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                windowsErrorDetails(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not dismount volume %1 before restore"))
+                        .arg(volumePath),
+                    code));
         }
         return false;
     }
@@ -119,11 +129,12 @@ void noteStorageCall(RestoreReporter *reporter, const QString &call, const QStri
 
 } // namespace
 
-bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error, RestoreReporter *reporter) const
+bool VolumeManager::refreshDisk(
+    quint32 diskNumber, QString *error, RestoreReporter *reporter, QString *displayError) const
 {
     if (!m_storage.isValid()) {
-        if (error) {
-            *error = m_storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, m_storage.lastError());
         }
         return false;
     }
@@ -131,29 +142,50 @@ bool VolumeManager::refreshDisk(quint32 diskNumber, QString *error, RestoreRepor
     const auto disks = m_storage.query(
         QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (disks.isEmpty()) {
-        if (error) {
-            const QString detail = m_storage.lastError();
-            *error = detail.isEmpty() ? QStringLiteral("Windows did not report USB disk %1.").arg(diskNumber) : detail;
+        if (error || displayError) {
+            const RestoreMessage detail = m_storage.lastError();
+            setRestoreError(
+                error,
+                displayError,
+                detail.english.isEmpty()
+                    ? restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Windows did not report USB disk %1."))
+                          .arg(diskNumber)
+                    : detail);
         }
         return false;
     }
 
     QString outcome;
+    RestoreMessage operationError;
     const bool refreshed = m_storage.callMethodAndWait(
-        QStringLiteral("MSFT_Disk"), disks.first().objectPath(), L"Refresh", {}, RefreshJobTimeoutMs, error, &outcome);
+        QStringLiteral("MSFT_Disk"),
+        disks.first().objectPath(),
+        L"Refresh",
+        {},
+        RefreshJobTimeoutMs,
+        &operationError.english,
+        &outcome,
+        &operationError.display);
     noteStorageCall(reporter, QStringLiteral("MSFT_Disk.Refresh"), outcome);
+    if (!refreshed) {
+        setRestoreError(error, displayError, operationError);
+    }
     return refreshed;
 }
 
 bool VolumeManager::deletePartitionsForDisk(
-    quint32 diskNumber, bool *partitionAtDiskStart, QString *error, RestoreReporter *reporter) const
+    quint32 diskNumber,
+    bool *partitionAtDiskStart,
+    QString *error,
+    RestoreReporter *reporter,
+    QString *displayError) const
 {
     if (partitionAtDiskStart) {
         *partitionAtDiskStart = false;
     }
     if (!m_storage.isValid()) {
-        if (error) {
-            *error = m_storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, m_storage.lastError());
         }
         return false;
     }
@@ -161,9 +193,9 @@ bool VolumeManager::deletePartitionsForDisk(
     const auto partitions =
         m_storage.query(QStringLiteral("SELECT * FROM MSFT_Partition WHERE DiskNumber = %1").arg(diskNumber));
     if (partitions.isEmpty()) {
-        if (!m_storage.lastError().isEmpty()) {
-            if (error) {
-                *error = m_storage.lastError();
+        if (!m_storage.lastError().english.isEmpty()) {
+            if (error || displayError) {
+                setRestoreError(error, displayError, m_storage.lastError());
             }
             return false;
         }
@@ -180,16 +212,19 @@ bool VolumeManager::deletePartitionsForDisk(
             continue;
         }
         QString outcome;
+        RestoreMessage operationError;
         const bool deleted = m_storage.callMethodAndWait(
             QStringLiteral("MSFT_Partition"),
             partition.objectPath(),
             L"DeleteObject",
             {},
             DeleteJobTimeoutMs,
-            error,
-            &outcome);
+            &operationError.english,
+            &outcome,
+            &operationError.display);
         noteStorageCall(reporter, QStringLiteral("MSFT_Partition.DeleteObject"), outcome);
         if (!deleted) {
+            setRestoreError(error, displayError, operationError);
             return false;
         }
     }
@@ -198,7 +233,7 @@ bool VolumeManager::deletePartitionsForDisk(
 }
 
 bool VolumeManager::removeMountPointsForDisk(
-    quint32 diskNumber, const QStringList &protectedLetters, QString *error) const
+    quint32 diskNumber, const QStringList &protectedLetters, QString *error, QString *displayError) const
 {
     QStringList protectedSet{QStringLiteral("C")};
     for (const QString &letter : protectedLetters) {
@@ -239,9 +274,15 @@ bool VolumeManager::removeMountPointsForDisk(
             0,
             nullptr);
         if (handle == INVALID_HANDLE_VALUE) {
-            if (error) {
-                *error = windowsErrorMessage(
-                    QStringLiteral("Could not open volume %1 before restore").arg(devicePath), GetLastError());
+            if (error || displayError) {
+                const DWORD code = GetLastError();
+                setRestoreError(
+                    error,
+                    displayError,
+                    windowsErrorDetails(
+                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open volume %1 before restore"))
+                            .arg(devicePath),
+                        code));
             }
             return false;
         }
@@ -252,7 +293,7 @@ bool VolumeManager::removeMountPointsForDisk(
             continue;
         }
 
-        if (!lockAndDismount(handle, devicePath, error)) {
+        if (!lockAndDismount(handle, devicePath, error, displayError)) {
             CloseHandle(handle);
             return false;
         }
@@ -262,9 +303,14 @@ bool VolumeManager::removeMountPointsForDisk(
             const DWORD code = GetLastError();
             if (code != ERROR_DIR_NOT_EMPTY && code != ERROR_FILE_NOT_FOUND && code != ERROR_PATH_NOT_FOUND &&
                 code != ERROR_NOT_A_REPARSE_POINT) {
-                if (error) {
-                    *error =
-                        windowsErrorMessage(QStringLiteral("Could not remove mount point %1").arg(mountPoint), code);
+                if (error || displayError) {
+                    setRestoreError(
+                        error,
+                        displayError,
+                        windowsErrorDetails(
+                            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not remove mount point %1"))
+                                .arg(mountPoint),
+                            code));
                 }
                 CloseHandle(handle);
                 return false;
@@ -277,7 +323,8 @@ bool VolumeManager::removeMountPointsForDisk(
     return true;
 }
 
-bool VolumeManager::dismountUnletteredVolumesOnDisk(quint32 diskNumber, QString *error, RestoreReporter *reporter) const
+bool VolumeManager::dismountUnletteredVolumesOnDisk(
+    quint32 diskNumber, QString *error, RestoreReporter *reporter, QString *displayError) const
 {
     wchar_t volumeName[MAX_PATH] = {};
     const HANDLE finder = FindFirstVolumeW(volumeName, MAX_PATH);
@@ -311,8 +358,14 @@ bool VolumeManager::dismountUnletteredVolumesOnDisk(quint32 diskNumber, QString 
         handle = openVolumePath(openName, GENERIC_READ | GENERIC_WRITE);
         if (handle == INVALID_HANDLE_VALUE) {
             const DWORD code = GetLastError();
-            if (error) {
-                *error = windowsErrorMessage(QStringLiteral("Could not open volume %1 before restore").arg(name), code);
+            if (error || displayError) {
+                setRestoreError(
+                    error,
+                    displayError,
+                    windowsErrorDetails(
+                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open volume %1 before restore"))
+                            .arg(name),
+                        code));
             }
             ok = false;
             break;
@@ -321,7 +374,7 @@ bool VolumeManager::dismountUnletteredVolumesOnDisk(quint32 diskNumber, QString 
             CloseHandle(handle);
             continue;
         }
-        const bool dismounted = lockAndDismount(handle, name, error);
+        const bool dismounted = lockAndDismount(handle, name, error, displayError);
         CloseHandle(handle);
         if (!dismounted) {
             ok = false;
@@ -419,8 +472,8 @@ QString VolumeManager::findVolumeNameForDisk(quint32 diskNumber) const
     return result;
 }
 
-QString
-VolumeManager::waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QString *error, RestoreReporter *reporter) const
+QString VolumeManager::waitForVolumeOnDisk(
+    quint32 diskNumber, int timeoutMs, QString *error, RestoreReporter *reporter, QString *displayError) const
 {
     QElapsedTimer timer;
     timer.start();
@@ -440,15 +493,19 @@ VolumeManager::waitForVolumeOnDisk(quint32 diskNumber, int timeoutMs, QString *e
         QThread::msleep(500);
     }
 
-    if (error) {
-        *error = QStringLiteral("Windows did not report a new volume for disk %1 within %2 seconds.")
-                     .arg(diskNumber)
-                     .arg(timeoutMs / 1000);
+    if (error || displayError) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(
+                QT_TRANSLATE_NOOP(
+                    "usbrestore::Backend", "Windows did not report a new volume for disk %1 within %2 seconds."))
+                .arg(diskNumber, timeoutMs / 1000));
     }
     return {};
 }
 
-QString VolumeManager::mountVolume(const QString &volumeName, QString *error) const
+QString VolumeManager::mountVolume(const QString &volumeName, QString *error, QString *displayError) const
 {
     wchar_t paths[512] = {};
     DWORD required = 0;
@@ -462,17 +519,26 @@ QString VolumeManager::mountVolume(const QString &volumeName, QString *error) co
 
     const QString mountPoint = firstAvailableDriveLetter(GetLogicalDrives());
     if (mountPoint.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("No available drive letter was found.");
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "No available drive letter was found.")));
         }
         return {};
     }
 
     if (!SetVolumeMountPointW(
             reinterpret_cast<LPCWSTR>(mountPoint.utf16()), reinterpret_cast<LPCWSTR>(volumeName.utf16()))) {
-        if (error) {
-            *error = windowsErrorMessage(
-                QStringLiteral("Could not mount the restored volume at %1").arg(mountPoint), GetLastError());
+        if (error || displayError) {
+            const DWORD code = GetLastError();
+            setRestoreError(
+                error,
+                displayError,
+                windowsErrorDetails(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not mount the restored volume at %1"))
+                        .arg(mountPoint),
+                    code));
         }
         return {};
     }
@@ -480,7 +546,8 @@ QString VolumeManager::mountVolume(const QString &volumeName, QString *error) co
     return mountPoint;
 }
 
-bool VolumeManager::volumePathBelongsToDisk(const QString &volumeName, quint32 diskNumber, QString *error) const
+bool VolumeManager::volumePathBelongsToDisk(
+    const QString &volumeName, quint32 diskNumber, QString *error, QString *displayError) const
 {
     const QString openName = withoutTrailingSlash(volumeName);
     const HANDLE handle = CreateFileW(
@@ -492,16 +559,26 @@ bool VolumeManager::volumePathBelongsToDisk(const QString &volumeName, quint32 d
         0,
         nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
-        if (error) {
-            *error = windowsErrorMessage(QStringLiteral("Could not reopen the restored volume"), GetLastError());
+        if (error || displayError) {
+            const DWORD code = GetLastError();
+            setRestoreError(
+                error,
+                displayError,
+                windowsErrorDetails(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not reopen the restored volume")),
+                    code));
         }
         return false;
     }
 
     const bool belongs = volumeHasDiskExtent(handle, diskNumber);
     CloseHandle(handle);
-    if (!belongs && error) {
-        *error = QStringLiteral("The restored volume no longer belongs to disk %1.").arg(diskNumber);
+    if (!belongs && (error || displayError)) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restored volume no longer belongs to disk %1."))
+                .arg(diskNumber));
     }
     return belongs;
 }
@@ -514,7 +591,8 @@ bool VolumeManager::formatVolume(
     quint32 allocationUnitSize,
     const QString &label,
     QString *error,
-    RestoreReporter *reporter) const
+    RestoreReporter *reporter,
+    QString *displayError) const
 {
     const QString formatName = [&]() -> QString {
         switch (fileSystem) {
@@ -530,37 +608,45 @@ bool VolumeManager::formatVolume(
         return {};
     }();
     if (formatName.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("Windows cannot format a volume as %1.").arg(fileSystemTypeName(fileSystem));
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Windows cannot format a volume as %1."))
+                    .arg(fileSystemTypeName(fileSystem)));
         }
         return false;
     }
     if (fileSystem == FileSystemType::Fat32 && allocationUnitSize == 0) {
-        if (error) {
-            *error = QStringLiteral("No valid FAT32 allocation unit was selected before formatting.");
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                    "usbrestore::Backend", "No valid FAT32 allocation unit was selected before formatting.")));
         }
         return false;
     }
 
-    if (!volumePathBelongsToDisk(volumeName, diskNumber, error)) {
+    if (!volumePathBelongsToDisk(volumeName, diskNumber, error, displayError)) {
         return false;
     }
 
     if (!m_storage.isValid()) {
-        if (error) {
-            *error = m_storage.lastError();
+        if (error || displayError) {
+            setRestoreError(error, displayError, m_storage.lastError());
         }
         return false;
     }
 
     const QString targetPath = normalizedVolumePath(volumeName);
     WmiObject targetVolume;
-    QString queryError;
+    RestoreMessage queryError;
     QElapsedTimer timer;
     timer.start();
     while (!targetVolume.isValid() && timer.elapsed() < 30 * 1000) {
         const auto volumes = m_storage.query(QStringLiteral("SELECT * FROM MSFT_Volume"));
-        if (!m_storage.lastError().isEmpty()) {
+        if (!m_storage.lastError().english.isEmpty()) {
             queryError = m_storage.lastError();
         }
 
@@ -577,10 +663,15 @@ bool VolumeManager::formatVolume(
     }
 
     if (!targetVolume.isValid()) {
-        if (error) {
-            *error = queryError.isEmpty()
-                         ? QStringLiteral("Windows did not report the restored volume for disk %1.").arg(diskNumber)
-                         : queryError;
+        if (error || displayError) {
+            setRestoreError(
+                error,
+                displayError,
+                queryError.english.isEmpty()
+                    ? restoreText(QT_TRANSLATE_NOOP(
+                                      "usbrestore::Backend", "Windows did not report the restored volume for disk %1."))
+                          .arg(diskNumber)
+                    : queryError);
         }
         return false;
     }
@@ -596,16 +687,19 @@ bool VolumeManager::formatVolume(
         inputs.append({QStringLiteral("AllocationUnitSize"), allocationUnitSize});
     }
     QString outcome;
+    RestoreMessage operationError;
     const bool formatted = m_storage.callMethodAndWait(
         QStringLiteral("MSFT_Volume"),
         targetVolume.objectPath(),
         L"Format",
         inputs,
         FormatJobTimeoutMs,
-        error,
-        &outcome);
+        &operationError.english,
+        &outcome,
+        &operationError.display);
     noteStorageCall(reporter, QStringLiteral("MSFT_Volume.Format"), outcome);
     if (!formatted) {
+        setRestoreError(error, displayError, operationError);
         return false;
     }
 
@@ -637,9 +731,14 @@ bool VolumeManager::formatVolume(
         QThread::msleep(500);
     }
 
-    if (error) {
-        *error = QStringLiteral("The format completed, but Windows did not report a %1 volume labelled %2 at %3.")
-                     .arg(formatName, label, driveRoot);
+    if (error || displayError) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "The format completed, but Windows did not report a %1 volume labelled %2 at %3."))
+                .arg(formatName, label, driveRoot));
     }
     return false;
 }

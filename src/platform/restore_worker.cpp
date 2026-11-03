@@ -26,7 +26,8 @@ void RestoreWorker::run()
     m_elapsed.start();
     RestoreResult result;
     QString error;
-    const bool restored = m_service.restore(m_request, *this, &result, &error);
+    QString displayError;
+    const bool restored = m_service.restore(m_request, *this, &result, &error, &displayError);
     logStepDuration();
     emit logFileOnly(QStringLiteral("Restore attempt took %1 ms").arg(m_elapsed.elapsed()));
     if (restored) {
@@ -41,17 +42,19 @@ void RestoreWorker::run()
         return;
     }
 
-    const QString text = error.isEmpty() ? QStringLiteral("The restore failed.") : error;
-    emit logMessage(QStringLiteral("ERROR: %1").arg(text));
-    emit failed(text);
+    const auto fallback = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore failed."));
+    const QString logError = error.isEmpty() ? fallback.english : error;
+    const QString uiError = displayError.isEmpty() ? (error.isEmpty() ? fallback.display : error) : displayError;
+    emit logMessage(QStringLiteral("ERROR: %1").arg(logError));
+    emit failed(uiError);
 }
 
-void RestoreWorker::step(const QString &message)
+void RestoreWorker::step(const RestoreMessage &message)
 {
     logStepDuration();
     m_step = qMin(m_step + 1, m_service.totalRestoreSteps());
-    emit logMessage(message);
-    emit progress(m_step, m_service.totalRestoreSteps(), message);
+    emit logMessage(message.english);
+    emit progress(m_step, m_service.totalRestoreSteps(), message.display);
 }
 
 void RestoreWorker::logStepDuration()

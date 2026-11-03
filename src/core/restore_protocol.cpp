@@ -111,8 +111,12 @@ bool isValidVolumeLabel(const QString &label)
     return true;
 }
 
-QStringList
-buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType fileSystem, const QString &volumeLabel)
+QStringList buildRestoreArguments(
+    const DiskInfo &disk,
+    PartitionStyle style,
+    FileSystemType fileSystem,
+    const QString &volumeLabel,
+    Language language)
 {
     QStringList arguments;
     arguments << QStringLiteral("--device") << disk.deviceId;
@@ -138,6 +142,11 @@ buildRestoreArguments(const DiskInfo &disk, PartitionStyle style, FileSystemType
     appendIfKnown(QStringLiteral("--expect-path"), disk.path);
     appendIfKnown(QStringLiteral("--expect-name"), disk.name);
 
+    // Resolved here so a System preference cannot cross pkexec, which clears the environment.
+    const Language resolved = resolveLanguage(language);
+    arguments << QStringLiteral("--language")
+              << (resolved == Language::German ? QStringLiteral("de") : QStringLiteral("en"));
+
     return arguments;
 }
 
@@ -150,6 +159,7 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     QString size;
     QString sectorSize;
     QStringList seen;
+    bool sawLanguage = false;
 
     for (int index = 0; index < arguments.size(); index += 2) {
         const QString flag = arguments.at(index);
@@ -188,6 +198,15 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
             result.expected.path = value;
         } else if (flag == QStringLiteral("--expect-name")) {
             result.expected.name = value;
+        } else if (flag == QStringLiteral("--language")) {
+            if (value == QStringLiteral("en")) {
+                result.displayLanguage = Language::English;
+            } else if (value == QStringLiteral("de")) {
+                result.displayLanguage = Language::German;
+            } else {
+                return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+            }
+            sawLanguage = true;
         } else {
             return fail(error, QStringLiteral("%1 is not a recognised option.").arg(flag));
         }
@@ -223,6 +242,10 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     }
     result.expected.sectorSize = static_cast<quint32>(number);
 
+    if (!sawLanguage) {
+        return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+    }
+
     result.expected.deviceId = device;
     result.expected.displayId = device;
     // busType stays 0: the caller cannot assert USB, and a DiskInfo built from argv
@@ -234,7 +257,7 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     return true;
 }
 
-QString describeRestoreExit(int exitCode, const QString &helperStderr)
+QString describeRestoreExit(int exitCode, const QString &helperStderr, TextMode mode)
 {
     const QString reported = sanitizeProtocolText(helperStderr);
 
@@ -245,33 +268,58 @@ QString describeRestoreExit(int exitCode, const QString &helperStderr)
 
     case RestoreExitFailed:
         // Fallback for a helper that died before writing to stderr.
-        return reported.isEmpty() ? QStringLiteral("The restore failed.") : reported;
+        if (reported.isEmpty() || mode == TextMode::English) {
+            return reported.isEmpty() ? coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "The restore failed."), mode)
+                                      : reported;
+        }
+        {
+            const char *source = QT_TRANSLATE_NOOP("usbrestore::Core", "The restore failed.\n\nDetails: %1");
+            const QString explanation = coreText(source, mode);
+            return explanation == QString::fromUtf8(source) ? reported : explanation.arg(reported);
+        }
 
     case RestoreExitUsage:
-        return QStringLiteral(
-                   "USB Restoration Tool and its restore helper do not agree on how to talk to each "
-                   "other, which usually means a partly upgraded installation. Reinstall the "
-                   "application.%1")
-            .arg(reported.isEmpty() ? QString() : QStringLiteral("\n\nThe helper said: %1").arg(reported));
+        return coreText(
+                   QT_TRANSLATE_NOOP(
+                       "usbrestore::Core",
+                       "USB Restoration Tool and its restore helper do not agree on how to talk to each "
+                       "other, which usually means a partly upgraded installation. Reinstall the "
+                       "application.%1"),
+                   mode)
+            .arg(
+                reported.isEmpty()
+                    ? QString()
+                    : coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "\n\nThe helper said: %1"), mode).arg(reported));
 
     // pkexec's own, not the helper's.
     case 126:
-        return QStringLiteral("Authentication was cancelled, so nothing on the drive was changed.");
+        return coreText(
+            QT_TRANSLATE_NOOP("usbrestore::Core", "Authentication was cancelled, so nothing on the drive was changed."),
+            mode);
     case 127:
-        return QStringLiteral(
-            "The restore helper could not be started. Check that USB Restoration Tool is "
-            "installed rather than run from a build directory.");
+        return coreText(
+            QT_TRANSLATE_NOOP(
+                "usbrestore::Core",
+                "The restore helper could not be started. Check that USB Restoration Tool is "
+                "installed rather than run from a build directory."),
+            mode);
 
     default:
         return reported.isEmpty()
-                   ? QStringLiteral("The restore helper stopped unexpectedly (exit code %1).").arg(exitCode)
-                   : QStringLiteral("The restore helper stopped unexpectedly (exit code %1): %2")
+                   ? coreText(
+                         QT_TRANSLATE_NOOP(
+                             "usbrestore::Core", "The restore helper stopped unexpectedly (exit code %1)."),
+                         mode)
                          .arg(exitCode)
-                         .arg(reported);
+                   : coreText(
+                         QT_TRANSLATE_NOOP(
+                             "usbrestore::Core", "The restore helper stopped unexpectedly (exit code %1): %2"),
+                         mode)
+                         .arg(QString::number(exitCode), reported);
     }
 }
 
-HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
+HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error, TextMode mode)
 {
     const auto failWith = [error](const QString &text) {
         if (error) {
@@ -287,36 +335,47 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error)
     }
 
     if (run.crashed) {
-        return failWith(QStringLiteral(
-            "The restore helper stopped unexpectedly. Check the drive with a partition "
-            "tool before using it."));
+        return failWith(coreText(
+            QT_TRANSLATE_NOOP(
+                "usbrestore::Core",
+                "The restore helper stopped unexpectedly. Check the drive with a partition "
+                "tool before using it."),
+            mode));
     }
 
     // Before the exit code: no line from a mismatched helper can be trusted, its
     // "success" or "cancelled" included.
     if (run.sawVersion && !run.versionAccepted) {
         return failWith(
-            run.versionError.isEmpty() ? describeRestoreExit(RestoreExitUsage, run.helperStderr) : run.versionError);
+            run.versionError.isEmpty() ? describeRestoreExit(RestoreExitUsage, run.helperStderr, mode)
+                                       : run.versionError);
     }
 
     if (!run.sawVersion) {
         // The exit code is pkexec's or a stranger's: pass 126/127 through, but do
         // not believe a success or cancellation from a process that never spoke.
         const bool claimsFinished = run.exitCode == RestoreExitSuccess || run.exitCode == RestoreExitCancelled;
-        return failWith(describeRestoreExit(claimsFinished ? RestoreExitUsage : run.exitCode, run.helperStderr));
+        return failWith(describeRestoreExit(claimsFinished ? RestoreExitUsage : run.exitCode, run.helperStderr, mode));
     }
 
     if (run.exitCode == RestoreExitCancelled) {
         return HelperRunVerdict::Cancelled;
     }
     if (run.exitCode != RestoreExitSuccess) {
-        return failWith(describeRestoreExit(run.exitCode, run.helperStderr));
+        // Reaching here means the version line was accepted. A rejected helper cannot supply the UI text.
+        if (mode == TextMode::Display && run.versionAccepted && !run.displayFailure.isEmpty()) {
+            return failWith(run.displayFailure);
+        }
+        return failWith(describeRestoreExit(run.exitCode, run.helperStderr, mode));
     }
 
     if (run.location.isEmpty()) {
-        return failWith(QStringLiteral(
-            "The restore helper finished without reporting where the volume ended up. "
-            "Check the drive with a partition tool before using it."));
+        return failWith(coreText(
+            QT_TRANSLATE_NOOP(
+                "usbrestore::Core",
+                "The restore helper finished without reporting where the volume ended up. "
+                "Check the drive with a partition tool before using it."),
+            mode));
     }
 
     return HelperRunVerdict::Succeeded;
@@ -373,6 +432,11 @@ QString encodeStepLine(int step, int totalSteps, const QString &message)
 QString encodeDetailLine(const QString &message)
 {
     return QStringLiteral("detail %1").arg(sanitizeProtocolText(message));
+}
+
+QString encodeFailureLine(const QString &message)
+{
+    return QStringLiteral("failure %1").arg(sanitizeProtocolText(message));
 }
 
 QString encodeResultLine(const QString &location)
@@ -459,6 +523,12 @@ ProtocolLine parseProtocolLine(const QString &line)
         return parsed;
     }
 
+    if (keyword == QStringLiteral("failure")) {
+        parsed.kind = ProtocolLineKind::Failure;
+        parsed.text = remainder;
+        return parsed;
+    }
+
     if (keyword == QStringLiteral("result")) {
         parsed.kind = ProtocolLineKind::Result;
         parsed.text = remainder;
@@ -469,10 +539,14 @@ ProtocolLine parseProtocolLine(const QString &line)
 }
 
 bool acceptHelperAnnouncement(
-    const ProtocolLine &announcement, const QString &ourAppVersion, const QVector<RestoreStep> &plan, QString *error)
+    const ProtocolLine &announcement,
+    const QString &ourAppVersion,
+    const QVector<RestoreStep> &plan,
+    QString *error,
+    TextMode mode)
 {
     if (announcement.kind != ProtocolLineKind::Version) {
-        return fail(error, describeRestoreExit(RestoreExitUsage, QString()));
+        return fail(error, describeRestoreExit(RestoreExitUsage, QString(), mode));
     }
 
     const bool samePlan =
@@ -483,19 +557,23 @@ bool acceptHelperAnnouncement(
 
     QString theirs;
     if (announcement.appVersion.isEmpty()) {
-        theirs = QStringLiteral("an older version");
+        theirs = coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "an older version"), mode);
     } else if (announcement.appVersion == ourAppVersion) {
-        theirs = QStringLiteral("a different build of version %1").arg(announcement.appVersion);
+        theirs = coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "a different build of version %1"), mode)
+                     .arg(announcement.appVersion);
     } else {
-        theirs = QStringLiteral("version %1").arg(announcement.appVersion);
+        theirs = coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "version %1"), mode).arg(announcement.appVersion);
     }
     return fail(
         error,
-        QStringLiteral(
-            "USB Restoration Tool is version %1, but its restore helper is from %2, so "
-            "the two disagree about how a restore proceeds. This usually means a partly "
-            "upgraded installation. Reinstall the application so both come from the same "
-            "release.")
+        coreText(
+            QT_TRANSLATE_NOOP(
+                "usbrestore::Core",
+                "USB Restoration Tool is version %1, but its restore helper is from %2, so "
+                "the two disagree about how a restore proceeds. This usually means a partly "
+                "upgraded installation. Reinstall the application so both come from the same "
+                "release."),
+            mode)
             .arg(ourAppVersion, theirs));
 }
 

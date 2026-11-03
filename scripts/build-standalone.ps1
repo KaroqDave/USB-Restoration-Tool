@@ -23,6 +23,8 @@
     ./scripts/build-standalone.ps1 -Sign -CertificateThumbprint ABC123... -RequireSignature
 #>
 
+#Requires -Version 7
+
 [CmdletBinding()]
 param(
     [string]$Config = "Release",
@@ -88,6 +90,30 @@ Get-ChildItem -Path $AppDir -Recurse -Include "*.pdb", "*.ilk", "*.exp", "*.lib"
 $exe = Join-Path $AppDir $ExeName
 if (-not (Test-Path -LiteralPath $exe)) {
     throw "Exported executable not found at '$exe'. Export likely failed."
+}
+
+Write-Step "Checking the embedded catalog"
+$catalogLines = @{
+    en = "Elevated permission required"
+    de = "Erhöhte Berechtigung erforderlich"
+}
+$previousEncoding = [Console]::OutputEncoding
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+# The manifest requires elevation, which a redirected process cannot prompt for.
+# The probe exits before it needs any, so it runs at this shell's own level.
+$previousCompatLayer = $env:__COMPAT_LAYER
+$env:__COMPAT_LAYER = "RunAsInvoker"
+try {
+    foreach ($language in @("en", "de")) {
+        # Pipe the GUI-subsystem executable so PowerShell redirects stdout and waits for exit.
+        $line = (& $exe --show-translation $language | Out-String)
+        if ($LASTEXITCODE -ne 0 -or "$line".Trim() -ne $catalogLines[$language]) {
+            throw "Catalog probe $language failed (exit $LASTEXITCODE): $line"
+        }
+    }
+} finally {
+    $env:__COMPAT_LAYER = $previousCompatLayer
+    [Console]::OutputEncoding = $previousEncoding
 }
 
 if ($Sign) {

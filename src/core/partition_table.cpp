@@ -253,7 +253,7 @@ quint8 mbrPartitionType(FileSystemType fileSystem)
     return MbrExFatPartitionType;
 }
 
-bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *reason)
+bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *reason, TextMode mode)
 {
     const auto refuse = [reason](const QString &text) {
         if (reason) {
@@ -262,40 +262,45 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
         return false;
     };
 
-    if (const QString failure = partitionLayoutError(request.style, request.layout, request.sectorSize);
+    if (const QString failure = partitionLayoutError(request.style, request.layout, request.sectorSize, mode);
         !failure.isEmpty()) {
         return refuse(failure);
     }
 
     const quint64 sector = request.sectorSize;
     if (request.layout.startOffset % sector != 0 || request.layout.length % sector != 0) {
-        return refuse(QStringLiteral("The partition layout is not aligned to the sector size."));
+        return refuse(coreText(
+            QT_TRANSLATE_NOOP("usbrestore::Core", "The partition layout is not aligned to the sector size."), mode));
     }
 
     const quint64 sectors = sectorCount(request);
     const quint64 endLba = (request.layout.startOffset + request.layout.length) / sector;
     if (sectors == 0 || endLba > sectors) {
-        return refuse(QStringLiteral("The partition layout runs past the end of the disk."));
+        return refuse(coreText(
+            QT_TRANSLATE_NOOP("usbrestore::Core", "The partition layout runs past the end of the disk."), mode));
     }
 
     if (request.style == PartitionStyle::Gpt) {
         const auto geometry = gptGeometry(request);
         if (!geometry.fits) {
-            return refuse(QStringLiteral("The disk is too small to hold both GPT headers."));
+            return refuse(coreText(
+                QT_TRANSLATE_NOOP("usbrestore::Core", "The disk is too small to hold both GPT headers."), mode));
         }
         if (request.diskGuid.size() != 16 || request.partitionGuid.size() != 16) {
-            return refuse(QStringLiteral("A GPT layout needs a disk and partition identifier."));
+            return refuse(coreText(
+                QT_TRANSLATE_NOOP("usbrestore::Core", "A GPT layout needs a disk and partition identifier."), mode));
         }
         const quint64 firstLba = request.layout.startOffset / sector;
         const quint64 lastLba = endLba - 1;
         if (firstLba < geometry.firstUsableLba || lastLba > geometry.lastUsableLba) {
-            return refuse(QStringLiteral("The partition layout overlaps the GPT headers."));
+            return refuse(coreText(
+                QT_TRANSLATE_NOOP("usbrestore::Core", "The partition layout overlaps the GPT headers."), mode));
         }
         return true;
     }
 
     if (request.diskGuid.size() < 4) {
-        return refuse(QStringLiteral("An MBR layout needs a disk identifier."));
+        return refuse(coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "An MBR layout needs a disk identifier."), mode));
     }
     return true;
 }

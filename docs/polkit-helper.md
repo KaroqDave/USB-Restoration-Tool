@@ -55,7 +55,7 @@ partition table is reread; the mapping is flushed and detached first. See [SECUR
 The GUI probes `--protocol-version` before authentication. The helper also emits
 a version line when it starts a restore. The line names the protocol version,
 the helper's application version, its step count and its first destructive
-step, for example `version 4 app 1.8.0 steps 10 destructive 5`. The GUI numbers
+step, for example `version 5 app 1.9.0 steps 10 destructive 5`. The GUI numbers
 the helper's steps and decides when unplugging is still safe from its own copy
 of the plan, so it rejects a different protocol or plan, naming both
 application versions. If the mismatch is detected during the run, the GUI sends
@@ -65,9 +65,18 @@ The optional `--expect-sequence` argument carries the GUI's observed disk
 instance and can only cause refusal. A missing sequence from the actual device
 always refuses the restore.
 
-Standard output carries `version`, `step`, `detail` and `result` lines. Control
-characters are stripped before encoding messages. Errors use standard error.
-The constants and exact encoding live in `src/core/restore_protocol.*`.
+The GUI passes the display language it already resolved as a required
+`--language en` or `--language de` argument. The helper uses that value only to
+translate a refusal. It does not read the environment, and the value cannot
+decide whether a restore is allowed or which device is opened. A missing,
+unrecognised or repeated value is a usage error.
+
+Standard output carries `version`, `step`, `detail`, `failure` and `result`
+lines. Control characters are stripped before encoding messages. Stderr stays
+the English diagnostic for the log. A translated refusal is the `failure` line;
+when that line is absent the client keeps a translated heading around the
+English diagnostic. Argument errors and the root check stay English. The
+constants and exact encoding live in `src/core/restore_protocol.*`.
 
 | Exit code | Meaning |
 | --- | --- |

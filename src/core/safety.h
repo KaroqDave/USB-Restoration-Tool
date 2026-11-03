@@ -36,22 +36,27 @@ bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protect
 bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard);
 
 // Every check is a refusal, not a warning.
-bool isSafeRestoreTarget(const DiskInfo &disk, const RestoreGuard &guard, QString *reason = nullptr);
+bool isSafeRestoreTarget(
+    const DiskInfo &disk, const RestoreGuard &guard, QString *reason = nullptr, TextMode mode = TextMode::English);
 
 // A device sequence the selection has must match; any other identifier one side lacks is skipped.
-bool isSameRestoreTarget(const DiskInfo &selected, const DiskInfo &current, QString *reason = nullptr);
+bool isSameRestoreTarget(
+    const DiskInfo &selected, const DiskInfo &current, QString *reason = nullptr, TextMode mode = TextMode::English);
 
-bool canCreatePartitionLayout(PartitionStyle style, const DiskInfo &disk, QString *reason = nullptr);
+bool canCreatePartitionLayout(
+    PartitionStyle style, const DiskInfo &disk, QString *reason = nullptr, TextMode mode = TextMode::English);
 
 // Empty when `layout` can be written in `style` on a disk with `sectorSize`-byte sectors.
-QString partitionLayoutError(PartitionStyle style, const GptLayout &layout, quint32 sectorSize);
+QString partitionLayoutError(
+    PartitionStyle style, const GptLayout &layout, quint32 sectorSize, TextMode mode = TextMode::English);
 
 // `device` names the disk in the refusal.
 bool isSameDeviceSequence(
     const QString &device,
     std::optional<std::uint64_t> expected,
     std::optional<std::uint64_t> current,
-    QString *reason = nullptr);
+    QString *reason = nullptr,
+    TextMode mode = TextMode::English);
 
 bool isValidDeviceRange(std::uint64_t size, std::uint64_t offset, std::uint64_t length, quint32 sectorSize);
 
@@ -60,7 +65,7 @@ bool isValidDeviceRange(std::uint64_t size, std::uint64_t offset, std::uint64_t 
 QString serialFromUsbByIdLink(const QString &link, const QString &productName);
 
 bool isLargeRestoreTarget(const DiskInfo &disk);
-QString largeRestoreTargetWarning(const DiskInfo &disk);
+QString largeRestoreTargetWarning(const DiskInfo &disk, TextMode mode = TextMode::English);
 
 // Shared by the layout calculator and the table writer so the reserved space
 // cannot drift from what is written and overlap a header.
@@ -85,7 +90,8 @@ bool isSupportedSectorSize(quint32 sectorSize);
 
 // Shared by both backends' writeZeros(): rounding for the caller would silently
 // leave the tail unzeroed. Empty means the range is writable as-is.
-QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize);
+QString unalignedZeroRangeError(
+    std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, TextMode mode = TextMode::English);
 
 // A partition record at offset 0 overlaps the partition table: Windows invents one for a disk it
 // takes for a "superfloppy", and isohybrid images claim LBA 0. A missing offset is not taken for 0.

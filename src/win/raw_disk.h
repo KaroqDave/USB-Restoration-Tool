@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/restore_message.h"
+
 #include "core/disk.h"
 #include "core/safety.h"
 
@@ -20,24 +22,25 @@ class RawDisk {
     RawDisk(const RawDisk &) = delete;
     RawDisk &operator=(const RawDisk &) = delete;
 
-    bool open(QString *error = nullptr);
+    bool open(QString *error = nullptr, QString *displayError = nullptr);
 
     // Windows can reuse a disk number on replug, so this re-checks the open handle
     // (number, USB bus, size, sector size, serial, writable) against the selection.
-    bool verifyIdentity(const DiskInfo &expected, QString *error = nullptr);
+    bool verifyIdentity(const DiskInfo &expected, QString *error = nullptr, QString *displayError = nullptr);
 
-    bool lock(QString *error = nullptr);
-    bool allowExtendedIo(QString *error = nullptr);
-    bool refreshLayout(QString *error = nullptr);
+    bool lock(QString *error = nullptr, QString *displayError = nullptr);
+    bool allowExtendedIo(QString *error = nullptr, QString *displayError = nullptr);
+    bool refreshLayout(QString *error = nullptr, QString *displayError = nullptr);
 
     // Zeroes both ends so no stale MBR, GPT or hybrid-ISO signature is re-detected.
-    bool clearPartitionSignatures(std::uint64_t diskSize, quint32 sectorSize, QString *error = nullptr);
+    bool clearPartitionSignatures(
+        std::uint64_t diskSize, quint32 sectorSize, QString *error = nullptr, QString *displayError = nullptr);
 
-    bool setRaw(QString *error = nullptr);
+    bool setRaw(QString *error = nullptr, QString *displayError = nullptr);
 
     // Removes whatever partition deletion through WMI could not, such as the whole-disk partition
     // Windows invents for a "superfloppy", and confirms Windows then lists no partition at all.
-    bool replaceLayoutWithEmptyGpt(QString *error = nullptr);
+    bool replaceLayoutWithEmptyGpt(QString *error = nullptr, QString *displayError = nullptr);
 
     // Writes refused as NOT_READY and retried before the first one landed, so the log can say so.
     int notReadyRetries() const { return m_notReadyRetries; }
@@ -48,15 +51,21 @@ class RawDisk {
         FileSystemType fileSystem,
         std::uint64_t diskSize,
         quint32 sectorSize,
-        QString *error = nullptr);
+        QString *error = nullptr,
+        QString *displayError = nullptr);
 
   private:
-    bool
-    createSingleMbrPartition(const GptLayout &layout, FileSystemType fileSystem, quint32 sectorSize, QString *error);
-    bool createGptDisk(GUID *diskId, QString *error);
-    bool writeZeros(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error);
-    bool layoutHasPartitions(bool *hasPartitions, QString *error) const;
-    QString lastError(const QString &operation) const;
+    bool createSingleMbrPartition(
+        const GptLayout &layout,
+        FileSystemType fileSystem,
+        quint32 sectorSize,
+        QString *error,
+        QString *displayError = nullptr);
+    bool createGptDisk(GUID *diskId, QString *error, QString *displayError = nullptr);
+    bool writeZeros(
+        std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, QString *error, QString *displayError = nullptr);
+    bool layoutHasPartitions(bool *hasPartitions, QString *error, QString *displayError = nullptr) const;
+    RestoreMessage lastError(const char *operation) const;
 
     quint32 m_diskNumber = 0;
     HANDLE m_handle = INVALID_HANDLE_VALUE;
