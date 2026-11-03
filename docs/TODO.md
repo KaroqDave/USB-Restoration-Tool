@@ -4,10 +4,25 @@
 
 - On Windows, run `./scripts/build-standalone.ps1` with `pwsh` from an unelevated
   shell. CI cannot cover this: its runners are elevated.
-- To release 1.9.0: merge PR #12, tag `v1.9.0` on the merge commit, and verify
-  the published assets.
 
 ## Recently completed
+
+- 2026-11-03: Published 1.9.0 as the latest stable release. Squash-merged
+  [PR #12](https://github.com/KaroqDave/USB-Restoration-Tool/pull/12) as
+  `98ca67c`, with a tree identical to the CI-validated `2b9ae04`, and tagged
+  `v1.9.0` on the merge commit. All six release jobs and all six `main` build
+  jobs passed. Verified the Windows ZIP, AppImage, `.deb`, RPM and checksum
+  files against GitHub's asset digests, the three Linux `.sha256` files and all
+  20 Windows bundle files. The Windows executable and `README.txt` report 1.9.0,
+  both packaged helpers report `version 5 app 1.9.0 steps 10 destructive 5`, the
+  `.deb`, RPM and AppImage binaries pass `--show-translation en` and `de`, and
+  the extracted AppImage passes a four-second headless startup check. No
+  physical drive accessed.
+
+- 2026-11-03: Retranslated on-screen scan failures when switching languages
+  without rescanning, and ran Linux formatters with `LC_ALL=C` so a translated
+  `getopt` error does not stop the exFAT option retry. All six CI jobs pass on
+  `2b9ae04`.
 
 - 2026-11-02: Prepared the 1.9.0 release. The Windows packaging script now
   requires PowerShell 7, which CI already uses, so Windows PowerShell 5.1 no
