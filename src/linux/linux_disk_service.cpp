@@ -48,9 +48,9 @@ QString LinuxDiskService::privilegeHint() const
         .arg(QCoreApplication::applicationFilePath());
 }
 
-QVector<DiskInfo> LinuxDiskService::listUsbDisks(QString *error, QString *displayError) const
+QVector<DiskInfo> LinuxDiskService::listUsbDisks(RestoreMessage *error) const
 {
-    return listUsbDiskInfos(error, displayError);
+    return listUsbDiskInfos(error);
 }
 
 bool LinuxDiskService::refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error, QString *displayError) const

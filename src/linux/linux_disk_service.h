@@ -10,7 +10,7 @@ class LinuxDiskService : public DiskService {
   public:
     PrivilegeMode privilegeMode() const override;
     QString privilegeHint() const override;
-    QVector<DiskInfo> listUsbDisks(QString *error = nullptr, QString *displayError = nullptr) const override;
+    QVector<DiskInfo> listUsbDisks(RestoreMessage *error = nullptr) const override;
     bool refreshDisk(const DiskInfo &disk, DiskInfo *current, QString *error = nullptr, QString *displayError = nullptr)
         const override;
     RestoreGuard restoreGuard() const override;

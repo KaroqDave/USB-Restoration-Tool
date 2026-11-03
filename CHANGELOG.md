@@ -34,6 +34,8 @@ and the language cannot change a safety decision or which disk is opened.
 
 - Long restore errors can scroll in compact dialogs without forcing the progress
   details to overlap them.
+- Linux formatters run with `LC_ALL=C`, so a translated "invalid option" message
+  still triggers the exFAT retry and the log records English formatter output.
 
 ## 1.8.0 - 2026-10-31
 

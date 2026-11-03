@@ -13,21 +13,21 @@ constexpr auto StorageNamespace = L"ROOT\\Microsoft\\Windows\\Storage";
 
 } // namespace
 
-QVector<DiskInfo> DiskEnumerator::listUsbDisks(QString *error, QString *displayError) const
+QVector<DiskInfo> DiskEnumerator::listUsbDisks(RestoreMessage *error) const
 {
     QVector<DiskInfo> disks;
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, storage.lastError());
+        if (error) {
+            *error = storage.lastError();
         }
         return disks;
     }
 
     const auto objects = storage.query(QStringLiteral("SELECT * FROM MSFT_Disk WHERE BusType = %1").arg(UsbBusType));
     if (objects.isEmpty() && !storage.lastError().english.isEmpty()) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, storage.lastError());
+        if (error) {
+            *error = storage.lastError();
         }
         return disks;
     }

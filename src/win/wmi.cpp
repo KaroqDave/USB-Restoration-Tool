@@ -603,16 +603,15 @@ bool waitForStorageJob(
                 return true;
             }
             // Windows words the description itself, and it is often empty.
-            RestoreMessage message =
+            const RestoreMessage message =
                 restoreText(
                     QT_TRANSLATE_NOOP(
                         "usbrestore::Backend", "The Windows storage job did not confirm success (error code %1). %2"))
                     .arg(
                         code ? RestoreMessage(QString::number(*code))
                              : restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "unavailable")),
-                        job.stringValue(L"ErrorDescription"));
-            message.english = message.english.trimmed();
-            message.display = message.display.trimmed();
+                        job.stringValue(L"ErrorDescription"))
+                    .trimmed();
             return fail(message);
         }
         if (state == JobStateTerminated || state == JobStateKilled || state == JobStateException) {

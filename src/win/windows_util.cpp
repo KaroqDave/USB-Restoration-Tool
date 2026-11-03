@@ -119,14 +119,11 @@ windowsRestoreErrorMessage(const RestoreMessage &context, const RestoreMessage &
                   "usbrestore::Backend",
                   "Close any programs using the drive, unplug it, plug it back in and run the restore again"))
             : advice;
-    RestoreMessage message = RestoreMessage{QStringLiteral("%1. %2.")}.arg(context, nextStep);
-    if (!detail.english.isEmpty()) {
-        const RestoreMessage details =
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "\n\nDetails: %1")).arg(detail);
-        message.english += details.english;
-        message.display += details.display;
+    if (detail.english.isEmpty()) {
+        return RestoreMessage{QStringLiteral("%1. %2.")}.arg(context, nextStep);
     }
-    return message;
+    return RestoreMessage{QStringLiteral("%1. %2.%3")}.arg(
+        context, nextStep, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "\n\nDetails: %1")).arg(detail));
 }
 
 RestoreMessage windowsErrorDetails(const RestoreMessage &context, DWORD error)

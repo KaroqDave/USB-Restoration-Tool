@@ -111,8 +111,9 @@ class ExampleService : public DiskService {
     DiskInfo disk = exampleDisk();
     QVector<DiskInfo> extraDisks;
     mutable int formatChecks = 0;
+    mutable int scans = 0;
     bool diskPresent = true;
-    QString scanError;
+    RestoreMessage scanError;
     bool reportMessages = false;
     bool holdRestore = false;
     std::atomic_bool releaseHeldRestore{false};
@@ -122,10 +123,11 @@ class ExampleService : public DiskService {
 
     PrivilegeMode privilegeMode() const override { return PrivilegeMode::Helper; }
     QString privilegeHint() const override { return {}; }
-    QVector<DiskInfo> listUsbDisks(QString *error, QString * = nullptr) const override
+    QVector<DiskInfo> listUsbDisks(RestoreMessage *error) const override
     {
+        ++scans;
         *error = scanError;
-        return diskPresent && scanError.isEmpty() ? QVector<DiskInfo>{disk} + extraDisks : QVector<DiskInfo>{};
+        return diskPresent && scanError.english.isEmpty() ? QVector<DiskInfo>{disk} + extraDisks : QVector<DiskInfo>{};
     }
     bool refreshDisk(const DiskInfo &, DiskInfo *refreshedDisk, QString *, QString * = nullptr) const override
     {
@@ -489,14 +491,14 @@ class GuiTests : public QObject {
         window.close();
     }
 
-    void preservesScanFailuresAcrossLanguageChanges_data()
+    void retranslatesScanFailuresWithoutRescanning_data()
     {
         QTest::addColumn<bool>("diskPresentAfterRefresh");
         QTest::newRow("disk-found") << true;
         QTest::newRow("no-disks") << false;
     }
 
-    void preservesScanFailuresAcrossLanguageChanges()
+    void retranslatesScanFailuresWithoutRescanning()
     {
         QFETCH(bool, diskPresentAfterRefresh);
         const AppSettings original = loadAppSettings();
@@ -507,8 +509,14 @@ class GuiTests : public QObject {
         Translations translations;
         QVERIFY(translations.load(Language::English));
         ExampleService service;
-        const QString diagnostic = QStringLiteral("Example scan failure: errno 5");
-        service.scanError = diagnostic;
+        // Composed like the backends do: application wording around an OS diagnostic.
+        const RestoreMessage failure =
+            RestoreMessage(QStringLiteral("%1 (%2)"))
+                .arg(
+                    restoreText(QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend", "/sys/block is not available, so block devices cannot be listed.")),
+                    QStringLiteral("errno 5"));
+        service.scanError = failure;
         MainWindow window(service, Theme::Light, &translations);
         window.show();
         auto *status = window.findChild<QLabel *>(QStringLiteral("statusBadge"));
@@ -522,30 +530,38 @@ class GuiTests : public QObject {
         QVERIFY(status->text().contains(QStringLiteral("Could not scan for USB disks.")));
         QLabel *detail = nullptr;
         for (auto *label : window.findChildren<QLabel *>()) {
-            if (label->text() == diagnostic) {
+            if (label->text() == failure.english) {
                 detail = label;
             }
         }
         QVERIFY(detail);
         const QString originalLog = log->toPlainText();
+        QVERIFY(originalLog.contains(failure.english));
+        const int scans = service.scans;
 
-        service.scanError.clear();
+        service.scanError = {};
         for (int change = 0; change < 3; ++change) {
             language->click();
             QCoreApplication::processEvents();
             QVERIFY(status->text().contains(
                 QCoreApplication::translate("usbrestore::MainWindow", "Could not scan for USB disks.")));
-            QCOMPARE(detail->text(), diagnostic);
+            QCOMPARE(detail->text(), failure.translated());
+            if (translations.language() == Language::German) {
+                QVERIFY(detail->text() != failure.english);
+                QVERIFY(detail->text().contains(QStringLiteral("errno 5")));
+            }
             QVERIFY(!restore->isEnabled());
             QCOMPARE(log->toPlainText(), originalLog);
         }
         QCOMPARE(translations.language(), Language::English);
+        QCOMPARE(detail->text(), failure.english);
+        QCOMPARE(service.scans, scans);
         QCOMPARE(service.restores.load(), 0);
 
         service.diskPresent = diskPresentAfterRefresh;
         QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
         QVERIFY(!status->text().contains(QStringLiteral("Could not scan for USB disks.")));
-        QVERIFY(detail->text() != diagnostic);
+        QVERIFY(detail->text() != failure.english);
         QCOMPARE(restore->isEnabled(), diskPresentAfterRefresh);
         if (diskPresentAfterRefresh) {
             QVERIFY(status->text().contains(QStringLiteral("Ready to restore")));
@@ -741,24 +757,45 @@ class GuiTests : public QObject {
 
     void translatesEveryBackendStepWithoutChangingItsLogText()
     {
-        Translations translations;
-        QVERIFY(translations.load(Language::German));
-        for (const auto &plan : {linuxRestorePlan(), windowsRestorePlan()}) {
-            for (const RestoreStep step : plan) {
-                for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr}) {
-                    for (const auto fs :
-                         {FileSystemType::ExFat, FileSystemType::Fat32, FileSystemType::Ntfs, FileSystemType::Ext4}) {
-                        const RestoreMessage message = restoreStepMessage(step, style, fs);
-                        QVERIFY2(!message.english.isEmpty(), qPrintable(message.display));
-                        QVERIFY2(message.display != message.english, qPrintable(message.english));
-                        if (step == RestoreStep::Format) {
-                            QVERIFY(message.display.contains(fileSystemTypeName(fs)));
-                        }
-                        if (step == RestoreStep::CreatePartition || step == RestoreStep::WritePartitionTable) {
-                            QVERIFY(message.display.contains(partitionStyleLabel(style)));
+        struct StepMessage {
+            RestoreStep step;
+            PartitionStyle style;
+            FileSystemType fileSystem;
+            RestoreMessage message;
+        };
+        const auto everyStepMessage = []() {
+            QVector<StepMessage> messages;
+            for (const auto &plan : {linuxRestorePlan(), windowsRestorePlan()}) {
+                for (const RestoreStep step : plan) {
+                    for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr}) {
+                        for (const auto fs :
+                             {FileSystemType::ExFat,
+                              FileSystemType::Fat32,
+                              FileSystemType::Ntfs,
+                              FileSystemType::Ext4}) {
+                            messages.append({step, style, fs, restoreStepMessage(step, style, fs)});
                         }
                     }
                 }
+            }
+            return messages;
+        };
+        const QVector<StepMessage> before = everyStepMessage();
+        Translations translations;
+        QVERIFY(translations.load(Language::German));
+        const QVector<StepMessage> after = everyStepMessage();
+        QCOMPARE(after.size(), before.size());
+        for (qsizetype index = 0; index < after.size(); ++index) {
+            const StepMessage &entry = after.at(index);
+            const RestoreMessage &message = entry.message;
+            QVERIFY2(!message.english.isEmpty(), qPrintable(message.display));
+            QCOMPARE(message.english, before.at(index).message.english);
+            QVERIFY2(message.display != message.english, qPrintable(message.english));
+            if (entry.step == RestoreStep::Format) {
+                QVERIFY(message.display.contains(fileSystemTypeName(entry.fileSystem)));
+            }
+            if (entry.step == RestoreStep::CreatePartition || entry.step == RestoreStep::WritePartitionTable) {
+                QVERIFY(message.display.contains(partitionStyleLabel(entry.style)));
             }
         }
     }
@@ -1655,7 +1692,7 @@ class GuiTests : public QObject {
             service.reportMessages = true;
             service.backendError = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore failed."));
         }
-        MainWindow window(service, Theme::Light);
+        MainWindow window(service, Theme::Light, &translations);
         window.show();
         window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
         auto *dialog = window.findChild<RestoreDialog *>();
@@ -1675,6 +1712,7 @@ class GuiTests : public QObject {
         QTRY_COMPARE(dialog->windowTitle(), title);
         QCOMPARE(dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(), message);
         QCOMPARE(service.restores.load(), 1);
+        QCOMPARE(service.received.displayLanguage, Language::German);
         const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
         QVERIFY(log.contains(QStringLiteral("Restore requested for USB drive 2 — Example Flash Drive (32.00 GB)")));
         QVERIFY(!log.contains(QStringLiteral("32,00 GB")));

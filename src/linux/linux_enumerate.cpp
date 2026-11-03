@@ -115,17 +115,14 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
     return disk;
 }
 
-QVector<DiskInfo> listUsbDiskInfos(QString *error, QString *displayError)
+QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error)
 {
     QVector<DiskInfo> disks;
     const QStringList names = listBlockDeviceNames();
     if (names.isEmpty() && !QDir(QStringLiteral("/sys/block")).exists()) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend", "/sys/block is not available, so block devices cannot be listed.")));
+        if (error) {
+            *error = restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "/sys/block is not available, so block devices cannot be listed."));
         }
         return disks;
     }

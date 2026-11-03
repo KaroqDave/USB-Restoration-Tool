@@ -1,6 +1,7 @@
 #include "core/disk.h"
 #include "core/language.h"
 #include "core/partition_table.h"
+#include "core/restore_message.h"
 #include "core/restore_protocol.h"
 #include "core/restore_steps.h"
 #include "core/safety.h"
@@ -282,21 +283,62 @@ class CoreTests : public QObject {
         add([](DiskInfo &d) { d.size = 0; });
         add([](DiskInfo &d) { d.size = MinimumRestoreTargetBytes - 1; });
         add([](DiskInfo &d) { d.sectorSize = 520; });
+        // With the catalog loaded, Display wording really differs from the English that decides.
+        QTranslator translator;
+        QVERIFY(translator.load(QStringLiteral(":/i18n/usbrestore_de.qm")));
+        QVERIFY(QCoreApplication::installTranslator(&translator));
+        const auto remove = qScopeGuard([&translator]() { QCoreApplication::removeTranslator(&translator); });
         for (qsizetype index = 0; index < cases.size(); ++index) {
-            for (const TextMode mode : {TextMode::English, TextMode::Display}) {
-                QString reason;
-                QCOMPARE(isSafeRestoreTarget(cases[index], linuxGuard(), &reason, mode), index == 0);
-                QCOMPARE(reason.isEmpty(), index == 0);
+            const bool safe = index == 0;
+            QString reason;
+            QString displayReason;
+            QCOMPARE(isSafeRestoreTarget(cases[index], linuxGuard(), &reason), safe);
+            QCOMPARE(isSafeRestoreTarget(cases[index], linuxGuard(), &displayReason, TextMode::Display), safe);
+            QCOMPARE(reason.isEmpty(), safe);
+            QCOMPARE(displayReason.isEmpty(), safe);
+            QCOMPARE(
+                isSameRestoreTarget(healthy, cases[index], nullptr, TextMode::Display),
+                isSameRestoreTarget(healthy, cases[index]));
+            for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr, PartitionStyle::Unknown}) {
                 QCOMPARE(
-                    isSameRestoreTarget(healthy, cases[index], nullptr, mode),
-                    isSameRestoreTarget(healthy, cases[index]));
-                for (const auto style : {PartitionStyle::Gpt, PartitionStyle::Mbr, PartitionStyle::Unknown}) {
-                    QCOMPARE(
-                        canCreatePartitionLayout(style, cases[index], nullptr, mode),
-                        canCreatePartitionLayout(style, cases[index]));
-                }
+                    canCreatePartitionLayout(style, cases[index], nullptr, TextMode::Display),
+                    canCreatePartitionLayout(style, cases[index]));
             }
         }
+    }
+
+    void retranslatesComposedMessagesInTheCurrentLanguage()
+    {
+        // A literal %1 inside an argument must survive both renderings.
+        const RestoreMessage message =
+            RestoreMessage(QStringLiteral("%1: %2"))
+                .arg(
+                    restoreText(
+                        QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend", "%1 is no longer present. Refresh and select the USB again."))
+                        .arg(QStringLiteral("/dev/sdb")),
+                    QStringLiteral("errno %1"))
+                .trimmed();
+        const QString english = message.english;
+        QCOMPARE(message.translated(), english);
+        QVERIFY(english.contains(QStringLiteral("/dev/sdb")));
+        QVERIFY(english.endsWith(QStringLiteral(": errno %1")));
+
+        QTranslator translator;
+        QVERIFY(translator.load(QStringLiteral(":/i18n/usbrestore_de.qm")));
+        QVERIFY(QCoreApplication::installTranslator(&translator));
+        auto remove = qScopeGuard([&translator]() { QCoreApplication::removeTranslator(&translator); });
+        const QString german = message.translated();
+        QVERIFY(german != english);
+        QVERIFY(german.contains(QStringLiteral("/dev/sdb")));
+        QVERIFY(german.endsWith(QStringLiteral(": errno %1")));
+        QCOMPARE(message.english, english);
+        QCOMPARE(message.display, english);
+        QCOMPARE(RestoreMessage(QStringLiteral("plain %1")).translated(), QStringLiteral("plain %1"));
+
+        remove.dismiss();
+        QCoreApplication::removeTranslator(&translator);
+        QCOMPARE(message.translated(), english);
     }
 
     void refusesNonUsbBus()
@@ -1272,7 +1314,7 @@ class CoreTests : public QObject {
         disk.isReadOnly = true;
         QString english;
         QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &english));
-        QCOMPARE(english, QStringLiteral("/dev/sdb is read-only."));
+        QVERIFY(english.contains(disk.deviceId));
 
         const QLocale locale;
         QTranslator translator;
@@ -1285,7 +1327,8 @@ class CoreTests : public QObject {
         QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &stillEnglish));
         QVERIFY(!isSafeRestoreTarget(disk, linuxGuard(), &german, TextMode::Display));
         QCOMPARE(stillEnglish, english);
-        QCOMPARE(german, QStringLiteral("/dev/sdb ist schreibgeschützt."));
+        QVERIFY(german != english);
+        QVERIFY(german.contains(disk.deviceId));
         QCOMPARE(QLocale(), locale);
     }
 

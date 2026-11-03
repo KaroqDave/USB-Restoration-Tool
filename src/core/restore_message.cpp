@@ -6,7 +6,30 @@ namespace usbrestore {
 
 RestoreMessage restoreText(const char *source)
 {
-    return {QString::fromUtf8(source), QCoreApplication::translate("usbrestore::Backend", source)};
+    RestoreMessage message{QString::fromUtf8(source), QCoreApplication::translate("usbrestore::Backend", source)};
+    message.m_source = source;
+    return message;
+}
+
+QString RestoreMessage::translated() const
+{
+    if (m_translate) {
+        return (*m_translate)();
+    }
+    if (m_source) {
+        return QCoreApplication::translate("usbrestore::Backend", m_source);
+    }
+    return display;
+}
+
+RestoreMessage RestoreMessage::trimmed() const
+{
+    RestoreMessage result{english.trimmed(), display.trimmed()};
+    if (isTranslatable()) {
+        result.m_translate =
+            std::make_shared<const Translation>([message = *this]() { return message.translated().trimmed(); });
+    }
+    return result;
 }
 
 RestoreMessage restoreStepMessage(RestoreStep step, PartitionStyle style, FileSystemType fileSystem)

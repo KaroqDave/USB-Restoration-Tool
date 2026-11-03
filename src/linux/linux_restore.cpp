@@ -248,11 +248,15 @@ bool formatLinuxPartition(
     }
     }
 
+    // The wrong-flag retry below matches English getopt messages, and the log stays English.
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
     QString lastOutput;
     for (const QStringList &arguments : attempts) {
         QProcess process;
         process.setProgram(tool);
         process.setArguments(arguments);
+        process.setProcessEnvironment(environment);
         process.setProcessChannelMode(QProcess::MergedChannels);
         process.start();
         if (!process.waitForStarted(10 * 1000)) {

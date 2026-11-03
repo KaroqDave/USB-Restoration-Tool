@@ -70,9 +70,9 @@ QString WindowsDiskService::privilegeHint() const
         "Close this window and start the app again, approving the Windows permission prompt.");
 }
 
-QVector<DiskInfo> WindowsDiskService::listUsbDisks(QString *error, QString *displayError) const
+QVector<DiskInfo> WindowsDiskService::listUsbDisks(RestoreMessage *error) const
 {
-    return m_enumerator.listUsbDisks(error, displayError);
+    return m_enumerator.listUsbDisks(error);
 }
 
 bool WindowsDiskService::refreshDisk(

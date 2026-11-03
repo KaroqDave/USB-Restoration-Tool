@@ -508,7 +508,7 @@ void MainWindow::refreshDisks()
     const QSignalBlocker blocker(*m_diskList);
     m_guard = m_service.restoreGuard();
     m_scanError = {};
-    m_disks = m_service.listUsbDisks(&m_scanError.english, &m_scanError.display);
+    m_disks = m_service.listUsbDisks(&m_scanError);
     renderDisks();
     onSelectionChanged();
 
@@ -593,10 +593,9 @@ void MainWindow::updateRestoreState()
         m_styleCombo->setEnabled(false);
         m_fileSystemCombo->setEnabled(false);
         m_restoreButton->setEnabled(false);
+        const QString detail = m_scanError.translated();
         setStatus(
-            StatusKind::Error,
-            tr("Could not scan for USB disks."),
-            m_scanError.display.isEmpty() ? m_scanError.english : m_scanError.display);
+            StatusKind::Error, tr("Could not scan for USB disks."), detail.isEmpty() ? m_scanError.english : detail);
         return;
     }
 

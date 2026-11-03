@@ -13,7 +13,7 @@ class WmiObject;
 class DiskEnumerator {
   public:
     // An empty list with no error means no USB disk is attached.
-    QVector<DiskInfo> listUsbDisks(QString *error = nullptr, QString *displayError = nullptr) const;
+    QVector<DiskInfo> listUsbDisks(RestoreMessage *error = nullptr) const;
 
     // Fails if the disk is no longer on the USB bus.
     bool diskByNumber(

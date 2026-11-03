@@ -76,7 +76,8 @@ class DiskService {
 
     virtual QString privilegeHint() const = 0;
 
-    virtual QVector<DiskInfo> listUsbDisks(QString *error = nullptr, QString *displayError = nullptr) const = 0;
+    // A RestoreMessage, so a scan failure left on screen can follow a language change.
+    virtual QVector<DiskInfo> listUsbDisks(RestoreMessage *error = nullptr) const = 0;
 
     virtual bool refreshDisk(
         const DiskInfo &disk, DiskInfo *current, QString *error = nullptr, QString *displayError = nullptr) const = 0;

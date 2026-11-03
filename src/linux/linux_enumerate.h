@@ -20,7 +20,7 @@ QString devicePathFor(const QString &kernelName);
 // that is not a block device the kernel publishes.
 DiskInfo diskInfoFor(const QString &diskName, DiskDetails details = DiskDetails::Display);
 
-QVector<DiskInfo> listUsbDiskInfos(QString *error = nullptr, QString *displayError = nullptr);
+QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error = nullptr);
 
 // Fails for a partition such as "/dev/sdb1", which has no /sys/block directory.
 bool refreshUsbDisk(
