@@ -21,7 +21,7 @@ inline constexpr quint32 WmiMethodStartedJob = 4096;
 
 // Call before any interface is marshalled so every WMI proxy uses packet privacy:
 // the traffic names disks about to be erased.
-bool initializeComSecurity(QString *error = nullptr);
+bool initializeComSecurity();
 
 class WmiObject {
   public:

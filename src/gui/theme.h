@@ -26,7 +26,6 @@ enum class StatusKind {
     Warning,
     Blocked,
     Running,
-    Success,
     Error,
 };
 
@@ -46,7 +45,6 @@ struct Palette {
     QColor danger;
     QColor dangerHover;
     QColor dangerPressed;
-    QColor statusSuccess;
     QColor statusWarning;
     QColor statusError;
     QColor statusInfo;

@@ -35,17 +35,15 @@ bool confirmStillSelected(RawDisk &rawDisk, const DiskInfo &disk, QString *error
     if (rawDisk.verifyIdentity(disk, &reason, &displayReason)) {
         return true;
     }
-    if (error || displayError) {
-        setRestoreError(
-            error,
-            displayError,
-            restoreText(QT_TRANSLATE_NOOP(
-                            "usbrestore::Backend",
-                            "Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
-                            "partition table has already been rewritten. Plug it back in and run the restore on "
-                            "it again."))
-                .arg(disk.number, RestoreMessage{reason, displayReason}));
-    }
+    setRestoreError(
+        error,
+        displayError,
+        restoreText(QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend",
+                        "Stopped before formatting disk %1: %2 If the original USB disk was unplugged, its "
+                        "partition table has already been rewritten. Plug it back in and run the restore on "
+                        "it again."))
+            .arg(disk.number, RestoreMessage{reason, displayReason}));
     return false;
 }
 

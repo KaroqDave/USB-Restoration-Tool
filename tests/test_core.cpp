@@ -251,7 +251,6 @@ class CoreTests : public QObject {
         QVERIFY(parseFileSystemType(QStringLiteral("ext4"), &parsed));
         QCOMPARE(parsed, FileSystemType::Ext4);
         QVERIFY(!parseFileSystemType(QStringLiteral("btrfs")));
-        QCOMPARE(healthStatusName(static_cast<quint16>(HealthStatus::Healthy)), QStringLiteral("Healthy"));
         QCOMPARE(busTypeName(UsbBusType), QStringLiteral("USB"));
         QCOMPARE(busTypeName(17), QStringLiteral("NVMe"));
     }
@@ -669,6 +668,34 @@ class CoreTests : public QObject {
         // Unsupported sizes validate against 512, the same fallback on both platforms.
         QVERIFY(unalignedZeroRangeError(512, 1024, 600).isEmpty());
         QVERIFY(!unalignedZeroRangeError(0, 600, 600).isEmpty());
+    }
+
+    void clearsTheSameSignatureRangeOnBothPlatforms()
+    {
+        constexpr std::uint64_t MiB = 1024ull * 1024ull;
+        // A normal stick clears a fixed 4 MiB at each end, whatever the sector size.
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 512), 4 * MiB);
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 4096), 4 * MiB);
+
+        // On a small disk the two ends must not overlap, so it is a quarter instead.
+        QCOMPARE(signatureClearRange(8 * MiB, 512), 2 * MiB);
+
+        // The range is always whole sectors, so neither end can be left partly written.
+        for (const quint32 sector : {512u, 1024u, 2048u, 4096u}) {
+            for (const std::uint64_t size : {7 * MiB, 8 * MiB, 9 * MiB + 100, 33 * MiB + 77}) {
+                const std::uint64_t bytes = signatureClearRange(size, sector);
+                QVERIFY2(bytes % sector == 0, qPrintable(QStringLiteral("%1 %2").arg(size).arg(sector)));
+                QVERIFY(bytes <= size / 4);
+            }
+        }
+
+        // Below one sector there is nothing safe to clear, which is why callers refuse.
+        QVERIFY(signatureClearRange(512, 512) == 0);
+        QVERIFY(signatureClearRange(0, 512) == 0);
+        QVERIFY(signatureClearRange(4095, 4096) == 0);
+
+        // An unsupported sector size falls back to 512, as the write path does.
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 600), 4 * MiB);
     }
 
     void treatsOnlyAReportedZeroOffsetAsTheDiskStart()
@@ -1267,7 +1294,6 @@ class CoreTests : public QObject {
         QCOMPARE(claimedEnglish.deviceSequence, claimedGerman.deviceSequence);
         QCOMPARE(claimedEnglish.size, claimedGerman.size);
         QCOMPARE(claimedEnglish.sectorSize, claimedGerman.sectorSize);
-        QCOMPARE(claimedEnglish.health, claimedGerman.health);
         QCOMPARE(claimedEnglish.partitionStyle, claimedGerman.partitionStyle);
         QCOMPARE(claimedEnglish.mountPoints, claimedGerman.mountPoints);
         QCOMPARE(claimedEnglish.labels, claimedGerman.labels);

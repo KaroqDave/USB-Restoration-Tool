@@ -52,11 +52,6 @@ RestoreMessage loopErrorMessage(const RestoreMessage &operation, int errorNumber
         .arg(operation, reason, errorNumber, advice);
 }
 
-QString loopErrorText(const QString &operation, int errorNumber, const QString &advice)
-{
-    return loopErrorMessage(operation, errorNumber, advice).english;
-}
-
 namespace {
 // The loop device is an internal detail; say what it was being used for and what
 // the user can do about it, rather than naming a loop node as if it were the drive.
@@ -67,9 +62,7 @@ bool loopError(
     const RestoreMessage &advice,
     QString *displayError)
 {
-    if (error || displayError) {
-        setRestoreError(error, displayError, loopErrorMessage(operation, errorNumber, advice));
-    }
+    setRestoreError(error, displayError, loopErrorMessage(operation, errorNumber, advice));
     return false;
 }
 } // namespace
@@ -88,15 +81,13 @@ bool LoopDevice::configure(
     QString *displayError)
 {
     if (m_fd >= 0 || m_claimFd >= 0) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend",
-                    "A formatting area is already set up for this drive. Unplug the drive, plug it "
-                    "back in and try again.")));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "A formatting area is already set up for this drive. Unplug the drive, plug it "
+                "back in and try again.")));
         return false;
     }
     struct stat status = {};
@@ -114,27 +105,23 @@ bool LoopDevice::configure(
     if (S_ISREG(status.st_mode)) {
         size = static_cast<std::uint64_t>(status.st_size);
     } else if (!S_ISBLK(status.st_mode) || ::ioctl(backingDescriptor, BLKGETSIZE64, &size) != 0) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend",
-                    "The drive could not be read for formatting. Unplug it, plug it back in and try "
-                    "again.")));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "The drive could not be read for formatting. Unplug it, plug it back in and try "
+                "again.")));
         return false;
     }
     if (!isValidDeviceRange(size, offset, length, sectorSize)) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend",
-                    "The space set aside for the new volume is outside the drive or is not aligned to "
-                    "its sectors. Refresh the list and select the drive again.")));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "The space set aside for the new volume is outside the drive or is not aligned to "
+                "its sectors. Refresh the list and select the drive again.")));
         return false;
     }
     const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);

@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <cerrno>
-#include <cstring>
 #include <limits>
 #include <optional>
 
@@ -30,7 +29,6 @@ namespace usbrestore {
 
 namespace {
 
-constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
 constexpr int NewPartitionTimeoutMs = 30 * 1000;
 
 // Fixed directories, not $PATH: this runs as root and the caller may control $PATH.
@@ -83,18 +81,7 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
 {
     const QString diskName = QFileInfo(disk.deviceId).fileName();
     const QVector<MountEntry> mounts = readMounts();
-
-    QVector<DeviceNumber> owned;
-    const DeviceNumber diskNumber = readDeviceNumber(QStringLiteral("/sys/block/%1").arg(diskName));
-    if (diskNumber.isValid()) {
-        owned.append(diskNumber);
-    }
-    for (const QString &partition : listPartitionNames(diskName)) {
-        const DeviceNumber number = readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partition));
-        if (number.isValid()) {
-            owned.append(number);
-        }
-    }
+    const QVector<DeviceNumber> owned = deviceNumbersOnDisk(diskName);
 
     // Deepest first, so a nested mount is released before its parent.
     QVector<MountEntry> ordered = mounts;
@@ -108,16 +95,14 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
         }
         // The guard ran against a snapshot; ask again of the live mount table.
         if (isProtectedMountPoint(mount.mountPoint, protectedSystemMounts())) {
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    restoreText(QT_TRANSLATE_NOOP(
-                                    "usbrestore::Backend",
-                                    "%1 is mounted at %2, which the running system needs. Pick a different "
-                                    "drive."))
-                        .arg(disk.deviceId, mount.mountPoint));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "%1 is mounted at %2, which the running system needs. Pick a different "
+                                "drive."))
+                    .arg(disk.deviceId, mount.mountPoint));
             return false;
         }
 
@@ -128,15 +113,12 @@ bool unmountDisk(const DiskInfo &disk, RestoreReporter &reporter, QString *error
                 // Already gone between reading the table and acting on it.
                 continue;
             }
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    deviceErrorMessage(
-                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not unmount %1"))
-                            .arg(mount.mountPoint),
-                        errorNumber));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                deviceErrorMessage(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not unmount %1")).arg(mount.mountPoint),
+                    errorNumber));
             return false;
         }
     }
@@ -260,32 +242,28 @@ bool formatLinuxPartition(
         process.setProcessChannelMode(QProcess::MergedChannels);
         process.start();
         if (!process.waitForStarted(10 * 1000)) {
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    restoreText(QT_TRANSLATE_NOOP(
-                                    "usbrestore::Backend",
-                                    "Could not run %1, the tool that formats the drive. Check that it is still "
-                                    "installed and that the system allows it to run, then try again."))
-                        .arg(QFileInfo(tool).fileName()));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "Could not run %1, the tool that formats the drive. Check that it is still "
+                                "installed and that the system allows it to run, then try again."))
+                    .arg(QFileInfo(tool).fileName()));
             return false;
         }
         if (!process.waitForFinished(15 * 60 * 1000)) {
             process.kill();
             process.waitForFinished(5 * 1000);
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    restoreText(
-                        QT_TRANSLATE_NOOP(
-                            "usbrestore::Backend",
-                            "%1 did not finish formatting after 15 minutes and was stopped. The drive may be partly "
-                            "formatted: unplug it, plug it back in and run the restore again."))
-                        .arg(QFileInfo(tool).fileName()));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(
+                    QT_TRANSLATE_NOOP(
+                        "usbrestore::Backend",
+                        "%1 did not finish formatting after 15 minutes and was stopped. The drive may be partly "
+                        "formatted: unplug it, plug it back in and run the restore again."))
+                    .arg(QFileInfo(tool).fileName()));
             return false;
         }
 
@@ -318,23 +296,20 @@ bool formatLinuxPartition(
         }
     }
 
-    if (error || displayError) {
-        setRestoreError(
-            error,
-            displayError,
-            lastOutput.isEmpty()
-                ? restoreText(QT_TRANSLATE_NOOP(
-                                  "usbrestore::Backend",
-                                  "%1 failed to format the new volume on %2. Unplug the drive, plug it back in "
-                                  "and run the restore again."))
-                      .arg(QFileInfo(tool).fileName(), partitionPath)
-                : restoreText(
-                      QT_TRANSLATE_NOOP(
-                          "usbrestore::Backend",
-                          "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug it back in and "
-                          "run the restore again."))
-                      .arg(QFileInfo(tool).fileName(), partitionPath, lastOutput));
-    }
+    setRestoreError(
+        error,
+        displayError,
+        lastOutput.isEmpty()
+            ? restoreText(QT_TRANSLATE_NOOP(
+                              "usbrestore::Backend",
+                              "%1 failed to format the new volume on %2. Unplug the drive, plug it back in "
+                              "and run the restore again."))
+                  .arg(QFileInfo(tool).fileName(), partitionPath)
+            : restoreText(QT_TRANSLATE_NOOP(
+                              "usbrestore::Backend",
+                              "%1 failed to format the new volume on %2: %3\n\nUnplug the drive, plug it back in and "
+                              "run the restore again."))
+                  .arg(QFileInfo(tool).fileName(), partitionPath, lastOutput));
     return false;
 }
 
@@ -343,9 +318,7 @@ namespace {
 QString resolveFormatTool(FileSystemType fileSystem, QString *error, QString *displayError)
 {
     const auto missing = [error, displayError](const RestoreMessage &message) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, message);
-        }
+        setRestoreError(error, displayError, message);
         return QString();
     };
 
@@ -485,16 +458,14 @@ bool formatAndRereadPartitionTable(
     }
     // The instance the kernel just scanned the new table on; a media change earlier must not fail the restore.
     if (!device.diskSequence(diskSequence)) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend",
-                                "The drive %1 was formatted, but it could not be re-identified afterwards. "
-                                "Unplug it, plug it back in and check that it shows one new partition."))
-                    .arg(request.disk.deviceId));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "The drive %1 was formatted, but it could not be re-identified afterwards. "
+                            "Unplug it, plug it back in and check that it shows one new partition."))
+                .arg(request.disk.deviceId));
         return false;
     }
     return true;
@@ -513,9 +484,7 @@ bool performLinuxRestore(
     if (!checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
             return isSafeRestoreTarget(disk, request.guard, text, mode);
         })) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
+        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
 
@@ -538,9 +507,7 @@ bool performLinuxRestore(
         !checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
             return isSafeRestoreTarget(currentDisk, request.guard, text, mode);
         })) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
+        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
     disk = currentDisk;
@@ -551,9 +518,7 @@ bool performLinuxRestore(
             &displayReason,
             [&](QString *text, TextMode mode) { return canCreatePartitionLayout(request.style, disk, text, mode); }) ||
         !canCreateFileSystemOn(request.fileSystem, disk, &reason, &displayReason)) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
+        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
 
@@ -597,9 +562,7 @@ bool performLinuxRestore(
         opened = device.open(BlockDevice::Access::Exclusive, &openError, &displayOpenError);
     }
     if (!opened) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {openError, displayOpenError});
-        }
+        setRestoreError(error, displayError, {openError, displayOpenError});
         return false;
     }
     if (!device.verifyIdentity(disk, error, displayError)) {
@@ -622,9 +585,7 @@ bool performLinuxRestore(
     if (!checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
             return isWritablePartitionRequest(tableRequest, text, mode);
         })) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, {reason, displayReason});
-        }
+        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
 
@@ -650,19 +611,17 @@ bool performLinuxRestore(
     // No cancellation past here: a half-written table is worse than a finished one.
     reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures, request);
     const std::uint64_t sector = disk.sectorSize;
-    const std::uint64_t clearBytes = (qMin(SignatureClearBytes, disk.size / 4) / sector) * sector;
+    const std::uint64_t clearBytes = signatureClearRange(disk.size, disk.sectorSize);
     if (clearBytes < sector) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend",
-                                "%1 reports too little space to clear its old partition signatures. Unplug the drive, "
-                                "plug it back "
-                                "in and select it again; if it still reports a tiny size, the drive is damaged."))
-                    .arg(disk.deviceId));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "%1 reports too little space to clear its old partition signatures. Unplug the drive, "
+                            "plug it back "
+                            "in and select it again; if it still reports a tiny size, the drive is damaged."))
+                .arg(disk.deviceId));
         return false;
     }
     if (!device.writeZeros(0, clearBytes, disk.sectorSize, error, displayError) ||
@@ -718,16 +677,14 @@ bool performLinuxRestore(
         }
     }
     if (!QFileInfo::exists(partitionPath)) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend",
-                                "The new partition did not appear on %1 within %2 seconds. Unplug the drive, "
-                                "plug it back in and run the restore again."))
-                    .arg(disk.deviceId, NewPartitionTimeoutMs / 1000));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "The new partition did not appear on %1 within %2 seconds. Unplug the drive, "
+                            "plug it back in and run the restore again."))
+                .arg(disk.deviceId, NewPartitionTimeoutMs / 1000));
         return false;
     }
 

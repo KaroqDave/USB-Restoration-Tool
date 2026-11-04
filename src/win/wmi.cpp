@@ -131,7 +131,7 @@ constexpr quint32 JobStateException = 10;
 
 } // namespace
 
-bool initializeComSecurity(QString *error)
+bool initializeComSecurity()
 {
     const HRESULT result = CoInitializeSecurity(
         nullptr,
@@ -144,13 +144,7 @@ bool initializeComSecurity(QString *error)
         EOAC_NONE,
         nullptr);
     // RPC_E_TOO_LATE: process security was already set, which is fine to run with.
-    if (FAILED(result) && result != RPC_E_TOO_LATE) {
-        if (error) {
-            *error = QStringLiteral("CoInitializeSecurity failed: %1").arg(hresultMessage(result).english);
-        }
-        return false;
-    }
-    return true;
+    return SUCCEEDED(result) || result == RPC_E_TOO_LATE;
 }
 
 WmiObject::WmiObject(IWbemClassObject *object) : m_object(object) {}

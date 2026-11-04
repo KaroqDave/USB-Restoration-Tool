@@ -88,6 +88,15 @@ std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize);
 
 bool isSupportedSectorSize(quint32 sectorSize);
 
+// The sector size to build a table for: 0 means the caller had none, so 512. Unlike
+// isSupportedSectorSize() this does not clamp other values, because the fuzzers and
+// the dump tool must be able to ask what a strange size would produce.
+quint32 effectiveSectorSize(quint32 sectorSize);
+
+// Bytes to zero at each end of the disk to remove old partition signatures: 4 MiB,
+// or a quarter of the disk when that is smaller, rounded down to a whole sector.
+// Zero means the disk is too small to clear safely.
+std::uint64_t signatureClearRange(std::uint64_t diskSize, quint32 sectorSize);
 // Shared by both backends' writeZeros(): rounding for the caller would silently
 // leave the tail unzeroed. Empty means the range is writable as-is.
 QString unalignedZeroRangeError(

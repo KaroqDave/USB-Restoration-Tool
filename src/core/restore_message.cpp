@@ -32,6 +32,11 @@ RestoreMessage RestoreMessage::trimmed() const
     return result;
 }
 
+RestoreMessage formatByteSizeMessage(std::uint64_t bytes)
+{
+    return RestoreMessage{formatByteSize(bytes), formatByteSize(bytes, TextMode::Display)};
+}
+
 RestoreMessage restoreStepMessage(RestoreStep step, PartitionStyle style, FileSystemType fileSystem)
 {
     switch (step) {
@@ -46,6 +51,8 @@ RestoreMessage restoreStepMessage(RestoreStep step, PartitionStyle style, FileSy
     case RestoreStep::OpenDrive:
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Opening and identifying the physical drive"));
     case RestoreStep::RefreshMetadata:
+    case RestoreStep::RefreshNewVolume:
+        // Windows refreshes the same metadata before and after the new volume appears.
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Refreshing Windows disk metadata"));
     case RestoreStep::DetachDriveLetters:
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Detaching existing volumes and drive letters"));
@@ -69,8 +76,6 @@ RestoreMessage restoreStepMessage(RestoreStep step, PartitionStyle style, FileSy
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Waiting for the new partition to appear"));
     case RestoreStep::WaitForVolume:
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Waiting for Windows to discover the new volume"));
-    case RestoreStep::RefreshNewVolume:
-        return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Refreshing Windows disk metadata"));
     case RestoreStep::AssignDriveLetter:
         return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Assigning a drive letter"));
     case RestoreStep::Format:

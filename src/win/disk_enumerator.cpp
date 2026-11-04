@@ -48,9 +48,7 @@ bool DiskEnumerator::diskByNumber(
 {
     WmiConnection storage(StorageNamespace);
     if (!storage.isValid()) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, storage.lastError());
-        }
+        setRestoreError(error, displayError, storage.lastError());
         return false;
     }
 
@@ -58,18 +56,16 @@ bool DiskEnumerator::diskByNumber(
     const auto objects = storage.query(
         QStringLiteral("SELECT * FROM MSFT_Disk WHERE Number = %1 AND BusType = %2").arg(diskNumber).arg(UsbBusType));
     if (objects.isEmpty()) {
-        if (error || displayError) {
-            const RestoreMessage detail = storage.lastError();
-            setRestoreError(
-                error,
-                displayError,
-                detail.english.isEmpty() ? restoreText(QT_TRANSLATE_NOOP(
-                                                           "usbrestore::Backend",
-                                                           "Disk %1 is no longer reported as a USB disk. Refresh and "
-                                                           "select the USB again."))
-                                               .arg(diskNumber)
-                                         : detail);
-        }
+        const RestoreMessage detail = storage.lastError();
+        setRestoreError(
+            error,
+            displayError,
+            detail.english.isEmpty() ? restoreText(QT_TRANSLATE_NOOP(
+                                                       "usbrestore::Backend",
+                                                       "Disk %1 is no longer reported as a USB disk. Refresh and "
+                                                       "select the USB again."))
+                                           .arg(diskNumber)
+                                     : detail);
         return false;
     }
 
@@ -93,7 +89,6 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object, DiskDetails
     disk.path = object.stringValue(L"Path").trimmed();
     disk.size = object.uint64Value(L"Size");
     disk.sectorSize = object.uintValue(L"LogicalSectorSize", 512);
-    disk.health = static_cast<quint16>(object.uintValue(L"HealthStatus"));
     disk.partitionStyle = static_cast<quint16>(object.uintValue(L"PartitionStyle"));
     disk.isBoot = object.boolValue(L"IsBoot");
     disk.isSystem = object.boolValue(L"IsSystem");

@@ -10,8 +10,6 @@
 namespace usbrestore {
 
 QString windowsErrorMessage(DWORD error);
-QString windowsErrorMessage();
-QString windowsErrorMessage(const QString &context, DWORD error);
 
 RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD error);
 RestoreMessage windowsRestoreErrorMessage(

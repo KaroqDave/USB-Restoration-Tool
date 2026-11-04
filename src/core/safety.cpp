@@ -10,6 +10,8 @@ namespace usbrestore {
 
 namespace {
 
+constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
+
 QString normalizedIdentity(const QString &value)
 {
     return value.trimmed().toCaseFolded();
@@ -145,6 +147,21 @@ bool isSupportedSectorSize(quint32 sectorSize)
     default:
         return false;
     }
+}
+
+quint32 effectiveSectorSize(quint32 sectorSize)
+{
+    return sectorSize == 0 ? 512 : sectorSize;
+}
+
+std::uint64_t signatureClearRange(std::uint64_t diskSize, quint32 sectorSize)
+{
+    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    // Zeroed at each end: covers GPT (first/last 33 sectors), MBR and hybrid-ISO
+    // signatures in the first megabyte, with room to spare. On a small disk a fixed
+    // 4 MiB from each end would overlap, hence the quarter.
+    const std::uint64_t clearBytes = diskSize / 4 < SignatureClearBytes ? diskSize / 4 : SignatureClearBytes;
+    return (clearBytes / sector) * sector;
 }
 
 QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, TextMode mode)

@@ -61,13 +61,11 @@ bool helperSpeaksOurProtocol(const QString &helper, QString *error, QString *dis
     if (!process.waitForStarted(VersionProbeTimeoutMs) || !process.waitForFinished(VersionProbeTimeoutMs)) {
         process.kill();
         process.waitForFinished(1000);
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore helper at %1 could not be started."))
-                    .arg(helper));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore helper at %1 could not be started."))
+                .arg(helper));
         return false;
     }
 
@@ -116,30 +114,26 @@ bool runHelperRestore(
     const QString helper = helperExecutablePath();
     const QFileInfo helperInfo(helper);
     if (!helperInfo.exists() || !helperInfo.isExecutable() || helperInfo.isDir()) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend",
-                                "The restore helper was not found at %1. USB Restoration Tool has to be "
-                                "installed to restore a drive without running the whole application as root."))
-                    .arg(helper));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "The restore helper was not found at %1. USB Restoration Tool has to be "
+                            "installed to restore a drive without running the whole application as root."))
+                .arg(helper));
         return false;
     }
 
     const QString pkexec = findPkexec();
     if (pkexec.isEmpty()) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend",
-                    "pkexec was not found, so permission to restore the drive cannot be "
-                    "requested. Install polkit, or run USB Restoration Tool with sudo.")));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "pkexec was not found, so permission to restore the drive cannot be "
+                "requested. Install polkit, or run USB Restoration Tool with sudo.")));
         return false;
     }
 
@@ -150,25 +144,20 @@ bool runHelperRestore(
     QProcess process;
     process.setProgram(pkexec);
     process.setArguments(
-        QStringList{helper} + buildRestoreArguments(
-                                  request.disk,
-                                  request.style,
-                                  request.fileSystem,
-                                  request.volumeLabel,
-                                  resolveLanguage(request.displayLanguage)));
+        QStringList{helper} +
+        buildRestoreArguments(
+            request.disk, request.style, request.fileSystem, request.volumeLabel, request.displayLanguage));
     // Merged channels would let mkfs output be read as a protocol line.
     process.setProcessChannelMode(QProcess::SeparateChannels);
     process.start();
     if (!process.waitForStarted(ProcessStartTimeoutMs)) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                    "usbrestore::Backend",
-                    "pkexec could not be started, so permission to restore the drive could not be "
-                    "requested.")));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "pkexec could not be started, so permission to restore the drive could not be "
+                "requested.")));
         return false;
     }
 
@@ -278,15 +267,17 @@ bool runHelperRestore(
     case HelperRunVerdict::Cancelled:
         // RestoreWorker reads "false with no error" as a cancellation.
         return false;
-    case HelperRunVerdict::Failed:
-        if (error || displayError) {
+    case HelperRunVerdict::Failed: {
+        // Only needed when a display pointer exists, so the English verdict still decides the outcome.
+        QString displayVerdictError;
+        if (displayError) {
             HelperRunObservation displayRun = run;
             displayRun.versionError = displayVersionError;
-            QString displayVerdictError;
             judgeHelperRun(displayRun, &displayVerdictError, TextMode::Display);
-            setRestoreError(error, displayError, {verdictError, displayVerdictError});
         }
+        setRestoreError(error, displayError, {verdictError, displayVerdictError});
         return false;
+    }
     case HelperRunVerdict::Succeeded:
         break;
     }

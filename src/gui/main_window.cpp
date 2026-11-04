@@ -1,5 +1,4 @@
 #include "gui/main_window.h"
-
 #include "core/safety.h"
 #include "gui/restore_dialog.h"
 #include "platform/restore_worker.h"
@@ -14,7 +13,6 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEvent>
@@ -79,6 +77,14 @@ QLabel *fieldLabel()
     return label;
 }
 
+QLabel *footnoteLabel()
+{
+    auto *label = new QLabel;
+    label->setObjectName(QStringLiteral("footnote"));
+    label->setWordWrap(true);
+    return label;
+}
+
 QPushButton *styledButton(const char *variant)
 {
     auto *button = new QPushButton;
@@ -87,6 +93,7 @@ QPushButton *styledButton(const char *variant)
     return button;
 }
 
+// Em dash for an absent list, so the UI never shows a blank cell.
 QString joinOrDash(const QStringList &values)
 {
     return values.isEmpty() ? QStringLiteral("—") : values.join(QStringLiteral(", "));
@@ -292,9 +299,7 @@ QWidget *MainWindow::buildDiskSection()
     m_diskList->setSelectionMode(QAbstractItemView::SingleSelection);
     connect(m_diskList, &QListWidget::currentRowChanged, this, &MainWindow::onSelectionChanged);
 
-    m_diskCount = new QLabel;
-    m_diskCount->setObjectName(QStringLiteral("footnote"));
-    m_diskCount->setWordWrap(true);
+    m_diskCount = footnoteLabel();
 
     m_refreshButton = styledButton("secondary");
     connect(m_refreshButton, &QPushButton::clicked, this, &MainWindow::refreshDisks);
@@ -348,18 +353,14 @@ QWidget *MainWindow::buildRestoreSection()
     styleComboPopup(m_fileSystemCombo);
     connect(m_fileSystemCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
 
-    m_planLabel = new QLabel;
-    m_planLabel->setObjectName(QStringLiteral("footnote"));
-    m_planLabel->setWordWrap(true);
+    m_planLabel = footnoteLabel();
 
     m_statusLabel = new QLabel;
     m_statusLabel->setObjectName(QStringLiteral("statusBadge"));
     m_statusLabel->setWordWrap(true);
     m_statusLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
-    m_detailLabel = new QLabel;
-    m_detailLabel->setObjectName(QStringLiteral("footnote"));
-    m_detailLabel->setWordWrap(true);
+    m_detailLabel = footnoteLabel();
 
     m_restoreButton = styledButton("danger");
     m_restoreButton->setObjectName(QStringLiteral("restoreUsb"));
@@ -392,9 +393,7 @@ QWidget *MainWindow::buildFooterWarning()
     m_warningTitle = new QLabel;
     m_warningTitle->setObjectName(QStringLiteral("warningTitle"));
     m_warningTitle->setWordWrap(true);
-    m_warningDetail = new QLabel;
-    m_warningDetail->setObjectName(QStringLiteral("footnote"));
-    m_warningDetail->setWordWrap(true);
+    m_warningDetail = footnoteLabel();
     layout->addWidget(m_warningTitle);
     layout->addWidget(m_warningDetail);
     return banner;
@@ -414,9 +413,7 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    m_activityCaption = new QLabel;
-    m_activityCaption->setObjectName(QStringLiteral("footnote"));
-    m_activityCaption->setWordWrap(true);
+    m_activityCaption = footnoteLabel();
     layout->addWidget(m_activityCaption);
     layout->addWidget(m_log, 1);
     m_log->show();
@@ -447,7 +444,6 @@ void MainWindow::showActivity()
 void MainWindow::loadSettings()
 {
     m_settings = loadAppSettings();
-    m_settings.theme = m_theme;
     if (!m_settings.geometry.isEmpty()) {
         restoreGeometry(m_settings.geometry);
     }
@@ -489,14 +485,7 @@ FileSystemType MainWindow::selectedFileSystem() const
         return FileSystemType::ExFat;
     }
     const auto type = static_cast<FileSystemType>(m_fileSystemCombo->currentData().toInt());
-    switch (type) {
-    case FileSystemType::ExFat:
-    case FileSystemType::Fat32:
-    case FileSystemType::Ntfs:
-    case FileSystemType::Ext4:
-        return type;
-    }
-    return FileSystemType::ExFat;
+    return isKnownFileSystem(type) ? type : FileSystemType::ExFat;
 }
 
 void MainWindow::refreshDisks()

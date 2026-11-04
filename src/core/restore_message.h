@@ -65,6 +65,9 @@ struct RestoreMessage {
 RestoreMessage restoreText(const char *source);
 RestoreMessage restoreStepMessage(RestoreStep step, PartitionStyle style, FileSystemType fileSystem);
 
+// The same size in both renderings, which every size-mismatch refusal needs.
+RestoreMessage formatByteSizeMessage(std::uint64_t bytes);
+
 inline void setRestoreError(QString *error, QString *displayError, const RestoreMessage &message)
 {
     if (error) {

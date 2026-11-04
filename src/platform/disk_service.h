@@ -6,7 +6,6 @@
 #include "core/safety.h"
 
 #include <QString>
-#include <QStringList>
 #include <QVector>
 
 #include <memory>

@@ -300,7 +300,7 @@ manual validation.
 `PROJECT_VERSION` in `CMakeLists.txt` is the version source. Before tagging
 `vX.Y.Z`, update the changelog and the README's `## What's New in X.Y.Z` section.
 The release workflow checks the version and extracts that README section as the
-release body. The 1.4.x development versions were never tagged; they shipped in 1.5.0.
+release body.
 
 ## Project structure
 
@@ -329,11 +329,7 @@ only what it needs.
 
 The icon sources, palette and export instructions are in [Branding](branding.md).
 
-Follow `.clang-format`: four spaces and a 120-column limit. Use `snake_case`
-filenames, `PascalCase` types, `camelCase` functions and variables, and `m_` members
-inside `namespace usbrestore`. Platform failures return `bool` with a
-`QString *error`; messages should explain the operation and next step.
-
+Coding style, naming and commit conventions are in [AGENTS.md](../AGENTS.md).
 CI fails if any tracked `.cpp` or `.h` file is not formatted with clang-format
 22.1.8. Other releases lay some code out differently, so use that version on every
 platform, then format before committing:
@@ -346,6 +342,5 @@ git ls-files '*.cpp' '*.h' | xargs clang-format -i
 On Windows, run the second line from Git Bash, or in PowerShell use
 `git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }`.
 
-Use Conventional Commits and include relevant validation in pull requests.
-Keep open work in [TODO.md](TODO.md), release history in [CHANGELOG.md](../CHANGELOG.md),
-and safety guidance in [SECURITY.md](../SECURITY.md).
+Keep open work in [TODO.md](TODO.md) and release history in
+[CHANGELOG.md](../CHANGELOG.md).

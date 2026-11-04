@@ -34,16 +34,6 @@ QString windowsErrorMessage(DWORD error)
     return QStringLiteral("%1 (error %2)").arg(message).arg(error);
 }
 
-QString windowsErrorMessage()
-{
-    return windowsErrorMessage(GetLastError());
-}
-
-QString windowsErrorMessage(const QString &context, DWORD error)
-{
-    return QStringLiteral("%1: %2").arg(context, windowsErrorMessage(error));
-}
-
 RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD error)
 {
     RestoreMessage reason;
