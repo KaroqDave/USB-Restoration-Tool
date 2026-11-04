@@ -35,7 +35,7 @@ QStringList listPartitionNames(const QString &diskName);
 DeviceNumber readDeviceNumber(const QString &sysfsPath);
 
 // The whole disk's device number and every partition's, skipping the invalid ones.
-// Shared so the unmount path can never disagree with enumeration about what is mounted.
+// Enumeration and the unmount path both use it, so they agree about what is mounted.
 QVector<DeviceNumber> deviceNumbersOnDisk(const QString &diskName);
 
 QVector<MountEntry> readMounts();

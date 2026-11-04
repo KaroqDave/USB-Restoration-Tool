@@ -38,6 +38,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <source_location>
 #include <functional>
 
 // Dropping the embedded catalog is how a broken package fails to load German.
@@ -87,28 +88,35 @@ void settleLayout(QWidget &widget)
     QCoreApplication::processEvents();
 }
 
-// Every widget the tests reach is addressed by its object name, so these keep the
-// lookups readable and fail loudly when a name stops existing.
-template <typename T> T *find(QWidget *root, const char *name)
+// A missing name fails the current test at the caller's line and hands back a detached stand-in,
+// so the rest of the test cannot crash the binary. Q_ASSERT would vanish in the Release preset.
+template <typename T>
+T *find(QWidget *root, const char *name, std::source_location where = std::source_location::current())
 {
-    T *widget = root->findChild<T *>(QLatin1String(name));
-    Q_ASSERT_X(widget, "find", name);
-    return widget;
+    if (T *widget = root->findChild<T *>(QLatin1String(name))) {
+        return widget;
+    }
+    QTest::qFail(
+        QByteArray("no child named ").append(name).constData(), where.file_name(), static_cast<int>(where.line()));
+    return new T(root);
 }
 
-template <typename T> T *find(QWidget &root, const char *name)
+template <typename T>
+T *find(QWidget &root, const char *name, std::source_location where = std::source_location::current())
 {
-    return find<T>(&root, name);
+    return find<T>(&root, name, where);
 }
 
-template <typename T> QString textOf(QWidget *root, const char *name)
+template <typename T>
+QString textOf(QWidget *root, const char *name, std::source_location where = std::source_location::current())
 {
-    return find<T>(root, name)->text();
+    return find<T>(root, name, where)->text();
 }
 
-template <typename T> QString textOf(QWidget &root, const char *name)
+template <typename T>
+QString textOf(QWidget &root, const char *name, std::source_location where = std::source_location::current())
 {
-    return textOf<T>(&root, name);
+    return textOf<T>(&root, name, where);
 }
 
 void confirmErase(RestoreDialog &dialog)
@@ -1651,7 +1659,7 @@ class GuiTests : public QObject {
         QString aboutTitle;
         QString aboutDetails;
         QTimer::singleShot(0, &window, [&] {
-            if (auto *box = find<QMessageBox>(window, "aboutDialog")) {
+            if (auto *box = window.findChild<QMessageBox *>(QStringLiteral("aboutDialog"))) {
                 aboutTitle = box->windowTitle();
                 aboutDetails = box->informativeText();
                 box->accept();
@@ -1881,7 +1889,7 @@ class GuiTests : public QObject {
         QString details;
         bool hasGithub = false;
         QTimer::singleShot(0, [&] {
-            auto *box = find<QMessageBox>(window, "aboutDialog");
+            auto *box = window.findChild<QMessageBox *>(QStringLiteral("aboutDialog"));
             if (!box) {
                 return;
             }

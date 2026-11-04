@@ -610,9 +610,8 @@ bool performLinuxRestore(
 
     // No cancellation past here: a half-written table is worse than a finished one.
     reportPlannedStep(steps, reporter, RestoreStep::ClearSignatures, request);
-    const std::uint64_t sector = disk.sectorSize;
-    const std::uint64_t clearBytes = signatureClearRange(disk.size, disk.sectorSize);
-    if (clearBytes < sector) {
+    const SignatureClearRange clear = signatureClearRange(disk.size, disk.sectorSize);
+    if (clear.bytes == 0) {
         setRestoreError(
             error,
             displayError,
@@ -624,9 +623,8 @@ bool performLinuxRestore(
                 .arg(disk.deviceId));
         return false;
     }
-    if (!device.writeZeros(0, clearBytes, disk.sectorSize, error, displayError) ||
-        !device.writeZeros(
-            ((disk.size - clearBytes) / sector) * sector, clearBytes, disk.sectorSize, error, displayError)) {
+    if (!device.writeZeros(0, clear.bytes, clear.sectorSize, error, displayError) ||
+        !device.writeZeros(clear.tailOffset, clear.bytes, clear.sectorSize, error, displayError)) {
         return false;
     }
 

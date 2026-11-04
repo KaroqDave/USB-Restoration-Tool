@@ -365,8 +365,8 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error,
         return HelperRunVerdict::Cancelled;
     }
     if (run.exitCode != RestoreExitSuccess) {
-        // Reaching here means the version line was accepted. A rejected helper cannot supply the UI text.
-        if (mode == TextMode::Display && !run.displayFailure.isEmpty()) {
+        // Checked again so the UI text stays trusted-only even if the early returns above change.
+        if (mode == TextMode::Display && run.versionAccepted && !run.displayFailure.isEmpty()) {
             return failWith(run.displayFailure);
         }
         return failWith(describeRestoreExit(run.exitCode, run.helperStderr, mode));

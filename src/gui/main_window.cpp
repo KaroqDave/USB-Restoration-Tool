@@ -93,7 +93,6 @@ QPushButton *styledButton(const char *variant)
     return button;
 }
 
-// Em dash for an absent list, so the UI never shows a blank cell.
 QString joinOrDash(const QStringList &values)
 {
     return values.isEmpty() ? QStringLiteral("—") : values.join(QStringLiteral(", "));

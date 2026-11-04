@@ -76,23 +76,13 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
 
     // The whole-disk device counts too: an ISO writer leaves iso9660 there with no table.
     const QVector<MountEntry> mounts = readMounts();
-    const DeviceNumber diskNumber = readDeviceNumber(sysfs);
-    QVector<DeviceNumber> owned;
-    if (diskNumber.isValid()) {
-        owned.append(diskNumber);
-    }
+    const QVector<DeviceNumber> owned = deviceNumbersOnDisk(diskName);
     if (details == DiskDetails::Display) {
         const QString wholeDiskFileSystem = fileSystemTypeForDevice(sysfs);
         if (!wholeDiskFileSystem.isEmpty()) {
             disk.fileSystems.append(wholeDiskFileSystem);
         }
-    }
-    for (const QString &partition : listPartitionNames(diskName)) {
-        const DeviceNumber number = readDeviceNumber(QStringLiteral("%1/%2").arg(sysfs, partition));
-        if (number.isValid()) {
-            owned.append(number);
-        }
-        if (details == DiskDetails::Display) {
+        for (const QString &partition : listPartitionNames(diskName)) {
             const QString label = labelForPartition(partition);
             if (!label.isEmpty() && !disk.labels.contains(label)) {
                 disk.labels.append(label);

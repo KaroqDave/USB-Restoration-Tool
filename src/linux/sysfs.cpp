@@ -181,10 +181,9 @@ bool isUsbBlockDevice(const QString &diskName)
 
 namespace {
 
-// Both by-id and by-label are flat directories of symlinks into /dev; the entry name
-// is what the caller wants, so the shared part is only the lookup. Entries stay in
-// directory order, which is what the usb- preference below relies on.
-QStringList linkEntriesFor(const QString &directory, const QString &deviceName)
+// The first entry in a /dev/disk/by-* directory that links to the device, preferring names that
+// start with preferredPrefix; stops at the first preferred match.
+QString linkTo(const QString &directory, const QString &deviceName, const QString &preferredPrefix = {})
 {
     const QDir links(directory);
     if (!links.exists()) {
@@ -192,35 +191,36 @@ QStringList linkEntriesFor(const QString &directory, const QString &deviceName)
     }
 
     const QString target = QStringLiteral("/dev/%1").arg(deviceName);
-    QStringList matching;
+    QString fallback;
     const auto entries = links.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot);
     for (const QString &entry : entries) {
-        if (QFileInfo(links.absoluteFilePath(entry)).canonicalFilePath() == target) {
-            matching.append(entry);
+        const bool preferred = entry.startsWith(preferredPrefix);
+        if (!preferred && !fallback.isEmpty()) {
+            continue;
         }
+        if (QFileInfo(links.absoluteFilePath(entry)).canonicalFilePath() != target) {
+            continue;
+        }
+        if (preferred) {
+            return entry;
+        }
+        fallback = entry;
     }
-    return matching;
+    return fallback;
 }
 
 } // namespace
 
 QString stableDeviceIdLink(const QString &diskName)
 {
-    const QStringList entries = linkEntriesFor(QStringLiteral("/dev/disk/by-id"), diskName);
     // A usb- prefixed id is stable across reboots, unlike the bus path some sticks offer.
-    for (const QString &entry : entries) {
-        if (entry.startsWith(QStringLiteral("usb-"))) {
-            return entry;
-        }
-    }
-    return entries.isEmpty() ? QString() : entries.first();
+    return linkTo(QStringLiteral("/dev/disk/by-id"), diskName, QStringLiteral("usb-"));
 }
 
 QString labelForPartition(const QString &partitionName)
 {
-    const QStringList entries = linkEntriesFor(QStringLiteral("/dev/disk/by-label"), partitionName);
     // by-label names are escaped the same way mount fields are.
-    return entries.isEmpty() ? QString() : unescapeMountField(entries.first());
+    return unescapeMountField(linkTo(QStringLiteral("/dev/disk/by-label"), partitionName));
 }
 
 QString parentDiskName(const QString &partitionName)

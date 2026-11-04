@@ -97,7 +97,10 @@ int main(int argc, char *argv[])
 
 #ifdef Q_OS_WIN
     const ComScope com;
-    usbrestore::initializeComSecurity();
+    // Still usable without packet privacy, but the reason must not vanish.
+    if (QString comError; !usbrestore::initializeComSecurity(&comError)) {
+        qWarning("%s", qUtf8Printable(comError));
+    }
 #endif
 
     QApplication app(argc, argv);

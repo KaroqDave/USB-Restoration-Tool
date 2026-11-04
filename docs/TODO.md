@@ -22,6 +22,14 @@
   (174), GUI (139, 2 skipped), Linux (11, 29 loop cases skipped) and all 27 fuzz
   seeds pass; the loop cases need root, which this host would not grant. Windows
   sources were not compiled here. No physical drive accessed.
+- 2026-11-04: Review fixes for the same branch. The filesystem labels are marked
+  with `QT_TRANSLATE_NOOP` again, so `update_translations` keeps their German text;
+  `signatureClearRange()` now also returns the tail offset and the sector size both
+  backends write with; enumeration uses `deviceNumbersOnDisk()`; WMI Format gets
+  its own filesystem names; `initializeComSecurity()` reports its error again and
+  `main.cpp` logs it; the helper's display text again requires an accepted
+  version; and the GUI tests' `find<T>()` fails the current test instead of
+  asserting. All five ctest suites pass. Windows sources still not compiled.
 
 Release history is in [CHANGELOG.md](../CHANGELOG.md). Keep completion notes
 here only while a task is still in flight.

@@ -859,18 +859,6 @@ Details: %1</translation>
         <translation>RAW / unbekannt</translation>
     </message>
     <message>
-        <source>Healthy</source>
-        <translation>Fehlerfrei</translation>
-    </message>
-    <message>
-        <source>Warning</source>
-        <translation>Warnung</translation>
-    </message>
-    <message>
-        <source>Unhealthy</source>
-        <translation>Fehlerhaft</translation>
-    </message>
-    <message>
         <source>Unknown</source>
         <translation>Unbekannt</translation>
     </message>

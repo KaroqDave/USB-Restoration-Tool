@@ -154,14 +154,18 @@ quint32 effectiveSectorSize(quint32 sectorSize)
     return sectorSize == 0 ? 512 : sectorSize;
 }
 
-std::uint64_t signatureClearRange(std::uint64_t diskSize, quint32 sectorSize)
+SignatureClearRange signatureClearRange(std::uint64_t diskSize, quint32 sectorSize)
 {
-    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
-    // Zeroed at each end: covers GPT (first/last 33 sectors), MBR and hybrid-ISO
-    // signatures in the first megabyte, with room to spare. On a small disk a fixed
-    // 4 MiB from each end would overlap, hence the quarter.
+    SignatureClearRange range;
+    range.sectorSize = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    const std::uint64_t sector = range.sectorSize;
+    // 4 MiB covers GPT, MBR and hybrid-ISO signatures; a quarter keeps the two ends apart on a small disk.
     const std::uint64_t clearBytes = diskSize / 4 < SignatureClearBytes ? diskSize / 4 : SignatureClearBytes;
-    return (clearBytes / sector) * sector;
+    range.bytes = (clearBytes / sector) * sector;
+    if (range.bytes > 0) {
+        range.tailOffset = ((diskSize - range.bytes) / sector) * sector;
+    }
+    return range;
 }
 
 QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, TextMode mode)

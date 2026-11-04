@@ -17,10 +17,10 @@ struct FileSystemNames {
 };
 
 constexpr FileSystemNames FileSystemNamesTable[] = {
-    {FileSystemType::ExFat, "exFAT", "exFAT (recommended)", "exfat"},
-    {FileSystemType::Fat32, "FAT32", "FAT32 (older devices)", "fat32"},
-    {FileSystemType::Ntfs, "NTFS", "NTFS", "ntfs"},
-    {FileSystemType::Ext4, "ext4", "ext4 (Linux)", "ext4"},
+    {FileSystemType::ExFat, "exFAT", QT_TRANSLATE_NOOP("usbrestore::Disk", "exFAT (recommended)"), "exfat"},
+    {FileSystemType::Fat32, "FAT32", QT_TRANSLATE_NOOP("usbrestore::Disk", "FAT32 (older devices)"), "fat32"},
+    {FileSystemType::Ntfs, "NTFS", QT_TRANSLATE_NOOP("usbrestore::Disk", "NTFS"), "ntfs"},
+    {FileSystemType::Ext4, "ext4", QT_TRANSLATE_NOOP("usbrestore::Disk", "ext4 (Linux)"), "ext4"},
 };
 
 // MSFT_Disk.BusType values; only the ones a USB stick can plausibly report plus the

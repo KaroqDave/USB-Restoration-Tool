@@ -300,10 +300,8 @@ bool RawDisk::refreshLayout(QString *error, QString *displayError)
 bool RawDisk::clearPartitionSignatures(
     std::uint64_t diskSize, quint32 sectorSize, QString *error, QString *displayError)
 {
-    const std::uint64_t sector = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
-
-    const std::uint64_t clearBytes = signatureClearRange(diskSize, sectorSize);
-    if (clearBytes < sector) {
+    const SignatureClearRange clear = signatureClearRange(diskSize, sectorSize);
+    if (clear.bytes == 0) {
         setRestoreError(
             error,
             displayError,
@@ -313,10 +311,10 @@ bool RawDisk::clearPartitionSignatures(
         return false;
     }
 
-    if (!writeZeros(0, clearBytes, sector, error, displayError)) {
+    if (!writeZeros(0, clear.bytes, clear.sectorSize, error, displayError)) {
         return false;
     }
-    if (!writeZeros(alignDown(diskSize - clearBytes, sector), clearBytes, sector, error, displayError)) {
+    if (!writeZeros(clear.tailOffset, clear.bytes, clear.sectorSize, error, displayError)) {
         return false;
     }
 

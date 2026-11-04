@@ -122,8 +122,6 @@ bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error, Q
     return true;
 }
 
-} // namespace
-
 // Logged success or not: whether Windows queues these as jobs, and how the jobs end, is not documented.
 void noteStorageCall(RestoreReporter *reporter, const QString &call, const QString &outcome)
 {
@@ -131,6 +129,8 @@ void noteStorageCall(RestoreReporter *reporter, const QString &call, const QStri
         reporter->detail(QStringLiteral("%1 %2").arg(call, outcome));
     }
 }
+
+} // namespace
 
 bool VolumeManager::refreshDisk(
     quint32 diskNumber, QString *error, RestoreReporter *reporter, QString *displayError) const
@@ -568,11 +568,21 @@ bool VolumeManager::formatVolume(
     RestoreReporter *reporter,
     QString *displayError) const
 {
-    // Windows names the two filesystems it knows in upper case; ext4 has no Windows formatter.
-    // Anything outside the table must also be refused rather than sent to WMI as "Unknown".
-    const QString formatName = !isKnownFileSystem(fileSystem) || fileSystem == FileSystemType::Ext4
-                                   ? QString()
-                                   : fileSystemTypeName(fileSystem);
+    // MSFT_Volume.Format's FileSystem values, kept apart from the display names so rewording one cannot
+    // break formatting. ext4 has no Windows formatter, and anything else is refused rather than guessed.
+    const QString formatName = [&]() -> QString {
+        switch (fileSystem) {
+        case FileSystemType::Fat32:
+            return QStringLiteral("FAT32");
+        case FileSystemType::Ntfs:
+            return QStringLiteral("NTFS");
+        case FileSystemType::ExFat:
+            return QStringLiteral("exFAT");
+        case FileSystemType::Ext4:
+            break;
+        }
+        return {};
+    }();
     if (formatName.isEmpty()) {
         setRestoreError(
             error,
