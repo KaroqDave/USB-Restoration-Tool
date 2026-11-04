@@ -99,6 +99,7 @@ struct SignatureClearRange {
     quint32 sectorSize = 512;
 };
 SignatureClearRange signatureClearRange(std::uint64_t diskSize, quint32 sectorSize);
+
 // Shared by both backends' writeZeros(): rounding for the caller would silently
 // leave the tail unzeroed. Empty means the range is writable as-is.
 QString unalignedZeroRangeError(

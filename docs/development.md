@@ -306,14 +306,14 @@ release body.
 
 | Directory | Responsibility |
 | --- | --- |
-| `src/core` | Disk model, safety policy, layout, partition bytes, helper protocol; no OS headers |
-| `src/platform` | `DiskService`, worker, logging and startup interface |
-| `src/win` | WMI, raw disk I/O and drive letters |
-| `src/linux` | sysfs, enumeration, raw block I/O and formatting |
-| `src/helper` | Privileged Linux executable; Qt Core only |
-| `src/gui` | Widgets, themes and settings |
-| `tests` | Core QtTest suite |
-| `tools` | Partition-table dump utility |
+| `src/core` | No OS headers. `disk.*` (the `DiskInfo` model), `safety.*` (every erase rule and the layout arithmetic), `partition_table.*` (GPT and MBR bytes, GPT's CRC-32), `restore_steps.*` (each backend's step plan, which sets the step count and first destructive step) and `restore_protocol.*` (the GUI-to-helper protocol; its argument half is a trust boundary) |
+| `src/platform` | `disk_service.h`, the interface both backends implement; `restore_worker.*`, which turns progress calls into Qt signals; `logger.*`; `startup.h` |
+| `src/win` | WMI (`wmi.*`), `DeviceIoControl` on `\\.\PhysicalDriveN` (`raw_disk.*`), enumeration, volumes and drive letters, `windows_disk_service.*` |
+| `src/linux` | sysfs and mountinfo (`sysfs.*`), raw block I/O (`block_device.*`), read-only enumeration (`linux_enumerate.*`), the privileged restore (`linux_restore.*`) and the `DiskService` over both (`linux_disk_service.*`) |
+| `src/helper` | `usb-restoration-helper`, the privileged Linux executable; Qt Core only, and nothing it is told is trusted |
+| `src/gui` | `main_window.*`, `restore_dialog.*` (confirmation, progress and result in one window), `theme.*`, `app_settings.*` |
+| `tests` | `test_core.cpp` (`src/core`), `test_gui.cpp` (offscreen widgets and an example disk service), `test_wmi.cpp` (Windows WMI encoding and job monitoring), `test_linux.cpp` (formatter mappings and loop-image re-reads); `fuzz_core.cpp` fuzzes the parsers and tables and replays `fuzz-corpus` |
+| `tools` | `partition_dump.cpp` for `scripts/verify-partition-tables.sh`; `qt_bundle_probe.cpp`, which checks a built AppImage's bundled Qt plugins load; `export_branding.cpp` |
 | `scripts` | Packaging and partition verification |
 
 Backends supply OS facts and perform I/O. New safety rules belong in core, with

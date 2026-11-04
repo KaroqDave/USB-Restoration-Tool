@@ -30,6 +30,11 @@
   `main.cpp` logs it; the helper's display text again requires an accepted
   version; and the GUI tests' `find<T>()` fails the current test instead of
   asserting. All five ctest suites pass. Windows sources still not compiled.
+- 2026-11-04: Reviewed the whole branch diff hunk by hunk. The table, GUID and
+  flag-constant rewrites match the code they replace, every removed
+  `if (error || displayError)` guard was redundant, and no test assertion was
+  lost. Restored the per-module and per-test detail that the `AGENTS.md` trim
+  had dropped, in the project structure table of `docs/development.md`.
 
 Release history is in [CHANGELOG.md](../CHANGELOG.md). Keep completion notes
 here only while a task is still in flight.
