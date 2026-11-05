@@ -477,12 +477,9 @@ bool performLinuxRestore(
     QString *displayError)
 {
     DiskInfo disk = request.disk;
-    QString reason;
-    QString displayReason;
-    if (!checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
+    if (!checkRestoreError(error, displayError, [&](QString *text, TextMode mode) {
             return isSafeRestoreTarget(disk, request.guard, text, mode);
         })) {
-        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
 
@@ -499,24 +496,22 @@ bool performLinuxRestore(
         return false;
     }
     if (!checkRestoreError(
-            &reason,
-            &displayReason,
+            error,
+            displayError,
             [&](QString *text, TextMode mode) { return isSameRestoreTarget(disk, currentDisk, text, mode); }) ||
-        !checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
+        !checkRestoreError(error, displayError, [&](QString *text, TextMode mode) {
             return isSafeRestoreTarget(currentDisk, request.guard, text, mode);
         })) {
-        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
     disk = currentDisk;
 
     // Repeats the GUI's check on the re-derived disk; a caller could skip the GUI.
     if (!checkRestoreError(
-            &reason,
-            &displayReason,
+            error,
+            displayError,
             [&](QString *text, TextMode mode) { return canCreatePartitionLayout(request.style, disk, text, mode); }) ||
-        !canCreateFileSystemOn(request.fileSystem, disk, &reason, &displayReason)) {
-        setRestoreError(error, displayError, {reason, displayReason});
+        !canCreateFileSystemOn(request.fileSystem, disk, error, displayError)) {
         return false;
     }
 
@@ -580,10 +575,9 @@ bool performLinuxRestore(
     tableRequest.diskGuid = randomGuid();
     tableRequest.partitionGuid = randomGuid();
     tableRequest.partitionName = request.volumeLabel;
-    if (!checkRestoreError(&reason, &displayReason, [&](QString *text, TextMode mode) {
+    if (!checkRestoreError(error, displayError, [&](QString *text, TextMode mode) {
             return isWritablePartitionRequest(tableRequest, text, mode);
         })) {
-        setRestoreError(error, displayError, {reason, displayReason});
         return false;
     }
 
