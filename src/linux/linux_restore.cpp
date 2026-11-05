@@ -9,7 +9,6 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QList>
-#include <QLocale>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QStringList>
@@ -40,12 +39,6 @@ QByteArray randomGuid()
     guid[7] = static_cast<char>((guid.at(7) & 0x0F) | 0x40);
     guid[8] = static_cast<char>((guid.at(8) & 0x3F) | 0x80);
     return guid;
-}
-
-RestoreMessage formatLimitSize(std::uint64_t bytes)
-{
-    const auto size = static_cast<qint64>(bytes);
-    return {QLocale::c().formattedDataSize(size), displayLocale().formattedDataSize(size)};
 }
 
 // "sdb" -> "sdb1", but a name ending in a digit takes a "p": "nvme0n1" -> "nvme0n1p1".
@@ -372,14 +365,14 @@ bool canCreateFileSystemOn(FileSystemType fileSystem, const DiskInfo &disk, QStr
                                           "usbrestore::Backend",
                                           "FAT32 cannot address a volume larger than %1 with %2-byte sectors, and "
                                           "the rest of the drive would be left unused. Choose exFAT or NTFS."))
-                              .arg(formatLimitSize(maximum), disk.sectorSize));
+                              .arg(formatByteSizeMessage(maximum), disk.sectorSize));
         }
         if (length < minimum) {
             return refuse(restoreText(QT_TRANSLATE_NOOP(
                                           "usbrestore::Backend",
                                           "This drive is too small for a valid FAT32 filesystem; it needs at least "
                                           "%1. Choose exFAT."))
-                              .arg(formatLimitSize(minimum)));
+                              .arg(formatByteSizeMessage(minimum)));
         }
         return true;
     }

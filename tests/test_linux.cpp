@@ -140,6 +140,9 @@ class LinuxTests : public QObject {
         QVERIFY(!canCreateFileSystemOn(FileSystemType::Fat32, oversizedFat32, &english, &display));
         QVERIFY2(english.contains(QStringLiteral("512-byte sectors")), qPrintable(english));
         QVERIFY2(display.contains(QStringLiteral("Sektoren von 512 Byte")), qPrintable(display));
+        // Sizes read as in every other message, not QLocale's "2 TiB".
+        QVERIFY2(english.contains(QStringLiteral("larger than 2.00 TB")), qPrintable(english));
+        QVERIFY2(display.contains(QStringLiteral("über 2,00 TB")), qPrintable(display));
         QVERIFY2(
             !display.contains(QStringLiteral("%1")) && !display.contains(QStringLiteral("%2")), qPrintable(display));
         QTemporaryDir dir;
