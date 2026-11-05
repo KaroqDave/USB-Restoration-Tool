@@ -121,16 +121,6 @@ RestoreMessage windowsErrorDetails(const RestoreMessage &context, DWORD error)
     return RestoreMessage{QStringLiteral("%1: %2"), QStringLiteral("%1: %2")}.arg(context, windowsErrorMessage(error));
 }
 
-QString windowsDeviceErrorText(const QString &context, DWORD error)
-{
-    return windowsDeviceErrorMessage(context, error).english;
-}
-
-QString windowsRestoreErrorText(const QString &context, const QString &detail, const QString &advice)
-{
-    return windowsRestoreErrorMessage(context, detail, advice).english;
-}
-
 QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
 {
     for (int code = 'D'; code <= 'Z'; ++code) {
