@@ -21,8 +21,6 @@ class LinuxDiskService : public DiskService {
         QString *reason = nullptr,
         QString *displayReason = nullptr) const override;
     const QVector<RestoreStep> &restorePlan() const override;
-    int totalRestoreSteps() const override;
-    int firstDestructiveStep() const override;
     bool restore(
         const RestoreRequest &request,
         RestoreReporter &reporter,

@@ -174,8 +174,6 @@ class ExampleService : public DiskService {
         return true;
     }
     const QVector<RestoreStep> &restorePlan() const override { return linuxRestorePlan(); }
-    int totalRestoreSteps() const override { return static_cast<int>(restorePlan().size()); }
-    int firstDestructiveStep() const override { return firstDestructiveStepOf(restorePlan()); }
     bool restore(
         const RestoreRequest &request,
         RestoreReporter &reporter,

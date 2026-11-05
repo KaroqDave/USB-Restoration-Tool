@@ -135,16 +135,6 @@ const QVector<RestoreStep> &WindowsDiskService::restorePlan() const
     return windowsRestorePlan();
 }
 
-int WindowsDiskService::totalRestoreSteps() const
-{
-    return static_cast<int>(windowsRestorePlan().size());
-}
-
-int WindowsDiskService::firstDestructiveStep() const
-{
-    return firstDestructiveStepOf(windowsRestorePlan());
-}
-
 bool WindowsDiskService::restore(
     const RestoreRequest &request,
     RestoreReporter &reporter,
