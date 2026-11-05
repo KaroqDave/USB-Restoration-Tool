@@ -547,7 +547,7 @@ bool VolumeManager::volumePathBelongsToDisk(
 
     const bool belongs = volumeHasDiskExtent(handle, diskNumber);
     CloseHandle(handle);
-    if (!belongs && (error || displayError)) {
+    if (!belongs) {
         setRestoreError(
             error,
             displayError,

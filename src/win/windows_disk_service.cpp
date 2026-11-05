@@ -98,9 +98,7 @@ bool WindowsDiskService::canFormatFileSystem(
     FileSystemType type, const DiskInfo &disk, QString *reason, QString *displayReason) const
 {
     const auto refuse = [reason, displayReason](const RestoreMessage &text) {
-        if (reason || displayReason) {
-            setRestoreError(reason, displayReason, text);
-        }
+        setRestoreError(reason, displayReason, text);
         return false;
     };
 
