@@ -3,6 +3,7 @@
 #include "core/restore_message.h"
 
 #include "core/disk.h"
+#include "linux/sysfs.h"
 
 #include <QByteArray>
 #include <QString>
@@ -69,6 +70,9 @@ class BlockDevice {
     bool rereadPartitionTable(QString *error = nullptr, QString *displayError = nullptr);
 
   private:
+    // Refuses an open node that is not a block device.
+    bool blockDeviceNumber(DeviceNumber *number, QString *error, QString *displayError) const;
+
     QString m_devicePath;
     int m_fd = -1;
 };

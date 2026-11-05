@@ -1,7 +1,6 @@
 #include "linux/block_device.h"
 
 #include "core/safety.h"
-#include "linux/sysfs.h"
 #include "linux/linux_enumerate.h"
 
 #include <QFileInfo>
@@ -152,6 +151,30 @@ quint32 BlockDevice::logicalSectorSize() const
     return static_cast<quint32>(sectorSize);
 }
 
+bool BlockDevice::blockDeviceNumber(DeviceNumber *number, QString *error, QString *displayError) const
+{
+    const auto refuse = [error, displayError](const RestoreMessage &text) {
+        setRestoreError(error, displayError, text);
+        return false;
+    };
+
+    struct stat status = {};
+    if (::fstat(m_fd, &status) != 0) {
+        const int errorNumber = errno;
+        return refuse(deviceErrorMessage(
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not read the device information of %1"))
+                .arg(m_devicePath),
+            errorNumber));
+    }
+    if (!S_ISBLK(status.st_mode)) {
+        return refuse(
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not a disk device.")).arg(m_devicePath));
+    }
+    number->major = static_cast<quint32>(major(status.st_rdev));
+    number->minor = static_cast<quint32>(minor(status.st_rdev));
+    return true;
+}
+
 bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QString *displayError)
 {
     const auto refuse = [error, displayError](const RestoreMessage &text) {
@@ -165,17 +188,9 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
                 .arg(m_devicePath));
     }
 
-    struct stat status = {};
-    if (::fstat(m_fd, &status) != 0) {
-        const int errorNumber = errno;
-        return refuse(deviceErrorMessage(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not read the device information of %1"))
-                .arg(m_devicePath),
-            errorNumber));
-    }
-    if (!S_ISBLK(status.st_mode)) {
-        return refuse(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not a disk device.")).arg(m_devicePath));
+    DeviceNumber actual;
+    if (!blockDeviceNumber(&actual, error, displayError)) {
+        return false;
     }
 
     std::uint64_t sequence = 0;
@@ -207,9 +222,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
     }
 
     // Catches a node re-created since the scan to point somewhere else.
-    const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
-    const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
-    if (actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
+    if (actual != expectedNumber) {
         return refuse(
             restoreText(QT_TRANSLATE_NOOP(
                             "usbrestore::Backend",
@@ -298,26 +311,16 @@ bool BlockDevice::verifyPartitionOf(
                 .arg(m_devicePath));
     }
 
-    struct stat status = {};
-    if (::fstat(m_fd, &status) != 0) {
-        const int errorNumber = errno;
-        return refuse(deviceErrorMessage(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not read the device information of %1"))
-                .arg(m_devicePath),
-            errorNumber));
-    }
-    if (!S_ISBLK(status.st_mode)) {
-        return refuse(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not a disk device.")).arg(m_devicePath));
+    DeviceNumber actual;
+    if (!blockDeviceNumber(&actual, error, displayError)) {
+        return false;
     }
 
     // Only the owning disk lists the partition under /sys/block/<disk>/.
     const QString partitionName = QFileInfo(m_devicePath).fileName();
     const DeviceNumber expectedNumber =
         readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partitionName));
-    const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
-    const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
-    if (!expectedNumber.isValid() || actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
+    if (!expectedNumber.isValid() || actual != expectedNumber) {
         return refuse(
             restoreText(QT_TRANSLATE_NOOP(
                             "usbrestore::Backend",
