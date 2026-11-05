@@ -38,7 +38,9 @@ QString devicePathFor(const QString &kernelName)
     return QStringLiteral("/dev/%1").arg(kernelName);
 }
 
-DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
+namespace {
+
+DiskInfo diskInfoWithMounts(const QString &diskName, const QVector<MountEntry> &mounts, DiskDetails details)
 {
     const QString sysfs = QStringLiteral("/sys/block/%1").arg(diskName);
 
@@ -75,7 +77,6 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
     }
 
     // The whole-disk device counts too: an ISO writer leaves iso9660 there with no table.
-    const QVector<MountEntry> mounts = readMounts();
     const QVector<DeviceNumber> owned = deviceNumbersOnDisk(diskName);
     if (details == DiskDetails::Display) {
         const QString wholeDiskFileSystem = fileSystemTypeForDevice(sysfs);
@@ -103,6 +104,13 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
     return disk;
 }
 
+} // namespace
+
+DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
+{
+    return diskInfoWithMounts(diskName, readMounts(), details);
+}
+
 QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error)
 {
     QVector<DiskInfo> disks;
@@ -115,11 +123,12 @@ QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error)
         return disks;
     }
 
+    const QVector<MountEntry> mounts = readMounts();
     for (const QString &name : names) {
         if (!isUsbBlockDevice(name)) {
             continue;
         }
-        disks.append(diskInfoFor(name));
+        disks.append(diskInfoWithMounts(name, mounts, DiskDetails::Display));
     }
     return disks;
 }
