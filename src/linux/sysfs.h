@@ -59,4 +59,8 @@ QString parentDiskName(const QString &partitionName);
 // unprivileged GUI.
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize);
 
+// The first fixed system directory holding an executable `name`, or empty. PATH is
+// never consulted: the result is run as root.
+QString findSystemExecutable(const QString &name);
+
 } // namespace usbrestore

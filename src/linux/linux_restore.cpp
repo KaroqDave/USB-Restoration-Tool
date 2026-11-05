@@ -31,27 +31,6 @@ namespace {
 constexpr int NewPartitionTimeoutMs = 30 * 1000;
 
 // Fixed directories, not $PATH: this runs as root and the caller may control $PATH.
-QString findSystemTool(const QString &name)
-{
-    static const QStringList directories = {
-        QStringLiteral("/usr/sbin"),
-        QStringLiteral("/sbin"),
-        QStringLiteral("/usr/bin"),
-        QStringLiteral("/bin"),
-        QStringLiteral("/usr/local/sbin"),
-        QStringLiteral("/usr/local/bin"),
-    };
-
-    for (const QString &directory : directories) {
-        const QString candidate = QStringLiteral("%1/%2").arg(directory, name);
-        const QFileInfo info(candidate);
-        if (info.exists() && info.isExecutable() && !info.isDir()) {
-            return candidate;
-        }
-    }
-    return {};
-}
-
 QByteArray randomGuid()
 {
     quint32 words[4] = {};
@@ -321,52 +300,44 @@ QString resolveFormatTool(FileSystemType fileSystem, QString *error, QString *di
         return QString();
     };
 
-    switch (fileSystem) {
-    case FileSystemType::ExFat: {
-        QString tool = findSystemTool(QStringLiteral("mkfs.exfat"));
-        if (tool.isEmpty()) {
-            tool = findSystemTool(QStringLiteral("mkexfatfs"));
+    struct FormatTool {
+        FileSystemType fileSystem;
+        // The second name, where there is one, is an older package's.
+        const char *names[2];
+        const char *missing;
+    };
+    static const FormatTool tools[] = {
+        {FileSystemType::ExFat,
+         {"mkfs.exfat", "mkexfatfs"},
+         QT_TRANSLATE_NOOP(
+             "usbrestore::Backend",
+             "mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
+             "\"exfatprogs\", Arch: \"exfatprogs\") and try again.")},
+        {FileSystemType::Fat32,
+         {"mkfs.vfat", "mkfs.fat"},
+         QT_TRANSLATE_NOOP("usbrestore::Backend", "mkfs.vfat was not found. Install dosfstools and try again.")},
+        {FileSystemType::Ntfs,
+         {"mkfs.ntfs", "mkntfs"},
+         QT_TRANSLATE_NOOP(
+             "usbrestore::Backend",
+             "mkfs.ntfs was not found. Install ntfs-3g (Debian/Ubuntu: \"ntfs-3g\", "
+             "Fedora: \"ntfsprogs\", Arch: \"ntfs-3g\") and try again.")},
+        {FileSystemType::Ext4,
+         {"mkfs.ext4", nullptr},
+         QT_TRANSLATE_NOOP("usbrestore::Backend", "mkfs.ext4 was not found. Install e2fsprogs and try again.")},
+    };
+
+    for (const FormatTool &entry : tools) {
+        if (entry.fileSystem != fileSystem) {
+            continue;
         }
-        if (tool.isEmpty()) {
-            return missing(restoreText(QT_TRANSLATE_NOOP(
-                "usbrestore::Backend",
-                "mkfs.exfat was not found. Install exfatprogs (Debian/Ubuntu and Fedora: "
-                "\"exfatprogs\", Arch: \"exfatprogs\") and try again.")));
+        for (const char *name : entry.names) {
+            const QString tool = name ? findSystemExecutable(QString::fromLatin1(name)) : QString();
+            if (!tool.isEmpty()) {
+                return tool;
+            }
         }
-        return tool;
-    }
-    case FileSystemType::Fat32: {
-        QString tool = findSystemTool(QStringLiteral("mkfs.vfat"));
-        if (tool.isEmpty()) {
-            tool = findSystemTool(QStringLiteral("mkfs.fat"));
-        }
-        if (tool.isEmpty()) {
-            return missing(restoreText(QT_TRANSLATE_NOOP(
-                "usbrestore::Backend", "mkfs.vfat was not found. Install dosfstools and try again.")));
-        }
-        return tool;
-    }
-    case FileSystemType::Ntfs: {
-        QString tool = findSystemTool(QStringLiteral("mkfs.ntfs"));
-        if (tool.isEmpty()) {
-            tool = findSystemTool(QStringLiteral("mkntfs"));
-        }
-        if (tool.isEmpty()) {
-            return missing(restoreText(QT_TRANSLATE_NOOP(
-                "usbrestore::Backend",
-                "mkfs.ntfs was not found. Install ntfs-3g (Debian/Ubuntu: \"ntfs-3g\", "
-                "Fedora: \"ntfsprogs\", Arch: \"ntfs-3g\") and try again.")));
-        }
-        return tool;
-    }
-    case FileSystemType::Ext4: {
-        const QString tool = findSystemTool(QStringLiteral("mkfs.ext4"));
-        if (tool.isEmpty()) {
-            return missing(restoreText(
-                QT_TRANSLATE_NOOP("usbrestore::Backend", "mkfs.ext4 was not found. Install e2fsprogs and try again.")));
-        }
-        return tool;
-    }
+        return missing(restoreText(entry.missing));
     }
     return missing(restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "That filesystem is not supported.")));
 }

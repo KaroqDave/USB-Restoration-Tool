@@ -336,4 +336,25 @@ PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSiz
     return PartitionStyle::Unknown;
 }
 
+QString findSystemExecutable(const QString &name)
+{
+    static const QStringList directories = {
+        QStringLiteral("/usr/sbin"),
+        QStringLiteral("/sbin"),
+        QStringLiteral("/usr/bin"),
+        QStringLiteral("/bin"),
+        QStringLiteral("/usr/local/sbin"),
+        QStringLiteral("/usr/local/bin"),
+    };
+
+    for (const QString &directory : directories) {
+        const QString candidate = QStringLiteral("%1/%2").arg(directory, name);
+        const QFileInfo info(candidate);
+        if (info.exists() && info.isExecutable() && !info.isDir()) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
 } // namespace usbrestore

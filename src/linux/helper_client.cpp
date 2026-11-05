@@ -1,6 +1,7 @@
 #include "linux/helper_client.h"
 
 #include "core/restore_protocol.h"
+#include "linux/sysfs.h"
 
 #include <QFileInfo>
 #include <QProcess>
@@ -28,22 +29,6 @@ constexpr int PollIntervalMs = 200;
 constexpr int MaxBufferedBytes = 64 * 1024;
 
 // Fixed paths, not $PATH, which a caller controlling the environment could redirect.
-QString findPkexec()
-{
-    static const QStringList candidates = {
-        QStringLiteral("/usr/bin/pkexec"),
-        QStringLiteral("/bin/pkexec"),
-        QStringLiteral("/usr/local/bin/pkexec"),
-    };
-    for (const QString &candidate : candidates) {
-        const QFileInfo info(candidate);
-        if (info.exists() && info.isExecutable() && !info.isDir()) {
-            return candidate;
-        }
-    }
-    return {};
-}
-
 bool acceptAnnouncement(const ProtocolLine &line, QString *error, QString *displayError)
 {
     return checkRestoreError(error, displayError, [&](QString *text, TextMode mode) {
@@ -101,7 +86,8 @@ QString helperExecutablePath()
 bool isHelperAvailable()
 {
     const QFileInfo helper(helperExecutablePath());
-    return helper.exists() && helper.isExecutable() && !helper.isDir() && !findPkexec().isEmpty();
+    return helper.exists() && helper.isExecutable() && !helper.isDir() &&
+           !findSystemExecutable(QStringLiteral("pkexec")).isEmpty();
 }
 
 bool runHelperRestore(
@@ -125,7 +111,7 @@ bool runHelperRestore(
         return false;
     }
 
-    const QString pkexec = findPkexec();
+    const QString pkexec = findSystemExecutable(QStringLiteral("pkexec"));
     if (pkexec.isEmpty()) {
         setRestoreError(
             error,
