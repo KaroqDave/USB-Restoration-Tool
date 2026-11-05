@@ -171,8 +171,6 @@ set(USBRESTORE_WIN_SOURCES
 # Everything a restore needs and nothing that presents one. This is the set the
 # privileged helper links: no DiskService, no worker, no widgets.
 set(USBRESTORE_LINUX_RESTORE_SOURCES
-    src/linux/loop_device.cpp
-    src/linux/loop_device.h
     src/linux/block_device.cpp
     src/linux/block_device.h
     src/linux/linux_enumerate.cpp

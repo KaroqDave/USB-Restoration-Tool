@@ -3,7 +3,6 @@
 #include "core/partition_table.h"
 #include "core/safety.h"
 #include "linux/block_device.h"
-#include "linux/loop_device.h"
 #include "linux/linux_enumerate.h"
 #include "linux/sysfs.h"
 
