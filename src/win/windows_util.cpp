@@ -4,6 +4,7 @@
 #include "platform/startup.h"
 
 #include <QByteArray>
+#include <QVector>
 #include <QtGlobal>
 
 #include <shellapi.h>
@@ -135,10 +136,13 @@ QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
     return {};
 }
 
-bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
+namespace {
+
+QVector<quint32> volumeDiskNumbers(HANDLE volumeHandle)
 {
+    QVector<quint32> numbers;
     if (volumeHandle == INVALID_HANDLE_VALUE) {
-        return false;
+        return numbers;
     }
 
     QByteArray buffer(static_cast<int>(sizeof(VOLUME_DISK_EXTENTS)), '\0');
@@ -158,34 +162,80 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
             const std::uint32_t count = boundedEntryCount(
                 extents->NumberOfDiskExtents, returned, offsetof(VOLUME_DISK_EXTENTS, Extents), sizeof(DISK_EXTENT));
             for (std::uint32_t i = 0; i < count; ++i) {
-                if (extents->Extents[i].DiskNumber == diskNumber) {
-                    return true;
-                }
+                numbers.append(extents->Extents[i].DiskNumber);
             }
-            return false;
+            return numbers;
         }
 
         const DWORD code = GetLastError();
         if (code != ERROR_MORE_DATA && code != ERROR_INSUFFICIENT_BUFFER) {
-            return false;
+            return numbers;
         }
         buffer.resize(buffer.size() + static_cast<int>(sizeof(DISK_EXTENT)) * 16);
     }
 
-    return false;
+    return numbers;
 }
 
-HANDLE openVolumeForQuery(QChar driveLetter)
+} // namespace
+
+HANDLE openVolumePath(const QString &path, DWORD access)
 {
-    const QString path = QStringLiteral("\\\\.\\%1:").arg(driveLetter);
     return CreateFileW(
         reinterpret_cast<LPCWSTR>(path.utf16()),
-        0,
+        access,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr,
         OPEN_EXISTING,
         0,
         nullptr);
+}
+
+bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
+{
+    return volumeDiskNumbers(volumeHandle).contains(diskNumber);
+}
+
+bool volumePathIsOnDisk(const QString &path, quint32 diskNumber, DWORD *openError)
+{
+    const HANDLE handle = openVolumePath(path, 0);
+    if (handle == INVALID_HANDLE_VALUE) {
+        if (openError) {
+            const DWORD code = GetLastError();
+            *openError = code == ERROR_SUCCESS ? ERROR_OPEN_FAILED : code;
+        }
+        return false;
+    }
+    if (openError) {
+        *openError = ERROR_SUCCESS;
+    }
+    const bool belongs = volumeHasDiskExtent(handle, diskNumber);
+    CloseHandle(handle);
+    return belongs;
+}
+
+QHash<quint32, QStringList> driveLettersByDisk()
+{
+    QHash<quint32, QStringList> letters;
+    const DWORD drives = GetLogicalDrives();
+    for (wchar_t letter = L'A'; letter <= L'Z'; ++letter) {
+        if ((drives & (1u << (letter - L'A'))) == 0) {
+            continue;
+        }
+        const QString name = QStringLiteral("%1:").arg(QChar(letter));
+        const HANDLE handle = openVolumePath(QStringLiteral("\\\\.\\") + name, 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        const QVector<quint32> disks = volumeDiskNumbers(handle);
+        CloseHandle(handle);
+        for (const quint32 disk : disks) {
+            if (!letters[disk].contains(name)) {
+                letters[disk].append(name);
+            }
+        }
+    }
+    return letters;
 }
 
 QStringList protectedSystemDriveLetters()

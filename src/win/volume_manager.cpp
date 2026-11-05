@@ -81,18 +81,6 @@ bool mayHaveDriveLetter(const QString &volumeName)
     return !queried || !driveRoot.isEmpty();
 }
 
-HANDLE openVolumePath(const QString &path, DWORD access)
-{
-    return CreateFileW(
-        reinterpret_cast<LPCWSTR>(path.utf16()),
-        access,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_EXISTING,
-        0,
-        nullptr);
-}
-
 // The handle must already be proven to sit on the target disk.
 bool lockAndDismount(HANDLE handle, const QString &volumePath, QString *error, QString *displayError)
 {
@@ -238,36 +226,15 @@ bool VolumeManager::removeMountPointsForDisk(
         }
     }
 
-    const DWORD drives = GetLogicalDrives();
-    for (wchar_t letter = L'D'; letter <= L'Z'; ++letter) {
-        const int bit = letter - L'A';
-        if ((drives & (1u << bit)) == 0) {
-            continue;
-        }
-        if (protectedSet.contains(normalizedLetter(QString(QChar(letter))))) {
+    // Query-only first: write access is never requested on a drive not proven to be the target.
+    for (const QString &driveName : driveLettersByDisk().value(diskNumber)) {
+        const QString letter = normalizedLetter(driveName);
+        if (letter < QStringLiteral("D") || protectedSet.contains(letter)) {
             continue;
         }
 
-        // Query-only first: write access is never requested on a drive not proven to be the target.
-        const HANDLE queryHandle = openVolumeForQuery(QChar(letter));
-        if (queryHandle == INVALID_HANDLE_VALUE) {
-            continue;
-        }
-        const bool belongs = volumeHasDiskExtent(queryHandle, diskNumber);
-        CloseHandle(queryHandle);
-        if (!belongs) {
-            continue;
-        }
-
-        const QString devicePath = QStringLiteral("\\\\.\\%1:").arg(QChar(letter));
-        const HANDLE handle = CreateFileW(
-            reinterpret_cast<LPCWSTR>(devicePath.utf16()),
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            nullptr,
-            OPEN_EXISTING,
-            0,
-            nullptr);
+        const QString devicePath = QStringLiteral("\\\\.\\") + driveName;
+        const HANDLE handle = openVolumePath(devicePath, GENERIC_READ | GENERIC_WRITE);
         if (handle == INVALID_HANDLE_VALUE) {
             const DWORD code = GetLastError();
             setRestoreError(
@@ -291,7 +258,7 @@ bool VolumeManager::removeMountPointsForDisk(
             return false;
         }
 
-        const QString mountPoint = QStringLiteral("%1:\\").arg(QChar(letter));
+        const QString mountPoint = driveName + QLatin1Char('\\');
         if (!DeleteVolumeMountPointW(reinterpret_cast<LPCWSTR>(mountPoint.utf16()))) {
             const DWORD code = GetLastError();
             if (code != ERROR_DIR_NOT_EMPTY && code != ERROR_FILE_NOT_FOUND && code != ERROR_PATH_NOT_FOUND &&
@@ -397,13 +364,7 @@ bool VolumeManager::waitForVolumesToLeaveDisk(
     const QStringList &devices, quint32 diskNumber, int timeoutMs, RestoreReporter *reporter) const
 {
     const auto stillOnDisk = [diskNumber](const QString &device) {
-        const HANDLE handle = openVolumePath(QStringLiteral("\\\\?\\GLOBALROOT%1").arg(device), 0);
-        if (handle == INVALID_HANDLE_VALUE) {
-            return false;
-        }
-        const bool belongs = volumeHasDiskExtent(handle, diskNumber);
-        CloseHandle(handle);
-        return belongs;
+        return volumePathIsOnDisk(QStringLiteral("\\\\?\\GLOBALROOT%1").arg(device), diskNumber);
     };
 
     QElapsedTimer timer;
@@ -434,22 +395,9 @@ QString VolumeManager::findVolumeNameForDisk(quint32 diskNumber) const
     QString result;
     for (;;) {
         const QString current = QString::fromWCharArray(volumeName);
-        const QString openName = withoutTrailingSlash(current);
-        const HANDLE handle = CreateFileW(
-            reinterpret_cast<LPCWSTR>(openName.utf16()),
-            0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            nullptr,
-            OPEN_EXISTING,
-            0,
-            nullptr);
-        if (handle != INVALID_HANDLE_VALUE) {
-            const bool belongs = volumeHasDiskExtent(handle, diskNumber);
-            CloseHandle(handle);
-            if (belongs) {
-                result = current;
-                break;
-            }
+        if (volumePathIsOnDisk(withoutTrailingSlash(current), diskNumber)) {
+            result = current;
+            break;
         }
 
         if (!FindNextVolumeW(finder, volumeName, MAX_PATH)) {
@@ -526,17 +474,11 @@ QString VolumeManager::mountVolume(const QString &volumeName, QString *error, QS
 bool VolumeManager::volumePathBelongsToDisk(
     const QString &volumeName, quint32 diskNumber, QString *error, QString *displayError) const
 {
-    const QString openName = withoutTrailingSlash(volumeName);
-    const HANDLE handle = CreateFileW(
-        reinterpret_cast<LPCWSTR>(openName.utf16()),
-        0,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_EXISTING,
-        0,
-        nullptr);
-    if (handle == INVALID_HANDLE_VALUE) {
-        const DWORD code = GetLastError();
+    DWORD code = ERROR_SUCCESS;
+    if (volumePathIsOnDisk(withoutTrailingSlash(volumeName), diskNumber, &code)) {
+        return true;
+    }
+    if (code != ERROR_SUCCESS) {
         setRestoreError(
             error,
             displayError,
@@ -545,16 +487,12 @@ bool VolumeManager::volumePathBelongsToDisk(
         return false;
     }
 
-    const bool belongs = volumeHasDiskExtent(handle, diskNumber);
-    CloseHandle(handle);
-    if (!belongs) {
-        setRestoreError(
-            error,
-            displayError,
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restored volume no longer belongs to disk %1."))
-                .arg(diskNumber));
-    }
-    return belongs;
+    setRestoreError(
+        error,
+        displayError,
+        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restored volume no longer belongs to disk %1."))
+            .arg(diskNumber));
+    return false;
 }
 
 bool VolumeManager::formatVolume(

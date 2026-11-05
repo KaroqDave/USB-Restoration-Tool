@@ -2,6 +2,9 @@
 
 #include "platform/disk_service.h"
 
+#include <QHash>
+#include <QStringList>
+
 namespace usbrestore {
 
 class WmiObject;
@@ -20,8 +23,10 @@ class DiskEnumerator {
         QString *displayError = nullptr) const;
 
   private:
-    DiskInfo diskInfoFromObject(const WmiObject &object, DiskDetails details = DiskDetails::Display) const;
-    QStringList driveLettersForDisk(quint32 diskNumber) const;
+    DiskInfo diskInfoFromObject(
+        const WmiObject &object,
+        const QHash<quint32, QStringList> &lettersByDisk,
+        DiskDetails details = DiskDetails::Display) const;
     void volumeInfoForLetters(const QStringList &letters, QStringList *labels, QStringList *fileSystems) const;
 };
 

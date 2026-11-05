@@ -392,9 +392,12 @@ QVector<DiskInfo> DiskEnumerator::listUsbDisks(RestoreMessage *error) const
         return disks;
     }
 
+    // C: included, so a USB disk holding the system drive reaches the safety check.
+    const QHash<quint32, QStringList> lettersByDisk =
+        objects.isEmpty() ? QHash<quint32, QStringList>{} : driveLettersByDisk();
     disks.reserve(objects.size());
     for (const WmiObject &object : objects) {
-        disks.push_back(diskInfoFromObject(object));
+        disks.push_back(diskInfoFromObject(object, lettersByDisk));
     }
 
     std::sort(disks.begin(), disks.end(), [](const DiskInfo &left, const DiskInfo &right) {
@@ -430,12 +433,13 @@ bool DiskEnumerator::diskByNumber(
     }
 
     if (disk) {
-        *disk = diskInfoFromObject(objects.first(), details);
+        *disk = diskInfoFromObject(objects.first(), driveLettersByDisk(), details);
     }
     return true;
 }
 
-DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object, DiskDetails details) const
+DiskInfo DiskEnumerator::diskInfoFromObject(
+    const WmiObject &object, const QHash<quint32, QStringList> &lettersByDisk, DiskDetails details) const
 {
     DiskInfo disk;
     disk.number = object.uintValue(L"Number");
@@ -454,35 +458,11 @@ DiskInfo DiskEnumerator::diskInfoFromObject(const WmiObject &object, DiskDetails
     disk.isSystem = object.boolValue(L"IsSystem");
     disk.isReadOnly = object.boolValue(L"IsReadOnly");
     disk.isOffline = object.boolValue(L"IsOffline");
-    disk.mountPoints = driveLettersForDisk(disk.number);
+    disk.mountPoints = lettersByDisk.value(disk.number);
     if (details == DiskDetails::Display) {
         volumeInfoForLetters(disk.mountPoints, &disk.labels, &disk.fileSystems);
     }
     return disk;
-}
-
-QStringList DiskEnumerator::driveLettersForDisk(quint32 diskNumber) const
-{
-    QStringList result;
-    const DWORD drives = GetLogicalDrives();
-    for (wchar_t letter = L'A'; letter <= L'Z'; ++letter) {
-        const int bit = letter - L'A';
-        if ((drives & (1u << bit)) == 0) {
-            continue;
-        }
-
-        // C: included, so a USB disk holding the system drive reaches the safety check.
-        const HANDLE handle = openVolumeForQuery(QChar(letter));
-        if (handle == INVALID_HANDLE_VALUE) {
-            continue;
-        }
-        const bool belongs = volumeHasDiskExtent(handle, diskNumber);
-        CloseHandle(handle);
-        if (belongs) {
-            result << QStringLiteral("%1:").arg(QChar(letter));
-        }
-    }
-    return result;
 }
 
 void DiskEnumerator::volumeInfoForLetters(
