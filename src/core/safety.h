@@ -33,8 +33,6 @@ struct RestoreGuard {
 // mounted at "/" is refused for holding "/boot".
 bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protectedMountPoints);
 
-bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard);
-
 // Every check is a refusal, not a warning.
 bool isSafeRestoreTarget(
     const DiskInfo &disk, const RestoreGuard &guard, QString *reason = nullptr, TextMode mode = TextMode::English);

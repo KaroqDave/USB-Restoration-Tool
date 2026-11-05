@@ -1,5 +1,7 @@
 #include "win/windows_util.h"
 
+#include "core/safety.h"
+
 #include <QByteArray>
 #include <QtGlobal>
 
@@ -151,16 +153,10 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
             &returned,
             nullptr);
         if (ok) {
-            constexpr DWORD headerSize = offsetof(VOLUME_DISK_EXTENTS, Extents);
-            if (returned < headerSize) {
-                return false;
-            }
-
             const auto *extents = reinterpret_cast<const VOLUME_DISK_EXTENTS *>(buffer.constData());
-            // The driver's count is bounded by the bytes returned so it cannot overrun the buffer.
-            const DWORD fits = (returned - headerSize) / sizeof(DISK_EXTENT);
-            const DWORD count = qMin(extents->NumberOfDiskExtents, fits);
-            for (DWORD i = 0; i < count; ++i) {
+            const std::uint32_t count = boundedEntryCount(
+                extents->NumberOfDiskExtents, returned, offsetof(VOLUME_DISK_EXTENTS, Extents), sizeof(DISK_EXTENT));
+            for (std::uint32_t i = 0; i < count; ++i) {
                 if (extents->Extents[i].DiskNumber == diskNumber) {
                     return true;
                 }

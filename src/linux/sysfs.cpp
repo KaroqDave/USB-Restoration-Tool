@@ -1,5 +1,7 @@
 #include "linux/sysfs.h"
 
+#include "core/safety.h"
+
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -313,7 +315,7 @@ PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSiz
         return partitionStyleFromUdevDatabase(devicePath);
     }
 
-    const qint64 sector = sectorSize == 0 ? 512 : sectorSize;
+    const qint64 sector = effectiveSectorSize(sectorSize);
     const QByteArray first = device.read(sector);
     if (first.size() < 512) {
         return PartitionStyle::Unknown;

@@ -126,6 +126,8 @@ bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protect
     return false;
 }
 
+namespace {
+
 bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard)
 {
     for (const QString &mountPoint : disk.mountPoints) {
@@ -135,6 +137,8 @@ bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard
     }
     return false;
 }
+
+} // namespace
 
 bool isSupportedSectorSize(quint32 sectorSize)
 {

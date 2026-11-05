@@ -3,7 +3,6 @@
 #include <QtGlobal>
 
 #include <array>
-#include <cstring>
 
 namespace usbrestore {
 

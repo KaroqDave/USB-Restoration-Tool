@@ -182,11 +182,9 @@ bool LoopDevice::configure(
             break;
         }
     }
-    const int code = errno;
+    const int errorNumber = errno;
     ::close(control);
     m_path.clear();
-    errno = code;
-    const int errorNumber = errno;
     return loopError(
         error,
         errorNumber,
