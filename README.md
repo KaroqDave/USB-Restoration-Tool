@@ -137,7 +137,20 @@ it has been silent and guidance for the current stage.
 `usb-restoration-tool.log`, stored beside the executable or in per-user
 application data when that directory is not writable.
 
-## What's New in 1.9.0
+## What's New in 1.9.5
+
+- The window stays responsive while drives are scanned, at startup and on
+  Refresh. Restore and Refresh wait for the scan, and the status says
+  **Scanning for USB disks...** until it finishes.
+- Windows scans open each drive letter once instead of once per USB drive, and
+  Linux scans read the mount table once. Changing the theme no longer restyles
+  the window twice.
+- On Linux, the FAT32 size limits read like every other size, for example
+  "2.00 TB" instead of "2 TiB".
+- Most of this release is internal cleanup. The safety checks, restore steps and
+  helper protocol are unchanged. Upgrade the installed app and helper together.
+
+### Previously, in 1.9.0
 
 - German covers the windows, privilege dialog, restore steps, and refusals. The
   header cycles **Language: Auto**, **English**, and **German**; the saved choice
@@ -148,30 +161,6 @@ application data when that directory is not writable.
   application and helper together. Linux requirements are unchanged.
 - If the German catalog cannot load, the interface stays English and the
   application still opens.
-
-### Previously, in 1.8.0
-
-- Confirmation, restore progress and the result now share one themed dialog,
-  with animated steps, completed-step timings, elapsed time and stall guidance.
-  The erase acknowledgement is still required, and cancellation is disabled
-  once destructive work starts.
-- After a restore, the main window rescans the drives and shows whether the
-  selected drive is eligible for another restore. Retrying requires a fresh
-  erase acknowledgement.
-- Restore setup avoids unnecessary filesystem-detail reads. Windows reuses its
-  storage connection and stops retrying permanent drive-lock errors; Linux
-  clears signatures in larger writes without changing the erased range.
-- Linux and Windows drive errors explain the failed operation and what to try
-  next. The log now records setup, step and total restore durations.
-- The About dialog covers the one-window restore flow and the published
-  packages. Closing the window during a restore explains that the disk is
-  unchanged until writing starts.
-- A native Fedora RPM installs the unprivileged app, restore helper and polkit
-  policy, with dependencies on the system Qt and all four formatters.
-- AppImage packaging checks bundled Qt platform and SVG loading to catch a
-  plugin-rewriting fault that caused startup crashes.
-
-Linux requirements are unchanged. Upgrade the installed app and helper together.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 

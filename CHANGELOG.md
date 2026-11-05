@@ -6,6 +6,33 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 1.9.5 - 2026-11-05
+
+A responsive disk scan and a cleanup of duplicated code. Safety checks, restore
+steps and the helper protocol are unchanged.
+
+### Changed
+
+- The disk scan runs off the GUI thread. While it runs, Restore and Refresh are
+  disabled and the status reads "Scanning for USB disks...".
+- Windows scans map drive letters to disks in one pass. Linux scans read
+  `/proc/self/mountinfo` once. The Fusion style is set once instead of on every
+  theme change.
+- Linux FAT32 size refusals use the same size format as every other message
+  ("2.00 TB", not "2 TiB").
+- The `windows` CMake preset uses Ninja Multi-Config and must be run from a
+  Developer PowerShell for Visual Studio. CMake no longer synthesises a clangd
+  compile database.
+- `src/core` is built once as a static library. Per-target build settings and
+  the translation source list come from one place.
+- Windows WMI code holds COM interfaces in `ComPtr` and releases them before
+  `CoUninitialize`.
+
+### Removed
+
+- Duplicated volume checks, executable lookups, block-device checks and helper
+  copies, and eight source files merged into their neighbours.
+
 ## 1.9.0 - 2026-11-02
 
 German, English, or the system language for the interface. Logs stay English,

@@ -9,18 +9,21 @@
 - Run the Linux loop tests as root: items 9 and 11 touched `BlockDevice` and
   `LoopDevice`, which only those tests exercise.
 
-### 1.9.5: source cleanup (from the 2026-11-04 full source review)
+### 1.9.5 release
 
-Items 1–22 and 24 are done on the PR #13 branch. Remaining:
-
-23. Run the disk scan off the GUI thread; WMI can freeze the window for a second
-    at startup and on Refresh. Scan on a `QThread`, drop stale results, and keep
-    Refresh and Restore disabled while scanning. The GUI tests assume a
-    synchronous scan. Own PR, stacked on PR #13.
-25. Release: bump `PROJECT_VERSION` to 1.9.5, add the README
-    `## What's New in 1.9.5` section and the changelog entry, tag `v1.9.5`.
+All 24 cleanup items are done: 1–22 and 24 in PR #13, 23 in PR #14, and the
+release commit on `release/1.9.5`, stacked on #14. To ship: merge #13, #14 and the
+release branch in that order, re-date the 1.9.5 changelog heading if needed, and
+tag `v1.9.5` on `main`.
 
 ## Recently completed
+
+- 2026-11-05: Item 23, the disk scan, runs on a `QThread` (PR #14). Restore,
+  Refresh and both drop-downs stay disabled while it runs, a second Refresh is
+  ignored, and the window waits for the scan before it is destroyed. The GUI
+  tests wait with `waitForScan()`; `keepsRestoreAndRefreshDisabledWhileScanning`
+  pins the behaviour. One new German string. Release commit: version 1.9.5,
+  README and changelog notes, and regenerated screenshots.
 
 - 2026-11-05: 1.9.5 cleanup items 1–22 and 24 on PR #13, one commit per item or
   tight pair. Step counts derive from `restorePlan()`; the English-only Windows
