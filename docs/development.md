@@ -15,6 +15,11 @@ cmake --build --preset windows
 ctest --preset windows
 ```
 
+Run the Windows commands from a Developer PowerShell for Visual Studio: the
+preset uses Ninja Multi-Config with the MSVC compiler from that environment. A
+`build` directory configured with the Visual Studio generator by an older
+version must be deleted first.
+
 On Linux, use `linux` in all three commands. Windows output is
 `build/Release/usb-restoration-tool.exe`; Linux output is
 `build-linux/usb-restoration-tool`. Windows builds deploy the Qt runtime beside
@@ -30,10 +35,10 @@ ctest --test-dir build -C Release --output-on-failure
 
 Set `-DUSBRESTORE_BUILD_TESTS=OFF` to omit tests.
 
-Configure creates `compile_commands.json` for clangd and suppresses diagnostics
-for the inactive platform backend. Restart clangd after configuring. Windows
-uses a synthesized database because Visual Studio does not export one; Linux
-links the build-tree database.
+Configure exports `compile_commands.json` for clangd and suppresses diagnostics
+for the inactive platform backend. Restart clangd after configuring. clangd
+finds the Windows preset's `build` database itself; on Linux, configure links
+the `build-linux` database next to `CMakeLists.txt`.
 
 ## Test
 
