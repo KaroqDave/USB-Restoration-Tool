@@ -382,8 +382,14 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: trans
 
 void applyTheme(QApplication &app, Theme theme)
 {
-    if (auto *fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
-        app.setStyle(fusion);
+    // Setting a style repolishes every widget, so a theme change must not repeat it. The
+    // style sheet wraps the style in a proxy, so app.style() cannot say whether it is Fusion.
+    static bool fusionSet = false;
+    if (!fusionSet) {
+        if (auto *fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
+            app.setStyle(fusion);
+        }
+        fusionSet = true;
     }
 
     const ColorScheme scheme = resolveColorScheme(theme);

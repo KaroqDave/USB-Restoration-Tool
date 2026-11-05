@@ -22,6 +22,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPalette>
+#include <QPointer>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QProgressBar>
@@ -30,6 +31,7 @@
 #include <QScopeGuard>
 #include <QScrollArea>
 #include <QSignalSpy>
+#include <QStyle>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -1430,6 +1432,17 @@ class GuiTests : public QObject {
         dialog->accept();
         QVERIFY(!restore->isEnabled());
         window.close();
+    }
+
+    // Replacing the style repolished every widget a second time on each theme change.
+    void keepsTheFusionStyleAcrossThemeChanges()
+    {
+        applyTheme(*qApp, Theme::Light);
+        const QPointer<QStyle> style = qApp->style();
+        applyTheme(*qApp, Theme::Dark);
+        applyTheme(*qApp, Theme::Light);
+        QVERIFY(style);
+        QVERIFY(qApp->style() == style);
     }
 
     void doesNotRepurposePaletteRolesForTheStepIndicator()
