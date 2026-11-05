@@ -306,7 +306,7 @@ release body.
 
 | Directory | Responsibility |
 | --- | --- |
-| `src/core` | No OS headers. `disk.*` (the `DiskInfo` model), `safety.*` (every erase rule and the layout arithmetic), `partition_table.*` (GPT and MBR bytes, GPT's CRC-32), `restore_steps.*` (each backend's step plan, which sets the step count and first destructive step) and `restore_protocol.*` (the GUI-to-helper protocol; its argument half is a trust boundary) |
+| `src/core` | No OS headers. `disk.*` (the `DiskInfo` model), `safety.*` (every erase rule and the layout arithmetic), `partition_table.*` (GPT and MBR bytes, GPT's CRC-32), `restore_message.*` (bilingual messages, and each backend's step plan, which sets the step count and first destructive step) and `restore_protocol.*` (the GUI-to-helper protocol; its argument half is a trust boundary) |
 | `src/platform` | `disk_service.h`, the interface both backends implement; `restore_worker.*`, which turns progress calls into Qt signals; `logger.*`; `startup.h` |
 | `src/win` | WMI (`wmi.*`), `DeviceIoControl` on `\\.\PhysicalDriveN` (`raw_disk.*`), enumeration, volumes and drive letters, `windows_disk_service.*` |
 | `src/linux` | sysfs and mountinfo (`sysfs.*`), raw block I/O (`block_device.*`), read-only enumeration (`linux_enumerate.*`), the privileged restore (`linux_restore.*`) and the `DiskService` over both (`linux_disk_service.*`) |

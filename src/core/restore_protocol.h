@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
-#include "core/restore_steps.h"
+#include "core/restore_message.h"
 
 #include <QString>
 #include <QStringList>

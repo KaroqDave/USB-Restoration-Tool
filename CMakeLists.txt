@@ -134,8 +134,6 @@ set(USBRESTORE_CORE_SOURCES
     src/core/restore_message.h
     src/core/restore_protocol.cpp
     src/core/restore_protocol.h
-    src/core/restore_steps.cpp
-    src/core/restore_steps.h
     src/core/safety.cpp
     src/core/safety.h
 )

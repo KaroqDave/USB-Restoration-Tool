@@ -3,7 +3,6 @@
 #include "core/partition_table.h"
 #include "core/restore_message.h"
 #include "core/restore_protocol.h"
-#include "core/restore_steps.h"
 #include "core/safety.h"
 #include "platform/translations.h"
 
