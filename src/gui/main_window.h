@@ -35,6 +35,12 @@ class MainWindow : public QMainWindow {
   public:
     MainWindow(
         DiskService &service, Theme initialTheme, Translations *translations = nullptr, QWidget *parent = nullptr);
+    ~MainWindow() override;
+
+    bool isScanning() const { return m_scanning; }
+
+  signals:
+    void scanFinished();
 
   protected:
     void changeEvent(QEvent *event) override;
@@ -75,6 +81,7 @@ class MainWindow : public QMainWindow {
     void fitMinimumWidthToContent();
     void refreshStatusBadge();
 
+    void applyScan(QVector<DiskInfo> disks, const RestoreMessage &error, const RestoreGuard &guard);
     void renderDisks();
     void renderSelectedDisk();
     void setStatus(StatusKind status, const QString &message, const QString &detail = {});
@@ -97,6 +104,8 @@ class MainWindow : public QMainWindow {
     Theme m_theme = Theme::System;
     StatusKind m_status = StatusKind::Info;
     bool m_restoreRunning = false;
+    // The scan runs off the GUI thread; Refresh and Restore wait for it.
+    bool m_scanning = false;
 
     // Stall watch: tells a stick stuck in uninterruptible sleep apart from a hung program.
     QElapsedTimer m_restoreActivity;
@@ -137,6 +146,7 @@ class MainWindow : public QMainWindow {
     QTextEdit *m_log = nullptr;
     QPointer<QDialog> m_activityDialog;
     QPointer<RestoreDialog> m_restoreDialog;
+    QPointer<QThread> m_scanThread;
     QPointer<QThread> m_restoreThread;
     QPointer<RestoreWorker> m_restoreWorker;
 };
