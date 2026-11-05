@@ -33,4 +33,7 @@ QStringList protectedSystemDriveLetters();
 // process's elevation. False if the target contains a quote.
 bool openAsInvokingUser(const QString &target);
 
+// The manifest requests elevation, so false means stop now rather than fail mid-operation.
+bool isProcessElevated();
+
 } // namespace usbrestore

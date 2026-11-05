@@ -152,10 +152,6 @@ set(USBRESTORE_PLATFORM_SOURCES
 )
 
 set(USBRESTORE_WIN_SOURCES
-    src/win/admin.cpp
-    src/win/admin.h
-    src/win/disk_enumerator.cpp
-    src/win/disk_enumerator.h
     src/win/raw_disk.cpp
     src/win/raw_disk.h
     src/win/volume_manager.cpp
