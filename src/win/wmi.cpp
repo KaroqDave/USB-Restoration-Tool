@@ -153,53 +153,9 @@ bool initializeComSecurity(QString *error)
     return true;
 }
 
-WmiObject::WmiObject(IWbemClassObject *object) : m_object(object) {}
-
-WmiObject::WmiObject(const WmiObject &other) : m_object(other.m_object)
+WmiObject::WmiObject(IWbemClassObject *object)
 {
-    if (m_object) {
-        m_object->AddRef();
-    }
-}
-
-WmiObject &WmiObject::operator=(const WmiObject &other)
-{
-    if (this == &other) {
-        return *this;
-    }
-    if (other.m_object) {
-        other.m_object->AddRef();
-    }
-    if (m_object) {
-        m_object->Release();
-    }
-    m_object = other.m_object;
-    return *this;
-}
-
-WmiObject::WmiObject(WmiObject &&other) noexcept : m_object(other.m_object)
-{
-    other.m_object = nullptr;
-}
-
-WmiObject &WmiObject::operator=(WmiObject &&other) noexcept
-{
-    if (this == &other) {
-        return *this;
-    }
-    if (m_object) {
-        m_object->Release();
-    }
-    m_object = other.m_object;
-    other.m_object = nullptr;
-    return *this;
-}
-
-WmiObject::~WmiObject()
-{
-    if (m_object) {
-        m_object->Release();
-    }
+    m_object.Attach(object);
 }
 
 bool WmiObject::isValid() const
@@ -209,7 +165,7 @@ bool WmiObject::isValid() const
 
 IWbemClassObject *WmiObject::get() const
 {
-    return m_object;
+    return m_object.Get();
 }
 
 QVariant WmiObject::value(const wchar_t *name) const
@@ -273,7 +229,7 @@ QString WmiObject::objectPath() const
 
 bool WmiObject::setValue(const QString &name, const QVariant &value, QString *error, QString *displayError)
 {
-    const HRESULT result = m_object ? putInputValue(m_object, name, value) : E_POINTER;
+    const HRESULT result = m_object ? putInputValue(m_object.Get(), name, value) : E_POINTER;
     if (FAILED(result)) {
         setRestoreError(
             error,
@@ -297,23 +253,27 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
     m_comInitialized = SUCCEEDED(result);
 
     result = CoCreateInstance(
-        CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<void **>(&m_locator));
+        CLSID_WbemLocator,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_IWbemLocator,
+        reinterpret_cast<void **>(m_locator.GetAddressOf()));
     if (FAILED(result)) {
         setError(
             result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "CoCreateInstance(IWbemLocator) failed")));
         return;
     }
 
-    result =
-        m_locator->ConnectServer(_bstr_t(namespacePath), nullptr, nullptr, nullptr, 0, nullptr, nullptr, &m_services);
+    result = m_locator->ConnectServer(
+        _bstr_t(namespacePath), nullptr, nullptr, nullptr, 0, nullptr, nullptr, m_services.GetAddressOf());
     if (FAILED(result)) {
         setError(result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI ConnectServer failed")));
-        m_services = nullptr;
+        m_services.Reset();
         return;
     }
 
     result = CoSetProxyBlanket(
-        m_services,
+        m_services.Get(),
         RPC_C_AUTHN_WINNT,
         RPC_C_AUTHZ_NONE,
         nullptr,
@@ -323,19 +283,15 @@ WmiConnection::WmiConnection(const wchar_t *namespacePath)
         EOAC_NONE);
     if (FAILED(result)) {
         setError(result, restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "CoSetProxyBlanket failed")));
-        m_services->Release();
-        m_services = nullptr;
+        m_services.Reset();
     }
 }
 
 WmiConnection::~WmiConnection()
 {
-    if (m_services) {
-        m_services->Release();
-    }
-    if (m_locator) {
-        m_locator->Release();
-    }
+    // Members are destroyed after this body, so release them before COM goes away.
+    m_services.Reset();
+    m_locator.Reset();
     if (m_comInitialized) {
         CoUninitialize();
     }
@@ -359,13 +315,13 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
     }
     m_lastError = {};
 
-    IEnumWbemClassObject *enumerator = nullptr;
+    Microsoft::WRL::ComPtr<IEnumWbemClassObject> enumerator;
     HRESULT result = m_services->ExecQuery(
         _bstr_t(L"WQL"),
         _bstr_t(wql.toStdWString().c_str()),
         WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
         nullptr,
-        &enumerator);
+        enumerator.GetAddressOf());
     if (FAILED(result) || !enumerator) {
         setError(
             FAILED(result) ? result : E_FAIL,
@@ -388,8 +344,6 @@ QVector<WmiObject> WmiConnection::query(const QString &wql) const
         }
         objects.push_back(WmiObject(object));
     }
-
-    enumerator->Release();
     return objects;
 }
 
@@ -424,19 +378,19 @@ WmiCallResult WmiConnection::callMethod(
     }
     m_lastError = {};
 
-    IWbemClassObject *classObject = nullptr;
-    IWbemClassObject *inSignature = nullptr;
+    Microsoft::WRL::ComPtr<IWbemClassObject> classObject;
+    Microsoft::WRL::ComPtr<IWbemClassObject> inSignature;
     WmiObject inInstance;
-    IWbemClassObject *outParams = nullptr;
+    Microsoft::WRL::ComPtr<IWbemClassObject> outParams;
 
-    HRESULT result =
-        m_services->GetObject(_bstr_t(className.toStdWString().c_str()), 0, nullptr, &classObject, nullptr);
+    HRESULT result = m_services->GetObject(
+        _bstr_t(className.toStdWString().c_str()), 0, nullptr, classObject.GetAddressOf(), nullptr);
     if (FAILED(result)) {
         setError(
             result,
             restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "WMI GetObject failed for class %1")).arg(className));
     } else {
-        result = classObject->GetMethod(methodName, 0, &inSignature, nullptr);
+        result = classObject->GetMethod(methodName, 0, inSignature.GetAddressOf(), nullptr);
         if (FAILED(result)) {
             setError(
                 result,
@@ -479,7 +433,7 @@ WmiCallResult WmiConnection::callMethod(
             0,
             nullptr,
             inInstance.get(),
-            &outParams,
+            outParams.GetAddressOf(),
             nullptr);
         if (FAILED(result)) {
             setError(
@@ -491,8 +445,7 @@ WmiCallResult WmiConnection::callMethod(
 
     if (SUCCEEDED(result)) {
         if (outParams) {
-            const WmiObject output(outParams);
-            outParams = nullptr;
+            const WmiObject output(outParams.Detach());
             callResult.returnValue = output.uintValue(L"ReturnValue", 0);
             callResult.jobPath = output.stringValue(L"CreatedStorageJob");
             callResult.extendedStatus = output.stringValue(L"ExtendedStatus");
@@ -501,15 +454,6 @@ WmiCallResult WmiConnection::callMethod(
         }
     }
 
-    if (inSignature) {
-        inSignature->Release();
-    }
-    if (classObject) {
-        classObject->Release();
-    }
-    if (outParams) {
-        outParams->Release();
-    }
     return callResult;
 }
 
