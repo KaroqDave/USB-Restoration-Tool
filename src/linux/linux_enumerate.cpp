@@ -1,6 +1,5 @@
 #include "linux/linux_enumerate.h"
 
-#include "core/partition_table.h"
 #include "core/safety.h"
 #include "linux/sysfs.h"
 
@@ -39,7 +38,9 @@ QString devicePathFor(const QString &kernelName)
     return QStringLiteral("/dev/%1").arg(kernelName);
 }
 
-DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
+namespace {
+
+DiskInfo diskInfoWithMounts(const QString &diskName, const QVector<MountEntry> &mounts, DiskDetails details)
 {
     const QString sysfs = QStringLiteral("/sys/block/%1").arg(diskName);
 
@@ -71,30 +72,18 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
     }
     disk.isReadOnly = readSysfsAttribute(QStringLiteral("%1/ro").arg(sysfs)) == QStringLiteral("1");
     disk.isOffline = disk.size == 0;
-    disk.health = static_cast<quint16>(HealthStatus::Healthy);
     if (details == DiskDetails::Display) {
         disk.partitionStyle = static_cast<quint16>(detectPartitionStyle(disk.deviceId, disk.sectorSize));
     }
 
     // The whole-disk device counts too: an ISO writer leaves iso9660 there with no table.
-    const QVector<MountEntry> mounts = readMounts();
-    const DeviceNumber diskNumber = readDeviceNumber(sysfs);
-    QVector<DeviceNumber> owned;
-    if (diskNumber.isValid()) {
-        owned.append(diskNumber);
-    }
+    const QVector<DeviceNumber> owned = deviceNumbersOnDisk(diskName);
     if (details == DiskDetails::Display) {
         const QString wholeDiskFileSystem = fileSystemTypeForDevice(sysfs);
         if (!wholeDiskFileSystem.isEmpty()) {
             disk.fileSystems.append(wholeDiskFileSystem);
         }
-    }
-    for (const QString &partition : listPartitionNames(diskName)) {
-        const DeviceNumber number = readDeviceNumber(QStringLiteral("%1/%2").arg(sysfs, partition));
-        if (number.isValid()) {
-            owned.append(number);
-        }
-        if (details == DiskDetails::Display) {
+        for (const QString &partition : listPartitionNames(diskName)) {
             const QString label = labelForPartition(partition);
             if (!label.isEmpty() && !disk.labels.contains(label)) {
                 disk.labels.append(label);
@@ -115,6 +104,13 @@ DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
     return disk;
 }
 
+} // namespace
+
+DiskInfo diskInfoFor(const QString &diskName, DiskDetails details)
+{
+    return diskInfoWithMounts(diskName, readMounts(), details);
+}
+
 QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error)
 {
     QVector<DiskInfo> disks;
@@ -127,11 +123,12 @@ QVector<DiskInfo> listUsbDiskInfos(RestoreMessage *error)
         return disks;
     }
 
+    const QVector<MountEntry> mounts = readMounts();
     for (const QString &name : names) {
         if (!isUsbBlockDevice(name)) {
             continue;
         }
-        disks.append(diskInfoFor(name));
+        disks.append(diskInfoWithMounts(name, mounts, DiskDetails::Display));
     }
     return disks;
 }
@@ -141,26 +138,22 @@ bool refreshUsbDisk(
 {
     const QString name = QFileInfo(deviceId).fileName();
     if (name.isEmpty() || !QDir(QStringLiteral("/sys/block/%1").arg(name)).exists()) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend", "%1 is no longer present. Refresh and select the USB again."))
-                    .arg(deviceId));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(
+                QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is no longer present. Refresh and select the USB again."))
+                .arg(deviceId));
         return false;
     }
     if (!isUsbBlockDevice(name)) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend",
-                                "%1 is no longer reported on the USB bus. Refresh and select the USB again."))
-                    .arg(deviceId));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend",
+                            "%1 is no longer reported on the USB bus. Refresh and select the USB again."))
+                .arg(deviceId));
         return false;
     }
 

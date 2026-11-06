@@ -1,7 +1,7 @@
 # Fallback include path so clangd can parse the tree before CMake has written
-# compile_commands.json. Configure puts one next to CMakeLists.txt: synthesised
-# on Windows (the Visual Studio generator never emits one), and a symlink to
-# the build-tree database on Linux. Restart clangd after configure.
+# compile_commands.json. clangd finds the Windows preset's build/ database
+# itself; on Linux configure links build-linux's next to CMakeLists.txt.
+# Restart clangd after configure.
 #
 # Files under src/win (on Linux) or src/linux and src/helper (on Windows) are
 # not in that database. Configure writes a .clangd in those directories that

@@ -20,24 +20,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Ninja and the Makefile generators honour this; Visual Studio ignores it.
-# usbrestore_setup_clangd() then puts a database next to this file so clangd
-# still sees src/ and Qt: a clang-style synthesis on Windows, a symlink to the
-# build-tree file on Linux.
+# Ninja and the Makefile generators honour this; Visual Studio ignores it, so the
+# windows preset uses Ninja. clangd finds build/compile_commands.json by itself;
+# usbrestore_setup_clangd() links build-linux's next to this file.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# The Visual Studio generator never emits compile_commands.json, so Windows
-# needs the synthesised copy. Linux already has an accurate one in the build
-# tree; writing another over it would hide per-target flags from the editor.
-if(WIN32)
-    set(_usbrestore_export_clangd_default ON)
-else()
-    set(_usbrestore_export_clangd_default OFF)
-endif()
-option(USBRESTORE_EXPORT_CLANGD_COMPILE_COMMANDS
-    "Write a synthesised compile_commands.json next to CMakeLists.txt for clangd"
-    ${_usbrestore_export_clangd_default})
-unset(_usbrestore_export_clangd_default)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -134,8 +120,6 @@ set(USBRESTORE_CORE_SOURCES
     src/core/restore_message.h
     src/core/restore_protocol.cpp
     src/core/restore_protocol.h
-    src/core/restore_steps.cpp
-    src/core/restore_steps.h
     src/core/safety.cpp
     src/core/safety.h
 )
@@ -154,10 +138,6 @@ set(USBRESTORE_PLATFORM_SOURCES
 )
 
 set(USBRESTORE_WIN_SOURCES
-    src/win/admin.cpp
-    src/win/admin.h
-    src/win/disk_enumerator.cpp
-    src/win/disk_enumerator.h
     src/win/raw_disk.cpp
     src/win/raw_disk.h
     src/win/volume_manager.cpp
@@ -173,8 +153,6 @@ set(USBRESTORE_WIN_SOURCES
 # Everything a restore needs and nothing that presents one. This is the set the
 # privileged helper links: no DiskService, no worker, no widgets.
 set(USBRESTORE_LINUX_RESTORE_SOURCES
-    src/linux/loop_device.cpp
-    src/linux/loop_device.h
     src/linux/block_device.cpp
     src/linux/block_device.h
     src/linux/linux_enumerate.cpp
@@ -206,9 +184,8 @@ function(usbrestore_harden target)
         # An elevated process is worth compiling defensively: /sdl promotes the
         # security-relevant warnings to errors, /guard:cf adds control-flow
         # guard, and /CETCOMPAT opts into hardware shadow stacks where the CPU
-        # has them. /utf-8 so the check marks and separators in the UI strings
-        # are compiled as the UTF-8 that QStringLiteral expects.
-        target_compile_options(${target} PRIVATE /utf-8 /W4 /permissive- /sdl /guard:cf)
+        # has them.
+        target_compile_options(${target} PRIVATE /W4 /permissive- /sdl /guard:cf)
         target_link_options(${target} PRIVATE /guard:cf /CETCOMPAT /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # The same intent as the MSVC flags above: a process running as root
@@ -230,10 +207,17 @@ function(usbrestore_sanitize target)
     endif()
 endfunction()
 
-function(usbrestore_json_escape str outvar)
-    string(REPLACE "\\" "\\\\" str "${str}")
-    string(REPLACE "\"" "\\\"" str "${str}")
-    set(${outvar} "${str}" PARENT_SCOPE)
+# What every target compiled from src/ needs. /utf-8 so the check marks and
+# separators in the UI strings are compiled as the UTF-8 that QStringLiteral expects.
+function(usbrestore_configure target)
+    target_include_directories(${target} PRIVATE src)
+    target_compile_definitions(${target} PRIVATE USBRESTORE_APP_VERSION="${PROJECT_VERSION}")
+    if(WIN32)
+        target_compile_definitions(${target} PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /utf-8)
+    endif()
 endfunction()
 
 # Writes into the source tree without failing configure on a read-only
@@ -296,8 +280,6 @@ endfunction()
 function(usbrestore_link_compile_commands)
     set(_src "${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json")
     set(_dst "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json")
-    # A previously synthesised regular file would otherwise keep clangd from
-    # seeing the generator's database.
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E rm -f "${_dst}"
         RESULT_VARIABLE _rm_res
@@ -317,159 +299,18 @@ function(usbrestore_link_compile_commands)
     endif()
 endfunction()
 
-# Clangd walks up from the open file looking for compile_commands.json. The
-# Visual Studio generator never writes one, and Ninja writes it into the build
-# tree, which clangd does not search. Either way the editor reports core/disk.h
-# and every Qt header as missing. A clang-style database next to CMakeLists.txt
-# (gitignored, machine-specific Qt paths) is what the language server actually
-# reads on Windows; CMAKE_EXPORT_COMPILE_COMMANDS stays on for tools that look
-# in the build tree.
-function(usbrestore_export_clangd_compile_commands)
-    set(_includes "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    foreach(_cfg IN ITEMS "" Release Debug RelWithDebInfo MinSizeRel)
-        if(_cfg STREQUAL "")
-            set(_suffix "")
-        else()
-            set(_suffix "_${_cfg}")
-        endif()
-        list(APPEND _includes
-            "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool_autogen/include${_suffix}"
-            "${CMAKE_CURRENT_BINARY_DIR}/usb-restoration-tool-tests_autogen/include${_suffix}"
-            "${CMAKE_CURRENT_BINARY_DIR}/usb-gui-tests_autogen/include${_suffix}"
-            "${CMAKE_CURRENT_BINARY_DIR}/usb-partition-dump_autogen/include${_suffix}"
-            "${CMAKE_CURRENT_BINARY_DIR}/usb-core-fuzz_autogen/include${_suffix}"
-        )
-    endforeach()
-
-    foreach(_tgt IN ITEMS Qt6::Platform Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
-        if(NOT TARGET ${_tgt})
-            continue()
-        endif()
-        get_target_property(_tgt_inc ${_tgt} INTERFACE_INCLUDE_DIRECTORIES)
-        if(_tgt_inc)
-            foreach(_p IN LISTS _tgt_inc)
-                if(NOT _p MATCHES "\\$<")
-                    list(APPEND _includes "${_p}")
-                endif()
-            endforeach()
-        endif()
-    endforeach()
-    list(REMOVE_DUPLICATES _includes)
-
-    set(_defs
-        QT_CORE_LIB
-        QT_GUI_LIB
-        QT_WIDGETS_LIB
-        "USBRESTORE_APP_VERSION=\"${PROJECT_VERSION}\""
-    )
-    if(TARGET Qt6::Test)
-        list(APPEND _defs QT_TESTLIB_LIB)
-    endif()
-    if(WIN32)
-        list(APPEND _defs UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-    endif()
-    foreach(_tgt IN ITEMS Qt6::Platform Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
-        if(NOT TARGET ${_tgt})
-            continue()
-        endif()
-        get_target_property(_tgt_defs ${_tgt} INTERFACE_COMPILE_DEFINITIONS)
-        if(_tgt_defs)
-            foreach(_d IN LISTS _tgt_defs)
-                if(NOT _d MATCHES "\\$<")
-                    list(APPEND _defs "${_d}")
-                endif()
-            endforeach()
-        endif()
-    endforeach()
-    list(REMOVE_DUPLICATES _defs)
-
-    # clangd is Clang even when the project is built with MSVC, so the database
-    # uses Clang flags. --target=windows-msvc is what lets it find windows.h.
-    set(_args clang++)
-    list(APPEND _args -std=c++20 -xc++)
-    if(WIN32)
-        list(APPEND _args --target=x86_64-pc-windows-msvc -fms-extensions -fms-compatibility)
-    endif()
-    foreach(_inc IN LISTS _includes)
-        file(TO_CMAKE_PATH "${_inc}" _inc)
-        list(APPEND _args "-I${_inc}")
-    endforeach()
-    foreach(_d IN LISTS _defs)
-        list(APPEND _args "-D${_d}")
-    endforeach()
-
-    set(_sources
-        ${USBRESTORE_CORE_SOURCES}
-        ${USBRESTORE_PLATFORM_SOURCES}
-        ${USBRESTORE_GUI_SOURCES}
-        tests/test_core.cpp
-        tests/test_gui.cpp
-        tests/fuzz_core.cpp
-        tools/partition_dump.cpp
-    )
-    if(WIN32)
-        list(APPEND _sources ${USBRESTORE_WIN_SOURCES})
-    else()
-        list(APPEND _sources
-            ${USBRESTORE_LINUX_SOURCES}
-            src/helper/main.cpp
-        )
-    endif()
-
-    set(_abs_sources "")
-    foreach(_src IN LISTS _sources)
-        if(NOT _src MATCHES "\\.(cpp|h)$")
-            continue()
-        endif()
-        if(NOT IS_ABSOLUTE "${_src}")
-            set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
-        endif()
-        list(APPEND _abs_sources "${_src}")
-    endforeach()
-    list(REMOVE_DUPLICATES _abs_sources)
-
-    set(_args_json "")
-    set(_sep "")
-    foreach(_a IN LISTS _args)
-        usbrestore_json_escape("${_a}" _esc)
-        string(APPEND _args_json "${_sep}\"${_esc}\"")
-        set(_sep ", ")
-    endforeach()
-
-    file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" _dir)
-    usbrestore_json_escape("${_dir}" _dir_esc)
-
-    set(_json "[\n")
-    set(_first TRUE)
-    foreach(_src IN LISTS _abs_sources)
-        file(TO_CMAKE_PATH "${_src}" _src_fwd)
-        usbrestore_json_escape("${_src_fwd}" _src_esc)
-        if(NOT _first)
-            string(APPEND _json ",\n")
-        endif()
-        set(_first FALSE)
-        string(APPEND _json "  {\n")
-        string(APPEND _json "    \"directory\": \"${_dir_esc}\",\n")
-        string(APPEND _json "    \"file\": \"${_src_esc}\",\n")
-        string(APPEND _json "    \"arguments\": [${_args_json}, \"${_src_esc}\"]\n")
-        string(APPEND _json "  }")
-    endforeach()
-    string(APPEND _json "\n]\n")
-
-    set(_generated "${CMAKE_CURRENT_BINARY_DIR}/compile_commands.clangd.json")
-    file(WRITE "${_generated}" "${_json}")
-    usbrestore_try_copy_to_source(
-        "${_generated}"
-        "compile_commands.json"
-        "Wrote ${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json for clangd"
-    )
-endfunction()
-
 function(usbrestore_setup_clangd)
     usbrestore_write_clangd_inactive_platform_skip()
-    if(USBRESTORE_EXPORT_CLANGD_COMPILE_COMMANDS)
-        usbrestore_export_clangd_compile_commands()
-    elseif(CMAKE_EXPORT_COMPILE_COMMANDS AND NOT CMAKE_GENERATOR MATCHES "Visual Studio")
+    if(NOT CMAKE_EXPORT_COMPILE_COMMANDS OR CMAKE_GENERATOR MATCHES "Visual Studio")
+        return()
+    endif()
+    if(WIN32)
+        # A database synthesised by an older configure would shadow build/'s.
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json"
+                AND NOT IS_SYMLINK "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json")
+            file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json")
+        endif()
+    else()
         usbrestore_link_compile_commands()
     endif()
 endfunction()
@@ -486,6 +327,24 @@ set(USBRESTORE_GUI_SOURCES
     src/gui/theme.h
     resources/resources.qrc
 )
+
+# src/core once, hardened like the binaries that hold privilege, and once more
+# under the sanitizers when the tests use them: ASan and _FORTIFY_SOURCE do not
+# combine. The fuzzer compiles its own copy so libFuzzer can instrument it.
+function(usbrestore_add_core target)
+    add_library(${target} STATIC ${USBRESTORE_CORE_SOURCES})
+    usbrestore_configure(${target})
+    target_link_libraries(${target} PUBLIC Qt6::Core)
+endfunction()
+
+usbrestore_add_core(usbrestore-core)
+usbrestore_harden(usbrestore-core)
+set(USBRESTORE_TEST_CORE usbrestore-core)
+if(USBRESTORE_BUILD_TESTS AND USBRESTORE_SANITIZE)
+    usbrestore_add_core(usbrestore-core-sanitized)
+    usbrestore_sanitize(usbrestore-core-sanitized)
+    set(USBRESTORE_TEST_CORE usbrestore-core-sanitized)
+endif()
 
 add_executable(usb-branding-export EXCLUDE_FROM_ALL tools/export_branding.cpp)
 target_link_libraries(usb-branding-export PRIVATE Qt6::Gui)
@@ -506,7 +365,6 @@ if(WIN32)
     configure_file(resources/app.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app.rc" @ONLY)
 
     add_executable(usb-restoration-tool WIN32
-        ${USBRESTORE_CORE_SOURCES}
         ${USBRESTORE_PLATFORM_SOURCES}
         ${USBRESTORE_WIN_SOURCES}
         ${USBRESTORE_GUI_SOURCES}
@@ -514,41 +372,38 @@ if(WIN32)
     )
 else()
     add_executable(usb-restoration-tool
-        ${USBRESTORE_CORE_SOURCES}
         ${USBRESTORE_PLATFORM_SOURCES}
         ${USBRESTORE_LINUX_SOURCES}
         ${USBRESTORE_GUI_SOURCES}
     )
 endif()
 
-target_include_directories(usb-restoration-tool PRIVATE src)
-target_compile_definitions(usb-restoration-tool PRIVATE
-    USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
-)
+usbrestore_configure(usb-restoration-tool)
 if(NOT WIN32)
     target_compile_definitions(usb-restoration-tool PRIVATE
         USBRESTORE_HELPER_PATH="${USBRESTORE_HELPER_PATH}"
     )
 endif()
-target_link_libraries(usb-restoration-tool PRIVATE Qt6::Core Qt6::Widgets)
+target_link_libraries(usb-restoration-tool PRIVATE usbrestore-core Qt6::Widgets)
 
 if(Qt6_VERSION VERSION_GREATER_EQUAL "6.7")
     set(_usbrestore_translation_source_targets SOURCE_TARGETS usb-restoration-tool)
 endif()
+# Both backends, whichever this build compiles, so one catalogue serves both.
+set(_usbrestore_translation_sources
+    ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_PLATFORM_SOURCES} ${USBRESTORE_GUI_SOURCES}
+    ${USBRESTORE_LINUX_SOURCES} ${USBRESTORE_WIN_SOURCES} src/helper/main.cpp)
+list(FILTER _usbrestore_translation_sources INCLUDE REGEX "\\.(cpp|h)$")
 qt_add_translations(usb-restoration-tool
     ${_usbrestore_translation_source_targets}
     TS_FILES translations/usbrestore_de.ts
-    SOURCES src/gui/main.cpp src/helper/main.cpp src/gui/restore_dialog.cpp src/gui/restore_dialog.h
-        src/gui/main_window.cpp src/gui/main_window.h src/gui/theme.cpp src/platform/translations.cpp
-        src/core/disk.cpp
-        src/core/language.cpp src/core/restore_message.cpp src/core/safety.cpp
-        src/core/partition_table.cpp src/core/restore_protocol.cpp
-        src/platform/restore_worker.cpp ${USBRESTORE_LINUX_SOURCES} ${USBRESTORE_WIN_SOURCES}
+    SOURCES ${_usbrestore_translation_sources}
     INCLUDE_DIRECTORIES src
     LUPDATE_OPTIONS -locations none -no-obsolete
     LRELEASE_OPTIONS -nounfinished
     QM_FILES_OUTPUT_VARIABLE USBRESTORE_QM_FILES)
 unset(_usbrestore_translation_source_targets)
+unset(_usbrestore_translation_sources)
 
 # Qt before 6.7 names this target after the executable rather than the project.
 set(USBRESTORE_LRELEASE_TARGET ${PROJECT_NAME}_lrelease)
@@ -579,7 +434,6 @@ endfunction()
 usbrestore_embed_translations(usb-restoration-tool)
 
 if(WIN32)
-    target_compile_definitions(usb-restoration-tool PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(usb-restoration-tool PRIVATE ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
 
     # The manifest is embedded through the .rc file, so the linker must not add
@@ -599,18 +453,14 @@ set_target_properties(usb-restoration-tool PROPERTIES
 # gets no equivalent — see the "Not in scope" section of docs/polkit-helper.md.
 if(NOT WIN32)
     add_executable(usb-restoration-helper
-        ${USBRESTORE_CORE_SOURCES}
         ${USBRESTORE_LINUX_RESTORE_SOURCES}
         src/platform/disk_service.h
         src/platform/startup.h
         src/platform/translations.cpp
         src/helper/main.cpp
     )
-    target_include_directories(usb-restoration-helper PRIVATE src)
-    target_compile_definitions(usb-restoration-helper PRIVATE
-        USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
-    )
-    target_link_libraries(usb-restoration-helper PRIVATE Qt6::Core)
+    usbrestore_configure(usb-restoration-helper)
+    target_link_libraries(usb-restoration-helper PRIVATE usbrestore-core)
     usbrestore_embed_translations(usb-restoration-helper)
     usbrestore_harden(usb-restoration-helper)
 endif()
@@ -630,30 +480,18 @@ endif()
 if(USBRESTORE_BUILD_TESTS)
     enable_testing()
 
-    add_executable(usb-restoration-tool-tests
-        ${USBRESTORE_CORE_SOURCES}
-        src/platform/translations.cpp
-        tests/test_core.cpp
-    )
+    add_executable(usb-restoration-tool-tests src/platform/translations.cpp tests/test_core.cpp)
     usbrestore_embed_translations(usb-restoration-tool-tests)
-    target_include_directories(usb-restoration-tool-tests PRIVATE src)
-    target_link_libraries(usb-restoration-tool-tests PRIVATE Qt6::Core Qt6::Test)
-    if(MSVC)
-        target_compile_definitions(usb-restoration-tool-tests PRIVATE UNICODE _UNICODE NOMINMAX)
-        target_compile_options(usb-restoration-tool-tests PRIVATE /utf-8)
-    endif()
+    usbrestore_configure(usb-restoration-tool-tests)
+    target_link_libraries(usb-restoration-tool-tests PRIVATE ${USBRESTORE_TEST_CORE} Qt6::Test)
     usbrestore_sanitize(usb-restoration-tool-tests)
 
     if(NOT WIN32)
         add_executable(usb-linux-tests tests/test_linux.cpp src/platform/translations.cpp
-            src/linux/linux_disk_service.cpp src/linux/helper_client.cpp
-            ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_LINUX_RESTORE_SOURCES})
-        target_include_directories(usb-linux-tests PRIVATE src)
-        target_compile_definitions(usb-linux-tests PRIVATE
-            USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
-            USBRESTORE_HELPER_PATH="${USBRESTORE_HELPER_PATH}"
-        )
-        target_link_libraries(usb-linux-tests PRIVATE Qt6::Core Qt6::Test)
+            src/linux/linux_disk_service.cpp src/linux/helper_client.cpp ${USBRESTORE_LINUX_RESTORE_SOURCES})
+        usbrestore_configure(usb-linux-tests)
+        target_compile_definitions(usb-linux-tests PRIVATE USBRESTORE_HELPER_PATH="${USBRESTORE_HELPER_PATH}")
+        target_link_libraries(usb-linux-tests PRIVATE ${USBRESTORE_TEST_CORE} Qt6::Test)
         usbrestore_embed_translations(usb-linux-tests)
         usbrestore_sanitize(usb-linux-tests)
         add_dependencies(usb-restoration-tool-tests usb-linux-tests)
@@ -663,7 +501,6 @@ if(USBRESTORE_BUILD_TESTS)
     add_test(NAME usb-restoration-tool-tests COMMAND usb-restoration-tool-tests)
 
     add_executable(usb-gui-tests
-        ${USBRESTORE_CORE_SOURCES}
         src/platform/logger.cpp
         src/platform/logger.h
         src/platform/restore_worker.cpp
@@ -679,19 +516,12 @@ if(USBRESTORE_BUILD_TESTS)
         resources/resources.qrc
         tests/test_gui.cpp
     )
-    target_include_directories(usb-gui-tests PRIVATE src)
-    target_compile_definitions(usb-gui-tests PRIVATE
-        USBRESTORE_APP_VERSION="${PROJECT_VERSION}"
-    )
-    target_link_libraries(usb-gui-tests PRIVATE Qt6::Widgets Qt6::Test)
+    usbrestore_configure(usb-gui-tests)
+    target_link_libraries(usb-gui-tests PRIVATE ${USBRESTORE_TEST_CORE} Qt6::Widgets Qt6::Test)
     usbrestore_embed_translations(usb-gui-tests)
     if(WIN32)
         target_sources(usb-gui-tests PRIVATE src/win/windows_util.cpp)
-        target_compile_definitions(usb-gui-tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_link_libraries(usb-gui-tests PRIVATE shell32 advapi32)
-        if(MSVC)
-            target_compile_options(usb-gui-tests PRIVATE /utf-8)
-        endif()
     else()
         add_dependencies(usb-gui-tests usb-qt-bundle-probe)
     endif()
@@ -713,15 +543,11 @@ if(USBRESTORE_BUILD_TESTS)
         set_tests_properties(usb-restoration-tool-tests PROPERTIES
             ENVIRONMENT "PATH=${_usbrestore_test_path};QT_FORCE_STDERR_LOGGING=1")
 
-        add_executable(usb-wmi-tests tests/test_wmi.cpp src/platform/translations.cpp
-            ${USBRESTORE_CORE_SOURCES} ${USBRESTORE_WIN_SOURCES})
-        target_include_directories(usb-wmi-tests PRIVATE src)
+        add_executable(usb-wmi-tests tests/test_wmi.cpp src/platform/translations.cpp ${USBRESTORE_WIN_SOURCES})
+        usbrestore_configure(usb-wmi-tests)
         usbrestore_embed_translations(usb-wmi-tests)
-        target_link_libraries(usb-wmi-tests PRIVATE Qt6::Core Qt6::Test ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
-        target_compile_definitions(usb-wmi-tests PRIVATE UNICODE _UNICODE NOMINMAX)
-        if(MSVC)
-            target_compile_options(usb-wmi-tests PRIVATE /utf-8)
-        endif()
+        target_link_libraries(usb-wmi-tests PRIVATE
+            ${USBRESTORE_TEST_CORE} Qt6::Test ole32 oleaut32 wbemuuid advapi32 shell32 uuid)
         add_dependencies(usb-restoration-tool-tests usb-wmi-tests)
         add_test(NAME usb-wmi-tests COMMAND usb-wmi-tests)
         set_tests_properties(usb-wmi-tests PROPERTIES
@@ -732,16 +558,9 @@ if(USBRESTORE_BUILD_TESTS)
     # asked whether they accept it. The unit tests check the bytes against the
     # specification; scripts/verify-partition-tables.sh checks them against the
     # tools that will have to read a restored disk.
-    add_executable(usb-partition-dump
-        ${USBRESTORE_CORE_SOURCES}
-        tools/partition_dump.cpp
-    )
-    target_include_directories(usb-partition-dump PRIVATE src)
-    target_link_libraries(usb-partition-dump PRIVATE Qt6::Core)
-    if(MSVC)
-        target_compile_definitions(usb-partition-dump PRIVATE UNICODE _UNICODE NOMINMAX)
-        target_compile_options(usb-partition-dump PRIVATE /utf-8)
-    endif()
+    add_executable(usb-partition-dump tools/partition_dump.cpp)
+    usbrestore_configure(usb-partition-dump)
+    target_link_libraries(usb-partition-dump PRIVATE ${USBRESTORE_TEST_CORE})
     usbrestore_sanitize(usb-partition-dump)
 
     # Replays tests/fuzz-corpus as an ordinary test; USBRESTORE_FUZZ turns the
@@ -750,12 +569,8 @@ if(USBRESTORE_BUILD_TESTS)
         ${USBRESTORE_CORE_SOURCES}
         tests/fuzz_core.cpp
     )
-    target_include_directories(usb-core-fuzz PRIVATE src)
+    usbrestore_configure(usb-core-fuzz)
     target_link_libraries(usb-core-fuzz PRIVATE Qt6::Core)
-    if(MSVC)
-        target_compile_definitions(usb-core-fuzz PRIVATE UNICODE _UNICODE NOMINMAX)
-        target_compile_options(usb-core-fuzz PRIVATE /utf-8)
-    endif()
     if(USBRESTORE_FUZZ)
         target_compile_definitions(usb-core-fuzz PRIVATE USBRESTORE_LIBFUZZER)
         target_compile_options(usb-core-fuzz PRIVATE -fsanitize=fuzzer)

@@ -173,66 +173,6 @@ application data when that directory is not writable.
 
 Linux requirements are unchanged. Upgrade the installed app and helper together.
 
-### Previously, in 1.7.2
-
-- On Linux, a restore whose formatting step fails no longer leaves the old
-  partitions showing over the new partition table.
-- On Linux, a media-change event during a restore no longer makes a finished
-  restore report failure.
-- Linux formatting no longer fails when another program holds the free loop
-  device; the app uses a different one.
-- The Windows log records whether each storage operation completed immediately
-  or was queued, and how a queued job ended, to help diagnose a failed restore.
-- Disk-instance refusals name the disk, and new regression tests cover these
-  fixes on Linux loop images and Windows storage jobs.
-
-Linux requirements are unchanged from 1.7.1.
-
-### Previously, in 1.7.1
-
-- Unsupported MBR layouts are refused before a restore changes the drive.
-- Linux checks the selected disk instance through the open device and keeps
-  formatting bound to that disk, even if device names are reused.
-- Windows stops if it cannot confirm that a queued storage operation completed
-  successfully, instead of continuing after a missing or unreadable job result.
-- Restore refusal messages now cover unsupported partition layouts as well as
-  filesystem choices. The Windows ZIP's instructions match the current interface.
-- New regression tests cover disk identity, layout limits and formatter cleanup,
-  including all four Linux filesystems under ASan/UBSan.
-
-**Linux requirement:** restores now need kernel 5.15 or later with disk-sequence
-support and the loop driver. Upgrade the installed app and helper together.
-
-### Previously, in 1.7.0
-
-- A new USB restore icon and matching mint and ink themes across Windows and
-  Linux, with refreshed project artwork.
-- Drive selection, drive details and restore settings sit side by side in a
-  cleaner layout, with a branded header and About dialog.
-- The erase acknowledgement is easier to see, with a larger outlined checkbox,
-  a contrasting checkmark and a visible keyboard focus state.
-- Windows FAT32 restores no longer fail with `AllocationUnitSize` WMI error
-  `0x80041005` before formatting. GPT + FAT32 has been confirmed working.
-- New Windows regression tests check WMI parameter types without accessing disks.
-
-### Previously, in 1.6.3
-
-- On Windows, USB sticks with a bootloader written directly to the disk and no
-  partition table ("superfloppies") can now be restored. This also fixes sticks
-  that Windows treats as superfloppies after their partitions are removed.
-- Windows now dismounts volumes mounted at a folder or without a drive letter
-  before restoring, as it already did for volumes with a drive letter.
-
-### Previously, in 1.6.2
-
-- The Linux restore helper is stricter about what the app tells it: disk and
-  sector sizes must be plain numbers, and a helper that announces itself twice
-  or repeats a detail is refused.
-- Long messages from the formatting tools are shortened cleanly, without a
-  broken character at the end.
-- The parsers on the helper boundary and the partition tables are fuzzed, and
-  the core tests run under memory and undefined-behaviour checkers in CI.
-
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Development and safety

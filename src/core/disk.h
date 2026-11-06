@@ -27,12 +27,6 @@ enum class FileSystemType : quint16 {
     Ext4 = 3,
 };
 
-enum class HealthStatus : quint16 {
-    Healthy = 0,
-    Warning = 1,
-    Unhealthy = 2,
-};
-
 // Both read fresh identity, state and mount points; restore checks need no filesystem display details.
 enum class DiskDetails {
     Display,
@@ -58,7 +52,6 @@ struct DiskInfo {
     std::optional<std::uint64_t> deviceSequence;
     std::uint64_t size = 0;
     quint32 sectorSize = 512;
-    quint16 health = static_cast<quint16>(HealthStatus::Healthy);
     quint16 partitionStyle = static_cast<quint16>(PartitionStyle::Unknown);
 
     // "E:", "/run/media/dave/USB"
@@ -81,7 +74,7 @@ QString fileSystemTypeName(FileSystemType type);
 QString fileSystemTypeLabel(FileSystemType type);
 QString fileSystemTypeToken(FileSystemType type);
 bool parseFileSystemType(const QString &token, FileSystemType *type = nullptr);
-QString healthStatusName(quint16 status, TextMode mode = TextMode::English);
+bool isKnownFileSystem(FileSystemType type);
 QString busTypeName(quint32 busType, TextMode mode = TextMode::English);
 
 QString describeDisk(const DiskInfo &disk, TextMode mode = TextMode::English);

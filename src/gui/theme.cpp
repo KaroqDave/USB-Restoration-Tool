@@ -61,7 +61,6 @@ Palette lightPalette()
     p.danger = QColor("#b91c1c");
     p.dangerHover = QColor("#991b1b");
     p.dangerPressed = QColor("#7f1d1d");
-    p.statusSuccess = QColor("#08734f");
     p.statusWarning = QColor("#955512");
     p.statusError = QColor("#b91c1c");
     p.statusInfo = QColor("#076c60");
@@ -88,7 +87,6 @@ Palette darkPalette()
     p.danger = QColor("#c9343e");
     p.dangerHover = QColor("#d63b46");
     p.dangerPressed = QColor("#af2733");
-    p.statusSuccess = QColor("#79e2bf");
     p.statusWarning = QColor("#f2c078");
     p.statusError = QColor("#ff9ba1");
     p.statusInfo = QColor("#79e2bf");
@@ -237,17 +235,6 @@ QLabel#adminBadge {
     font-weight: 600;
 }
 
-QLineEdit {
-    background: @surfaceAlt;
-    border: 1px solid @border;
-    border-radius: 8px;
-    padding: 8px 10px;
-    selection-background-color: @accent;
-    selection-color: @accentText;
-}
-QLineEdit:focus { border: 1px solid @accent; background: @surface; }
-QLineEdit:disabled { color: @mutedText; }
-
 QComboBox {
     background: @surfaceAlt;
     border: 1px solid @border;
@@ -395,8 +382,14 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: trans
 
 void applyTheme(QApplication &app, Theme theme)
 {
-    if (auto *fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
-        app.setStyle(fusion);
+    // Setting a style repolishes every widget, so a theme change must not repeat it. The
+    // style sheet wraps the style in a proxy, so app.style() cannot say whether it is Fusion.
+    static bool fusionSet = false;
+    if (!fusionSet) {
+        if (auto *fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
+            app.setStyle(fusion);
+        }
+        fusionSet = true;
     }
 
     const ColorScheme scheme = resolveColorScheme(theme);
@@ -475,8 +468,6 @@ void keepButtonTextVisible(QPushButton *button)
 QString statusBadgePrefix(StatusKind status)
 {
     switch (status) {
-    case StatusKind::Success:
-        return QStringLiteral("✓ ");
     case StatusKind::Error:
         return QStringLiteral("✗ ");
     case StatusKind::Warning:
@@ -496,8 +487,6 @@ namespace {
 QColor statusBaseColor(StatusKind status, const Palette &palette)
 {
     switch (status) {
-    case StatusKind::Success:
-        return palette.statusSuccess;
     case StatusKind::Warning:
         return palette.statusWarning;
     case StatusKind::Blocked:

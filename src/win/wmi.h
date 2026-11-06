@@ -10,6 +10,7 @@
 #include <Windows.h>
 #include <Wbemidl.h>
 #include <comdef.h>
+#include <wrl/client.h>
 
 #include <optional>
 #include <functional>
@@ -26,12 +27,8 @@ bool initializeComSecurity(QString *error = nullptr);
 class WmiObject {
   public:
     WmiObject() = default;
+    // Takes over the caller's reference.
     explicit WmiObject(IWbemClassObject *object);
-    WmiObject(const WmiObject &other);
-    WmiObject &operator=(const WmiObject &other);
-    WmiObject(WmiObject &&other) noexcept;
-    WmiObject &operator=(WmiObject &&other) noexcept;
-    ~WmiObject();
 
     bool isValid() const;
     IWbemClassObject *get() const;
@@ -51,7 +48,7 @@ class WmiObject {
   private:
     QVariant value(const wchar_t *name) const;
 
-    IWbemClassObject *m_object = nullptr;
+    Microsoft::WRL::ComPtr<IWbemClassObject> m_object;
 };
 
 struct WmiCallResult {
@@ -113,8 +110,8 @@ class WmiConnection {
   private:
     void setError(HRESULT result, const RestoreMessage &context) const;
 
-    IWbemLocator *m_locator = nullptr;
-    IWbemServices *m_services = nullptr;
+    Microsoft::WRL::ComPtr<IWbemLocator> m_locator;
+    Microsoft::WRL::ComPtr<IWbemServices> m_services;
     mutable RestoreMessage m_lastError;
     bool m_comInitialized = false;
 };

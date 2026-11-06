@@ -15,6 +15,11 @@ cmake --build --preset windows
 ctest --preset windows
 ```
 
+Run the Windows commands from a Developer PowerShell for Visual Studio: the
+preset uses Ninja Multi-Config with the MSVC compiler from that environment. A
+`build` directory configured with the Visual Studio generator by an older
+version must be deleted first.
+
 On Linux, use `linux` in all three commands. Windows output is
 `build/Release/usb-restoration-tool.exe`; Linux output is
 `build-linux/usb-restoration-tool`. Windows builds deploy the Qt runtime beside
@@ -30,10 +35,10 @@ ctest --test-dir build -C Release --output-on-failure
 
 Set `-DUSBRESTORE_BUILD_TESTS=OFF` to omit tests.
 
-Configure creates `compile_commands.json` for clangd and suppresses diagnostics
-for the inactive platform backend. Restart clangd after configuring. Windows
-uses a synthesized database because Visual Studio does not export one; Linux
-links the build-tree database.
+Configure exports `compile_commands.json` for clangd and suppresses diagnostics
+for the inactive platform backend. Restart clangd after configuring. clangd
+finds the Windows preset's `build` database itself; on Linux, configure links
+the `build-linux` database next to `CMakeLists.txt`.
 
 ## Test
 
@@ -300,20 +305,20 @@ manual validation.
 `PROJECT_VERSION` in `CMakeLists.txt` is the version source. Before tagging
 `vX.Y.Z`, update the changelog and the README's `## What's New in X.Y.Z` section.
 The release workflow checks the version and extracts that README section as the
-release body. The 1.4.x development versions were never tagged; they shipped in 1.5.0.
+release body.
 
 ## Project structure
 
 | Directory | Responsibility |
 | --- | --- |
-| `src/core` | Disk model, safety policy, layout, partition bytes, helper protocol; no OS headers |
-| `src/platform` | `DiskService`, worker, logging and startup interface |
-| `src/win` | WMI, raw disk I/O and drive letters |
-| `src/linux` | sysfs, enumeration, raw block I/O and formatting |
-| `src/helper` | Privileged Linux executable; Qt Core only |
-| `src/gui` | Widgets, themes and settings |
-| `tests` | Core QtTest suite |
-| `tools` | Partition-table dump utility |
+| `src/core` | No OS headers. `disk.*` (the `DiskInfo` model), `safety.*` (every erase rule and the layout arithmetic), `partition_table.*` (GPT and MBR bytes, GPT's CRC-32), `restore_message.*` (bilingual messages, and each backend's step plan, which sets the step count and first destructive step) and `restore_protocol.*` (the GUI-to-helper protocol; its argument half is a trust boundary) |
+| `src/platform` | `disk_service.h`, the interface both backends implement; `restore_worker.*`, which turns progress calls into Qt signals; `logger.*`; `startup.h` |
+| `src/win` | WMI (`wmi.*`), `DeviceIoControl` on `\\.\PhysicalDriveN` (`raw_disk.*`), volumes and drive letters (`volume_manager.*`), enumeration and the `DiskService` (`windows_disk_service.*`), error text and process helpers (`windows_util.*`) |
+| `src/linux` | sysfs and mountinfo (`sysfs.*`), raw block I/O and the formatter's loop mapping (`block_device.*`), read-only enumeration (`linux_enumerate.*`), the privileged restore (`linux_restore.*`) and the `DiskService` over both (`linux_disk_service.*`) |
+| `src/helper` | `usb-restoration-helper`, the privileged Linux executable; Qt Core only, and nothing it is told is trusted |
+| `src/gui` | `main_window.*`, `restore_dialog.*` (confirmation, progress and result in one window), `theme.*`, `app_settings.*` |
+| `tests` | `test_core.cpp` (`src/core`), `test_gui.cpp` (offscreen widgets and an example disk service), `test_wmi.cpp` (Windows WMI encoding and job monitoring), `test_linux.cpp` (formatter mappings and loop-image re-reads); `fuzz_core.cpp` fuzzes the parsers and tables and replays `fuzz-corpus` |
+| `tools` | `partition_dump.cpp` for `scripts/verify-partition-tables.sh`; `qt_bundle_probe.cpp`, which checks a built AppImage's bundled Qt plugins load; `export_branding.cpp` |
 | `scripts` | Packaging and partition verification |
 
 Backends supply OS facts and perform I/O. New safety rules belong in core, with
@@ -329,11 +334,7 @@ only what it needs.
 
 The icon sources, palette and export instructions are in [Branding](branding.md).
 
-Follow `.clang-format`: four spaces and a 120-column limit. Use `snake_case`
-filenames, `PascalCase` types, `camelCase` functions and variables, and `m_` members
-inside `namespace usbrestore`. Platform failures return `bool` with a
-`QString *error`; messages should explain the operation and next step.
-
+Coding style, naming and commit conventions are in [AGENTS.md](../AGENTS.md).
 CI fails if any tracked `.cpp` or `.h` file is not formatted with clang-format
 22.1.8. Other releases lay some code out differently, so use that version on every
 platform, then format before committing:
@@ -346,6 +347,5 @@ git ls-files '*.cpp' '*.h' | xargs clang-format -i
 On Windows, run the second line from Git Bash, or in PowerShell use
 `git ls-files '*.cpp' '*.h' | ForEach-Object { clang-format -i $_ }`.
 
-Use Conventional Commits and include relevant validation in pull requests.
-Keep open work in [TODO.md](TODO.md), release history in [CHANGELOG.md](../CHANGELOG.md),
-and safety guidance in [SECURITY.md](../SECURITY.md).
+Keep open work in [TODO.md](TODO.md) and release history in
+[CHANGELOG.md](../CHANGELOG.md).

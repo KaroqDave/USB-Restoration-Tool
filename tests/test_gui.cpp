@@ -22,6 +22,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPalette>
+#include <QPointer>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QProgressBar>
@@ -30,6 +31,7 @@
 #include <QScopeGuard>
 #include <QScrollArea>
 #include <QSignalSpy>
+#include <QStyle>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -38,6 +40,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <source_location>
 #include <functional>
 
 // Dropping the embedded catalog is how a broken package fails to load German.
@@ -87,10 +90,41 @@ void settleLayout(QWidget &widget)
     QCoreApplication::processEvents();
 }
 
+// A missing name fails the current test at the caller's line and hands back a detached stand-in,
+// so the rest of the test cannot crash the binary. Q_ASSERT would vanish in the Release preset.
+template <typename T>
+T *find(QWidget *root, const char *name, std::source_location where = std::source_location::current())
+{
+    if (T *widget = root->findChild<T *>(QLatin1String(name))) {
+        return widget;
+    }
+    QTest::qFail(
+        QByteArray("no child named ").append(name).constData(), where.file_name(), static_cast<int>(where.line()));
+    return new T(root);
+}
+
+template <typename T>
+T *find(QWidget &root, const char *name, std::source_location where = std::source_location::current())
+{
+    return find<T>(&root, name, where);
+}
+
+template <typename T>
+QString textOf(QWidget *root, const char *name, std::source_location where = std::source_location::current())
+{
+    return find<T>(root, name, where)->text();
+}
+
+template <typename T>
+QString textOf(QWidget &root, const char *name, std::source_location where = std::source_location::current())
+{
+    return textOf<T>(&root, name, where);
+}
+
 void confirmErase(RestoreDialog &dialog)
 {
-    dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))->setChecked(true);
-    dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"))->click();
+    find<QCheckBox>(dialog, "eraseAcknowledgement")->setChecked(true);
+    find<QPushButton>(dialog, "confirmErase")->click();
 }
 
 QFrame *stepRow(RestoreDialog &dialog, int step)
@@ -142,8 +176,6 @@ class ExampleService : public DiskService {
         return true;
     }
     const QVector<RestoreStep> &restorePlan() const override { return linuxRestorePlan(); }
-    int totalRestoreSteps() const override { return static_cast<int>(restorePlan().size()); }
-    int firstDestructiveStep() const override { return firstDestructiveStepOf(restorePlan()); }
     bool restore(
         const RestoreRequest &request,
         RestoreReporter &reporter,
@@ -333,24 +365,18 @@ class GuiTests : public QObject {
         ExampleService service;
         MainWindow window(service, Theme::Light, &translations);
         window.show();
-        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *language = find<QPushButton>(window, "language");
         QVERIFY(language);
         QCOMPARE(language->text(), QStringLiteral("Language: English"));
-        QCOMPARE(
-            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
-            QStringLiteral("A fresh start for your USB drive."));
+        QCOMPARE(textOf<QLabel>(window, "subtitle"), QStringLiteral("A fresh start for your USB drive."));
 
         language->click();
         QCoreApplication::processEvents();
         QCOMPARE(loadAppSettings().language, Language::German);
         QCOMPARE(translations.language(), Language::German);
         QCOMPARE(language->text(), QStringLiteral("Sprache: Deutsch"));
-        QCOMPARE(
-            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
-            QStringLiteral("Ein Neuanfang für Ihr USB-Laufwerk."));
-        QCOMPARE(
-            window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->text(),
-            QStringLiteral("USB wiederherstellen"));
+        QCOMPARE(textOf<QLabel>(window, "subtitle"), QStringLiteral("Ein Neuanfang für Ihr USB-Laufwerk."));
+        QCOMPARE(textOf<QPushButton>(window, "restoreUsb"), QStringLiteral("USB wiederherstellen"));
 
         language->click();
         QCoreApplication::processEvents();
@@ -362,9 +388,7 @@ class GuiTests : public QObject {
         QCoreApplication::processEvents();
         QCOMPARE(loadAppSettings().language, Language::English);
         QCOMPARE(translations.language(), Language::English);
-        QCOMPARE(
-            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
-            QStringLiteral("A fresh start for your USB drive."));
+        QCOMPARE(textOf<QLabel>(window, "subtitle"), QStringLiteral("A fresh start for your USB drive."));
         window.close();
     }
 
@@ -395,7 +419,7 @@ class GuiTests : public QObject {
         QCoreApplication::processEvents();
         const int startingMinimum = window.minimumWidth();
 
-        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *language = find<QPushButton>(window, "language");
         auto *scroll = qobject_cast<QScrollArea *>(window.centralWidget());
         QVERIFY(language && scroll);
         for (int click = 0; click < 3; ++click) {
@@ -432,7 +456,7 @@ class GuiTests : public QObject {
         MainWindow window(service, Theme::Light, &translations);
         window.show();
         auto *disks = window.findChild<QListWidget *>();
-        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *language = find<QPushButton>(window, "language");
         QVERIFY(disks && language);
         QCOMPARE(disks->count(), 2);
         disks->setCurrentRow(1);
@@ -461,10 +485,10 @@ class GuiTests : public QObject {
         service.holdRestore = true;
         MainWindow window(service, Theme::Light, &translations);
         window.show();
-        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *language = find<QPushButton>(window, "language");
         QVERIFY(language);
         QCOMPARE(language->text(), QStringLiteral("Language: English"));
-        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
         QVERIFY(dialog);
         confirmErase(*dialog);
@@ -472,11 +496,9 @@ class GuiTests : public QObject {
         language->click();
         QVERIFY(QMetaObject::invokeMethod(&window, "cycleLanguage"));
         QCOMPARE(language->text(), QStringLiteral("Language: English"));
-        QCOMPARE(
-            window.findChild<QLabel *>(QStringLiteral("subtitle"))->text(),
-            QStringLiteral("A fresh start for your USB drive."));
+        QCOMPARE(textOf<QLabel>(window, "subtitle"), QStringLiteral("A fresh start for your USB drive."));
         QCOMPARE(loadAppSettings().language, Language::English);
-        const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
+        const QString log = find<QTextEdit>(window, "activityLog")->toPlainText();
         QVERIFY(log.contains(QStringLiteral("Restore requested for")));
         QVERIFY(log.contains(QStringLiteral("32.00 GB")));
         QVERIFY(!log.contains(QStringLiteral("32,00 GB")));
@@ -519,10 +541,10 @@ class GuiTests : public QObject {
         service.scanError = failure;
         MainWindow window(service, Theme::Light, &translations);
         window.show();
-        auto *status = window.findChild<QLabel *>(QStringLiteral("statusBadge"));
-        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
-        auto *language = window.findChild<QPushButton *>(QStringLiteral("language"));
-        auto *log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"));
+        auto *status = find<QLabel>(window, "statusBadge");
+        auto *restore = find<QPushButton>(window, "restoreUsb");
+        auto *language = find<QPushButton>(window, "language");
+        auto *log = find<QTextEdit>(window, "activityLog");
         QVERIFY(status);
         QVERIFY(restore);
         QVERIFY(language);
@@ -661,7 +683,7 @@ class GuiTests : public QObject {
                     combo->setCurrentIndex(1);
             }
         }
-        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        auto *restore = find<QPushButton>(window, "restoreUsb");
         QVERIFY(restore);
         QCOMPARE(restore->isEnabled(), scenario == 3);
         QString details;
@@ -976,27 +998,25 @@ class GuiTests : public QObject {
     {
         RestoreDialog dialog(exampleRequest(), linuxRestorePlan());
         confirmErase(dialog);
-        auto *cancel = dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"));
+        auto *cancel = find<QPushButton>(dialog, "cancelRestore");
         QSignalSpy requested(&dialog, &RestoreDialog::cancelRequested);
         connect(&dialog, &RestoreDialog::cancelRequested, &dialog, &RestoreDialog::setCancelling);
         dialog.show();
         QTest::mouseClick(cancel, Qt::LeftButton);
         QCOMPARE(requested.count(), 1);
         QVERIFY(!cancel->isEnabled());
-        QVERIFY(
-            dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"))->text().contains(QStringLiteral("checkpoint")));
+        QVERIFY(textOf<QLabel>(dialog, "restoreNotice").contains(QStringLiteral("checkpoint")));
         // A request can arrive after the backend's last checkpoint; progress must still be shown.
         for (int step = 1; step <= firstDestructiveStepOf(linuxRestorePlan()); ++step) {
             dialog.setProgress(step, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Working"));
         }
         QVERIFY(!cancel->isEnabled());
-        QVERIFY(
-            dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"))->text().contains(QStringLiteral("rewritten")));
+        QVERIFY(textOf<QLabel>(dialog, "restoreNotice").contains(QStringLiteral("rewritten")));
         dialog.finishSuccess(QStringLiteral("Ready"));
 
         RestoreDialog writingDialog(exampleRequest(), linuxRestorePlan());
         confirmErase(writingDialog);
-        auto *writingCancel = writingDialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"));
+        auto *writingCancel = find<QPushButton>(writingDialog, "cancelRestore");
         for (int step = 1; step < firstDestructiveStepOf(linuxRestorePlan()); ++step) {
             writingDialog.setProgress(step, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Preparing"));
             QVERIFY(writingCancel->isEnabled());
@@ -1013,7 +1033,7 @@ class GuiTests : public QObject {
         RestoreDialog dialog(exampleRequest(), linuxRestorePlan());
         confirmErase(dialog);
         dialog.setProgress(1, static_cast<int>(linuxRestorePlan().size()), QStringLiteral("Checking"));
-        auto *notice = dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"));
+        auto *notice = find<QLabel>(dialog, "restoreNotice");
         const QString stall =
             QStringLiteral("No response from the device for 0:20. Keep it connected while the system waits.");
         dialog.setNotice(stall);
@@ -1022,7 +1042,7 @@ class GuiTests : public QObject {
         dialog.setCancelling();
         const QString cancellation = notice->text();
         QVERIFY(cancellation.contains(QStringLiteral("checkpoint")));
-        QCOMPARE(dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"))->text(), QStringLiteral("Stopping…"));
+        QCOMPARE(textOf<QPushButton>(dialog, "cancelRestore"), QStringLiteral("Stopping…"));
 
         dialog.setNotice(
             QStringLiteral("No response from the device for 1:05. Keep it connected while the system waits."));
@@ -1039,8 +1059,7 @@ class GuiTests : public QObject {
         confirmErase(dialog);
         auto *timer = dialog.findChild<QTimer *>();
         QVERIFY(timer->isActive());
-        QTRY_VERIFY(
-            dialog.findChild<QLabel *>(QStringLiteral("restoreClock"))->text() != QStringLiteral("Elapsed 0:00"));
+        QTRY_VERIFY(textOf<QLabel>(dialog, "restoreClock") != QStringLiteral("Elapsed 0:00"));
         dialog.finishFailure(QStringLiteral("Example failure during setup"));
         QVERIFY(!timer->isActive());
         QCOMPARE(dialog.findChild<QProgressBar *>()->value(), 0);
@@ -1054,12 +1073,12 @@ class GuiTests : public QObject {
         dialog.show();
         dialog.finishFailure(QStringLiteral("Formatter output: an operation failed. ").repeated(100));
         QApplication::processEvents();
-        auto *message = dialog.findChild<QLabel *>(QStringLiteral("restoreMessage"));
+        auto *message = find<QLabel>(dialog, "restoreMessage");
         auto *area = qobject_cast<QScrollArea *>(message->parentWidget()->parentWidget());
         QVERIFY(area);
         QVERIFY(area->height() <= 140);
         QVERIFY(message->height() > area->height());
-        QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))->isVisible());
+        QVERIFY(find<QPushButton>(dialog, "restoreDone")->isVisible());
     }
 
     void failureAndCancellationDoNotCompleteTheCurrentStep_data()
@@ -1088,9 +1107,9 @@ class GuiTests : public QObject {
             failed ? QStringLiteral("error") : QStringLiteral("cancelled"));
         QCOMPARE(stepRow(dialog, 3)->property("state").toString(), QStringLiteral("pending"));
         QCOMPARE(dialog.findChild<QProgressBar *>()->value(), 1);
-        QCOMPARE(dialog.findChild<QLabel *>(QStringLiteral("restoreMessage"))->textFormat(), Qt::PlainText);
-        QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))->isVisible());
-        QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"))->isVisible());
+        QCOMPARE(find<QLabel>(dialog, "restoreMessage")->textFormat(), Qt::PlainText);
+        QVERIFY(find<QPushButton>(dialog, "restoreDone")->isVisible());
+        QVERIFY(!find<QPushButton>(dialog, "cancelRestore")->isVisible());
     }
 
     void requiresEraseAcknowledgementBeforeShowingProgress_data()
@@ -1160,11 +1179,11 @@ class GuiTests : public QObject {
         request.volumeLabel = QStringLiteral("NEWUSB");
         RestoreDialog dialog(request, linuxRestorePlan());
         dialog.show();
-        auto *contents = dialog.findChild<QLabel *>(QStringLiteral("eraseContents"));
+        auto *contents = find<QLabel>(dialog, "eraseContents");
         QCOMPARE(contents->textFormat(), Qt::PlainText);
         QVERIFY(contents->text().contains(request.disk.mountPoints.front()));
         QVERIFY(contents->text().contains(request.disk.labels.front()));
-        const QString plan = dialog.findChild<QLabel *>(QStringLiteral("erasePlan"))->text();
+        const QString plan = textOf<QLabel>(dialog, "erasePlan");
         QVERIFY(plan.contains(QStringLiteral("MBR")));
         QVERIFY(plan.contains(QStringLiteral("FAT32")));
         QVERIFY(plan.contains(request.volumeLabel));
@@ -1185,8 +1204,8 @@ class GuiTests : public QObject {
         RestoreDialog dialog(exampleRequest(), linuxRestorePlan());
         dialog.show();
         QSignalSpy confirmed(&dialog, &RestoreDialog::restoreConfirmed);
-        auto *checkbox = dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"));
-        auto *erase = dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"));
+        auto *checkbox = find<QCheckBox>(dialog, "eraseAcknowledgement");
+        auto *erase = find<QPushButton>(dialog, "confirmErase");
         checkbox->setFocus();
         QTest::keyClick(checkbox, Qt::Key_Space);
         QVERIFY(checkbox->isChecked());
@@ -1303,8 +1322,8 @@ class GuiTests : public QObject {
         service.outcome = outcome;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
         window.show();
-        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
-        auto *status = window.findChild<QLabel *>(QStringLiteral("statusBadge"));
+        auto *restore = find<QPushButton>(window, "restoreUsb");
+        auto *status = find<QLabel>(window, "statusBadge");
         auto *disks = window.findChild<QListWidget *>();
         const QString readyStatus = status->text();
         QVERIFY(readyStatus.contains(QStringLiteral("Ready to restore")));
@@ -1388,7 +1407,7 @@ class GuiTests : public QObject {
         service.outcome = outcome;
         MainWindow window(service, Theme::Light);
         window.show();
-        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        auto *restore = find<QPushButton>(window, "restoreUsb");
         restore->click();
         auto *dialog = window.findChild<RestoreDialog *>();
         QVERIFY(dialog);
@@ -1404,7 +1423,7 @@ class GuiTests : public QObject {
             dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->click();
         }
         QTRY_VERIFY(dialog->findChild<QPushButton *>(QStringLiteral("restoreDone"))->isVisible());
-        const QString status = window.findChild<QLabel *>(QStringLiteral("statusBadge"))->text();
+        const QString status = textOf<QLabel>(window, "statusBadge");
         QVERIFY(status.contains(
             problem == QStringLiteral("missing")  ? QStringLiteral("Select a USB disk")
             : problem == QStringLiteral("unsafe") ? QStringLiteral("This disk will not be restored")
@@ -1413,6 +1432,17 @@ class GuiTests : public QObject {
         dialog->accept();
         QVERIFY(!restore->isEnabled());
         window.close();
+    }
+
+    // Replacing the style repolished every widget a second time on each theme change.
+    void keepsTheFusionStyleAcrossThemeChanges()
+    {
+        applyTheme(*qApp, Theme::Light);
+        const QPointer<QStyle> style = qApp->style();
+        applyTheme(*qApp, Theme::Dark);
+        applyTheme(*qApp, Theme::Light);
+        QVERIFY(style);
+        QVERIFY(qApp->style() == style);
     }
 
     void doesNotRepurposePaletteRolesForTheStepIndicator()
@@ -1465,16 +1495,14 @@ class GuiTests : public QObject {
         const auto &plan = windowsPlan ? windowsRestorePlan() : linuxRestorePlan();
         RestoreDialog dialog(exampleRequest(), plan);
         dialog.show();
-        auto *acknowledgement = dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"));
-        auto *erase = dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"));
+        auto *acknowledgement = find<QCheckBox>(dialog, "eraseAcknowledgement");
+        auto *erase = find<QPushButton>(dialog, "confirmErase");
         QVERIFY(!acknowledgement->isChecked());
         QVERIFY(!erase->isEnabled());
         if (language == Language::German) {
             QCOMPARE(dialog.windowTitle(), QStringLiteral("USB-Wiederherstellung bestätigen"));
             QCOMPARE(erase->text(), QStringLiteral("Löschen und wiederherstellen"));
-            QCOMPARE(
-                dialog.findChild<QLabel *>(QStringLiteral("restoreStepTitle"))->text(),
-                QStringLiteral("Laufwerkssicherheit prüfen"));
+            QCOMPARE(textOf<QLabel>(dialog, "restoreStepTitle"), QStringLiteral("Laufwerkssicherheit prüfen"));
             QVERIFY(acknowledgement->text().contains(QStringLiteral("USB drive 2")));
             QVERIFY(acknowledgement->text().contains(QStringLiteral("unwiderruflich gelöscht")));
         }
@@ -1482,7 +1510,7 @@ class GuiTests : public QObject {
         if (!confirming) {
             confirmErase(dialog);
         } else if (outcome == QStringLiteral("acknowledged")) {
-            dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))->setChecked(true);
+            find<QCheckBox>(dialog, "eraseAcknowledgement")->setChecked(true);
         }
         const int lastStep = confirming ? 0 : outcome == QStringLiteral("success") ? static_cast<int>(plan.size()) : 3;
         for (int step = 1; step <= lastStep; ++step) {
@@ -1517,8 +1545,8 @@ class GuiTests : public QObject {
         QTest::qWait(80);
         settleLayout(dialog);
         if (!confirming) {
-            const auto *messageArea = dialog.findChild<QScrollArea *>(QStringLiteral("restoreMessageArea"));
-            const auto *counter = dialog.findChild<QLabel *>(QStringLiteral("restoreCounter"));
+            const auto *messageArea = find<QScrollArea>(dialog, "restoreMessageArea");
+            const auto *counter = find<QLabel>(dialog, "restoreCounter");
             const int messageBottom = messageArea->mapTo(&dialog, messageArea->rect().bottomLeft()).y();
             const int counterTop = counter->mapTo(&dialog, QPoint()).y();
             QVERIFY(messageBottom < counterTop);
@@ -1530,14 +1558,14 @@ class GuiTests : public QObject {
                     qPrintable(button->text()));
             }
         }
-        auto *done = dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"));
+        auto *done = find<QPushButton>(dialog, "restoreDone");
         QVERIFY(done);
         if (done->isVisible()) {
             QVERIFY(done->geometry().bottom() < dialog.height());
         }
         QVERIFY(
-            dialog.findChild<QLabel *>(QStringLiteral("restoreTitle"))->height() >=
-            dialog.findChild<QLabel *>(QStringLiteral("restoreTitle"))->fontMetrics().height());
+            find<QLabel>(dialog, "restoreTitle")->height() >=
+            find<QLabel>(dialog, "restoreTitle")->fontMetrics().height());
         const QString output = qEnvironmentVariable("USBRESTORE_GUI_SNAPSHOTS");
         if (!output.isEmpty()) {
             QVERIFY(QDir().mkpath(output));
@@ -1570,14 +1598,14 @@ class GuiTests : public QObject {
         window.show();
         QTest::qWait(80);
         settleLayout(window);
-        auto *restore = window.findChild<QPushButton *>(QStringLiteral("restoreUsb"));
+        auto *restore = find<QPushButton>(window, "restoreUsb");
         QVERIFY(restore);
         QVERIFY(restore->isEnabled());
         QCOMPARE(
             restore->text(),
             language == Language::German ? QStringLiteral("USB wiederherstellen") : QStringLiteral("Restore USB"));
         QCOMPARE(
-            window.findChild<QLabel *>(QStringLiteral("warningTitle"))->text(),
+            textOf<QLabel>(window, "warningTitle"),
             language == Language::German
                 ? QStringLiteral(
                       "Die Wiederherstellung löscht alle Partitionen und Dateien auf dem ausgewählten Laufwerk.")
@@ -1585,7 +1613,7 @@ class GuiTests : public QObject {
         QCOMPARE(
             themeButtonText(Theme::System),
             language == Language::German ? QStringLiteral("Design: Automatisch") : QStringLiteral("Theme: Auto"));
-        auto *languageButton = window.findChild<QPushButton *>(QStringLiteral("language"));
+        auto *languageButton = find<QPushButton>(window, "language");
         QVERIFY(languageButton);
         QCOMPARE(languageButton->text(), languageButtonText(Language::System));
         for (const QString &name :
@@ -1648,12 +1676,12 @@ class GuiTests : public QObject {
                 box->accept();
             }
         });
-        window.findChild<QPushButton *>(QStringLiteral("about"))->click();
+        find<QPushButton>(window, "about")->click();
         QCOMPARE(aboutTitle, QStringLiteral("Über USB Restoration Tool"));
         QVERIFY(aboutDetails.contains(QStringLiteral("Entwickelt von KaroqDave")));
         QVERIFY(aboutDetails.contains(QStringLiteral("Kontrollkästchen aktivieren und bestätigen")));
 
-        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
         QVERIFY(dialog);
         QVERIFY(!dialog->findChild<QPushButton *>(QStringLiteral("confirmErase"))->isEnabled());
@@ -1662,13 +1690,15 @@ class GuiTests : public QObject {
 
         service.scanError = QStringLiteral("Example scan failure: errno 5");
         QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
-        QVERIFY(window.findChild<QLabel *>(QStringLiteral("statusBadge"))
-                    ->text()
-                    .contains(QStringLiteral("Die Suche nach USB-Laufwerken ist fehlgeschlagen.")));
-        QVERIFY(window.findChild<QTextEdit *>(QStringLiteral("activityLog"))
-                    ->toPlainText()
-                    .contains(QStringLiteral("Scan failed: Example scan failure: errno 5")));
-        QVERIFY(!window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->isEnabled());
+        QVERIFY(
+            find<QLabel>(window, "statusBadge")
+                ->text()
+                .contains(QStringLiteral("Die Suche nach USB-Laufwerken ist fehlgeschlagen.")));
+        QVERIFY(
+            find<QTextEdit>(window, "activityLog")
+                ->toPlainText()
+                .contains(QStringLiteral("Scan failed: Example scan failure: errno 5")));
+        QVERIFY(!find<QPushButton>(window, "restoreUsb")->isEnabled());
         QCOMPARE(service.restores.load(), 0);
         window.close();
     }
@@ -1694,7 +1724,7 @@ class GuiTests : public QObject {
         }
         MainWindow window(service, Theme::Light, &translations);
         window.show();
-        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
         QVERIFY(dialog);
         confirmErase(*dialog);
@@ -1713,7 +1743,7 @@ class GuiTests : public QObject {
         QCOMPARE(dialog->findChild<QLabel *>(QStringLiteral("restoreMessage"))->text(), message);
         QCOMPARE(service.restores.load(), 1);
         QCOMPARE(service.received.displayLanguage, Language::German);
-        const QString log = window.findChild<QTextEdit *>(QStringLiteral("activityLog"))->toPlainText();
+        const QString log = find<QTextEdit>(window, "activityLog")->toPlainText();
         QVERIFY(log.contains(QStringLiteral("Restore requested for USB drive 2 — Example Flash Drive (32.00 GB)")));
         QVERIFY(!log.contains(QStringLiteral("32,00 GB")));
         if (outcome == 1) {
@@ -1741,7 +1771,7 @@ class GuiTests : public QObject {
         service.disk = installerDisk();
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
         window.show();
-        window.findChild<QPushButton *>(QStringLiteral("restoreUsb"))->click();
+        find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
         QVERIFY(dialog);
         QVERIFY(dialog->isVisible());
@@ -1817,9 +1847,8 @@ class GuiTests : public QObject {
             std::function<void()> act;
         };
         QVector<Cue> cues;
-        cues.append(
-            {1400, [&] { dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))->setChecked(true); }});
-        cues.append({2400, [&] { dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"))->click(); }});
+        cues.append({1400, [&] { find<QCheckBox>(dialog, "eraseAcknowledgement")->setChecked(true); }});
+        cues.append({2400, [&] { find<QPushButton>(dialog, "confirmErase")->click(); }});
         qint64 at = 3000;
         const int total = static_cast<int>(plan.size());
         for (int step = 1; step <= total; ++step) {
@@ -1865,7 +1894,7 @@ class GuiTests : public QObject {
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
         window.show();
         const QString version = QString::fromLatin1(USBRESTORE_APP_VERSION);
-        QCOMPARE(window.findChild<QLabel *>(QStringLiteral("version"))->text(), QStringLiteral("v%1").arg(version));
+        QCOMPARE(textOf<QLabel>(window, "version"), QStringLiteral("v%1").arg(version));
 
         QString title;
         QString details;
@@ -1882,7 +1911,7 @@ class GuiTests : public QObject {
             }
             box->accept();
         });
-        window.findChild<QPushButton *>(QStringLiteral("about"))->click();
+        find<QPushButton>(window, "about")->click();
 
         QCOMPARE(title, QStringLiteral("USB Restoration Tool %1").arg(version));
         QVERIFY(version != QStringLiteral("0.0.0-dev"));
@@ -1914,7 +1943,7 @@ class GuiTests : public QObject {
         const int destructive = firstDestructiveStepOf(plan);
         RestoreDialog dialog(exampleRequest(), plan);
         confirmErase(dialog);
-        auto *cancel = dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"));
+        auto *cancel = find<QPushButton>(dialog, "cancelRestore");
         QSignalSpy requested(&dialog, &RestoreDialog::cancelRequested);
         for (int step = 1; step < destructive; ++step) {
             dialog.setProgress(step, total, QStringLiteral("Preparing"));
@@ -1925,8 +1954,7 @@ class GuiTests : public QObject {
         QCOMPARE(cancel->text(), QStringLiteral("Writing in progress"));
         cancel->click();
         QCOMPARE(requested.count(), 0);
-        QVERIFY(
-            dialog.findChild<QLabel *>(QStringLiteral("restoreNotice"))->text().contains(QStringLiteral("rewritten")));
+        QVERIFY(textOf<QLabel>(dialog, "restoreNotice").contains(QStringLiteral("rewritten")));
     }
 
     void keepsTheEraseGateInsideTheDialog_data()
@@ -1957,15 +1985,15 @@ class GuiTests : public QObject {
             const QRect rect(widget->mapTo(&dialog, QPoint(0, 0)), widget->size());
             return widget->isVisible() && dialog.rect().contains(rect);
         };
-        QVERIFY(inside(dialog.findChild<QCheckBox *>(QStringLiteral("eraseAcknowledgement"))));
-        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("confirmErase"))));
+        QVERIFY(inside(find<QCheckBox>(dialog, "eraseAcknowledgement")));
+        QVERIFY(inside(find<QPushButton>(dialog, "confirmErase")));
         confirmErase(dialog);
         dialog.resize(dialog.minimumSize());
         QApplication::processEvents();
-        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("cancelRestore"))));
+        QVERIFY(inside(find<QPushButton>(dialog, "cancelRestore")));
         dialog.finishFailure(QStringLiteral("Example failure"));
         QApplication::processEvents();
-        QVERIFY(inside(dialog.findChild<QPushButton *>(QStringLiteral("restoreDone"))));
+        QVERIFY(inside(find<QPushButton>(dialog, "restoreDone")));
     }
 
     void explainsClosingDuringARestore_data()

@@ -173,43 +173,47 @@ class WmiTests : public QObject {
     {
         const QString context = QStringLiteral("Could not clear old signatures on disk 7");
         for (const DWORD code : {ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION, ERROR_BUSY}) {
-            const QString text = windowsDeviceErrorText(context, code);
+            const QString text = windowsDeviceErrorMessage(context, code).english;
             QVERIFY(text.contains(QStringLiteral("another program")));
             QVERIFY(text.contains(QStringLiteral("Close any files")));
         }
         for (const DWORD code : {ERROR_ACCESS_DENIED, ERROR_WRITE_PROTECT}) {
-            const QString text = windowsDeviceErrorText(context, code);
+            const QString text = windowsDeviceErrorMessage(context, code).english;
             QVERIFY(text.contains(QStringLiteral("write-protect switch")));
             QVERIFY(text.contains(QStringLiteral("read-only")));
         }
         // Write protection used to share access denied's "Windows refused access" and lose its plain cause.
-        QVERIFY(windowsDeviceErrorText(context, ERROR_WRITE_PROTECT).contains(QStringLiteral("is write-protected")));
-        QVERIFY(!windowsDeviceErrorText(context, ERROR_WRITE_PROTECT).contains(QStringLiteral("refused access")));
-        QVERIFY(windowsDeviceErrorText(context, ERROR_ACCESS_DENIED).contains(QStringLiteral("refused access")));
+        QVERIFY(windowsDeviceErrorMessage(context, ERROR_WRITE_PROTECT)
+                    .english.contains(QStringLiteral("is write-protected")));
+        QVERIFY(!windowsDeviceErrorMessage(context, ERROR_WRITE_PROTECT)
+                     .english.contains(QStringLiteral("refused access")));
+        QVERIFY(
+            windowsDeviceErrorMessage(context, ERROR_ACCESS_DENIED).english.contains(QStringLiteral("refused access")));
         for (const DWORD code :
              {ERROR_DEV_NOT_EXIST,
               ERROR_DEVICE_NOT_CONNECTED,
               ERROR_NO_MEDIA_IN_DRIVE,
               ERROR_FILE_NOT_FOUND,
               ERROR_PATH_NOT_FOUND}) {
-            const QString text = windowsDeviceErrorText(context, code);
+            const QString text = windowsDeviceErrorMessage(context, code).english;
             QVERIFY(text.contains(QStringLiteral("no longer available")));
             QVERIFY(text.contains(QStringLiteral("refresh the list and select it again")));
         }
         for (const DWORD code : {ERROR_IO_DEVICE, ERROR_CRC, ERROR_READ_FAULT, ERROR_WRITE_FAULT}) {
-            const QString text = windowsDeviceErrorText(context, code);
+            const QString text = windowsDeviceErrorMessage(context, code).english;
             QVERIFY(text.contains(QStringLiteral("could not complete the read or write")));
             QVERIFY(text.contains(QStringLiteral("another USB port")));
         }
         for (const DWORD code : {ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL}) {
-            QVERIFY(windowsDeviceErrorText(context, code).contains(QStringLiteral("smaller than it claims")));
+            QVERIFY(
+                windowsDeviceErrorMessage(context, code).english.contains(QStringLiteral("smaller than it claims")));
         }
-        const QString notReady = windowsDeviceErrorText(context, ERROR_NOT_READY);
+        const QString notReady = windowsDeviceErrorMessage(context, ERROR_NOT_READY).english;
         QVERIFY(notReady.contains(QStringLiteral("not ready")));
         QVERIFY(notReady.contains(QStringLiteral("plug it back in")));
         QVERIFY(!notReady.contains(QStringLiteral("damaged")));
 
-        const QString other = windowsDeviceErrorText(context, ERROR_INVALID_DATA);
+        const QString other = windowsDeviceErrorMessage(context, ERROR_INVALID_DATA).english;
         QVERIFY(other.contains(windowsErrorMessage(ERROR_INVALID_DATA)));
         QVERIFY(other.contains(QStringLiteral("plug it back in")));
 
@@ -231,7 +235,7 @@ class WmiTests : public QObject {
               ERROR_PATH_NOT_FOUND,
               ERROR_DISK_FULL,
               ERROR_HANDLE_DISK_FULL}) {
-            const QString text = windowsDeviceErrorText(context, code);
+            const QString text = windowsDeviceErrorMessage(context, code).english;
             QVERIFY2(text.startsWith(context), qPrintable(text));
             QVERIFY2(text.contains(QStringLiteral("(Windows error %1). ").arg(code)), qPrintable(text));
             QVERIFY2(text.endsWith(QLatin1Char('.')), qPrintable(text));
@@ -242,7 +246,7 @@ class WmiTests : public QObject {
     {
         const QString context = QStringLiteral("Could not format as exFAT on disk 7");
         for (const QString &detail : {QString(), QStringLiteral("MSFT_Volume.Format failed (0x80041001).\nDetails")}) {
-            const QString text = windowsRestoreErrorText(context, detail);
+            const QString text = windowsRestoreErrorMessage(context, detail).english;
             QVERIFY(text.startsWith(context));
             QVERIFY(text.contains(QStringLiteral("run the restore again")));
             QVERIFY(!text.contains(QStringLiteral("damaged")));
@@ -255,14 +259,15 @@ class WmiTests : public QObject {
 
         // Some details are the tool's own wording, so they must not be attributed to Windows.
         const QString ownWords = QStringLiteral("Windows did not report a new volume for disk 7 within 30 seconds.");
-        QVERIFY(!windowsRestoreErrorText(context, ownWords).contains(QStringLiteral("Windows reported")));
+        QVERIFY(!windowsRestoreErrorMessage(context, ownWords).english.contains(QStringLiteral("Windows reported")));
 
         // A step with its own remedy replaces the replug advice instead of adding to it.
         const QString advice = QStringLiteral("Eject another drive to free a drive letter");
-        const QString letter = windowsRestoreErrorText(
-            QStringLiteral("Could not assign a drive letter on disk 7"),
-            QStringLiteral("No available drive letter was found."),
-            advice);
+        const QString letter = windowsRestoreErrorMessage(
+                                   QStringLiteral("Could not assign a drive letter on disk 7"),
+                                   QStringLiteral("No available drive letter was found."),
+                                   advice)
+                                   .english;
         QVERIFY(letter.contains(advice));
         QVERIFY(!letter.contains(QStringLiteral("Close any programs using the drive")));
     }

@@ -33,8 +33,6 @@ struct RestoreGuard {
 // mounted at "/" is refused for holding "/boot".
 bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protectedMountPoints);
 
-bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard);
-
 // Every check is a refusal, not a warning.
 bool isSafeRestoreTarget(
     const DiskInfo &disk, const RestoreGuard &guard, QString *reason = nullptr, TextMode mode = TextMode::English);
@@ -87,6 +85,18 @@ std::uint64_t minimumMkfsFat32VolumeBytes(quint32 sectorSize);
 std::uint64_t maximumMkfsFat32VolumeBytes(quint32 sectorSize);
 
 bool isSupportedSectorSize(quint32 sectorSize);
+
+// 0 means the caller had none, so 512. Other values pass through unclamped so the
+// fuzzers and the dump tool can ask what a strange size would produce.
+quint32 effectiveSectorSize(quint32 sectorSize);
+
+// Zeroed at the start and at tailOffset by both backends. Zero bytes means too small to clear safely.
+struct SignatureClearRange {
+    std::uint64_t bytes = 0;
+    std::uint64_t tailOffset = 0;
+    quint32 sectorSize = 512;
+};
+SignatureClearRange signatureClearRange(std::uint64_t diskSize, quint32 sectorSize);
 
 // Shared by both backends' writeZeros(): rounding for the caller would silently
 // leave the tail unzeroed. Empty means the range is writable as-is.

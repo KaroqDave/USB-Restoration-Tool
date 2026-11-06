@@ -6,8 +6,6 @@
 #include <QStringList>
 #include <QVector>
 
-#include <cstdint>
-
 namespace usbrestore {
 
 // The only identifier that ties a mountinfo entry back to its block device.
@@ -23,7 +21,6 @@ struct MountEntry {
     DeviceNumber device;
     QString mountPoint;
     QString source;
-    bool readOnly = false;
 };
 
 // Empty when the attribute does not exist, sysfs's way of saying "not applicable".
@@ -36,6 +33,10 @@ QStringList listBlockDeviceNames();
 QStringList listPartitionNames(const QString &diskName);
 
 DeviceNumber readDeviceNumber(const QString &sysfsPath);
+
+// The whole disk's device number and every partition's, skipping the invalid ones.
+// Enumeration and the unmount path both use it, so they agree about what is mounted.
+QVector<DeviceNumber> deviceNumbersOnDisk(const QString &diskName);
 
 QVector<MountEntry> readMounts();
 
@@ -57,5 +58,9 @@ QString parentDiskName(const QString &partitionName);
 // Falls back to udev's record when the node cannot be opened, the usual case for the
 // unprivileged GUI.
 PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSize);
+
+// The first fixed system directory holding an executable `name`, or empty. PATH is
+// never consulted: the result is run as root.
+QString findSystemExecutable(const QString &name);
 
 } // namespace usbrestore

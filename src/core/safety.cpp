@@ -10,6 +10,8 @@ namespace usbrestore {
 
 namespace {
 
+constexpr std::uint64_t SignatureClearBytes = 4ull * 1024ull * 1024ull;
+
 QString normalizedIdentity(const QString &value)
 {
     return value.trimmed().toCaseFolded();
@@ -124,6 +126,8 @@ bool isProtectedMountPoint(const QString &mountPoint, const QStringList &protect
     return false;
 }
 
+namespace {
+
 bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard)
 {
     for (const QString &mountPoint : disk.mountPoints) {
@@ -133,6 +137,8 @@ bool containsProtectedMountPoint(const DiskInfo &disk, const RestoreGuard &guard
     }
     return false;
 }
+
+} // namespace
 
 bool isSupportedSectorSize(quint32 sectorSize)
 {
@@ -145,6 +151,25 @@ bool isSupportedSectorSize(quint32 sectorSize)
     default:
         return false;
     }
+}
+
+quint32 effectiveSectorSize(quint32 sectorSize)
+{
+    return sectorSize == 0 ? 512 : sectorSize;
+}
+
+SignatureClearRange signatureClearRange(std::uint64_t diskSize, quint32 sectorSize)
+{
+    SignatureClearRange range;
+    range.sectorSize = isSupportedSectorSize(sectorSize) ? sectorSize : 512;
+    const std::uint64_t sector = range.sectorSize;
+    // 4 MiB covers GPT, MBR and hybrid-ISO signatures; a quarter keeps the two ends apart on a small disk.
+    const std::uint64_t clearBytes = diskSize / 4 < SignatureClearBytes ? diskSize / 4 : SignatureClearBytes;
+    range.bytes = (clearBytes / sector) * sector;
+    if (range.bytes > 0) {
+        range.tailOffset = ((diskSize - range.bytes) / sector) * sector;
+    }
+    return range;
 }
 
 QString unalignedZeroRangeError(std::uint64_t offset, std::uint64_t bytes, quint32 sectorSize, TextMode mode)

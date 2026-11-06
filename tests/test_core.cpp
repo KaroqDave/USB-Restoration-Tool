@@ -3,7 +3,6 @@
 #include "core/partition_table.h"
 #include "core/restore_message.h"
 #include "core/restore_protocol.h"
-#include "core/restore_steps.h"
 #include "core/safety.h"
 #include "platform/translations.h"
 
@@ -251,7 +250,6 @@ class CoreTests : public QObject {
         QVERIFY(parseFileSystemType(QStringLiteral("ext4"), &parsed));
         QCOMPARE(parsed, FileSystemType::Ext4);
         QVERIFY(!parseFileSystemType(QStringLiteral("btrfs")));
-        QCOMPARE(healthStatusName(static_cast<quint16>(HealthStatus::Healthy)), QStringLiteral("Healthy"));
         QCOMPARE(busTypeName(UsbBusType), QStringLiteral("USB"));
         QCOMPARE(busTypeName(17), QStringLiteral("NVMe"));
     }
@@ -669,6 +667,50 @@ class CoreTests : public QObject {
         // Unsupported sizes validate against 512, the same fallback on both platforms.
         QVERIFY(unalignedZeroRangeError(512, 1024, 600).isEmpty());
         QVERIFY(!unalignedZeroRangeError(0, 600, 600).isEmpty());
+    }
+
+    void clearsTheSameSignatureRangeOnBothPlatforms()
+    {
+        constexpr std::uint64_t MiB = 1024ull * 1024ull;
+        // A normal stick clears a fixed 4 MiB at each end, whatever the sector size.
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 512).bytes, 4 * MiB);
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 4096).bytes, 4 * MiB);
+        QCOMPARE(signatureClearRange(32 * 1024 * MiB, 4096).tailOffset, 32 * 1024 * MiB - 4 * MiB);
+
+        // On a small disk the two ends must not overlap, so it is a quarter instead.
+        QCOMPARE(signatureClearRange(8 * MiB, 512).bytes, 2 * MiB);
+
+        // Both ends are whole sectors inside the disk, so neither can be left partly written.
+        for (const quint32 sector : {512u, 1024u, 2048u, 4096u}) {
+            for (const std::uint64_t size : {7 * MiB, 8 * MiB, 9 * MiB + 100, 33 * MiB + 77}) {
+                const SignatureClearRange range = signatureClearRange(size, sector);
+                const QByteArray where = QStringLiteral("%1 %2").arg(size).arg(sector).toUtf8();
+                QCOMPARE(range.sectorSize, sector);
+                QVERIFY2(range.bytes % sector == 0, where.constData());
+                QVERIFY2(range.tailOffset % sector == 0, where.constData());
+                QVERIFY2(range.bytes <= size / 4, where.constData());
+                QVERIFY2(range.tailOffset + range.bytes <= size, where.constData());
+                QVERIFY2(range.tailOffset >= range.bytes, where.constData());
+                QVERIFY2(
+                    unalignedZeroRangeError(range.tailOffset, range.bytes, range.sectorSize).isEmpty(),
+                    where.constData());
+            }
+        }
+
+        // Below one sector there is nothing safe to clear, which is why callers refuse.
+        QCOMPARE(signatureClearRange(512, 512).bytes, std::uint64_t{0});
+        QCOMPARE(signatureClearRange(0, 512).bytes, std::uint64_t{0});
+        QCOMPARE(signatureClearRange(4095, 4096).bytes, std::uint64_t{0});
+
+        // An unsupported or missing sector size falls back to 512 for the length, the tail and the
+        // write, so the range it returns is one writeZeros() accepts.
+        for (const quint32 sector : {0u, 600u}) {
+            const SignatureClearRange range = signatureClearRange(32 * 1024 * MiB + 1000, sector);
+            QCOMPARE(range.sectorSize, 512u);
+            QCOMPARE(range.bytes, 4 * MiB);
+            QCOMPARE(range.tailOffset % 512, std::uint64_t{0});
+            QVERIFY(unalignedZeroRangeError(range.tailOffset, range.bytes, range.sectorSize).isEmpty());
+        }
     }
 
     void treatsOnlyAReportedZeroOffsetAsTheDiskStart()
@@ -1267,7 +1309,6 @@ class CoreTests : public QObject {
         QCOMPARE(claimedEnglish.deviceSequence, claimedGerman.deviceSequence);
         QCOMPARE(claimedEnglish.size, claimedGerman.size);
         QCOMPARE(claimedEnglish.sectorSize, claimedGerman.sectorSize);
-        QCOMPARE(claimedEnglish.health, claimedGerman.health);
         QCOMPARE(claimedEnglish.partitionStyle, claimedGerman.partitionStyle);
         QCOMPARE(claimedEnglish.mountPoints, claimedGerman.mountPoints);
         QCOMPARE(claimedEnglish.labels, claimedGerman.labels);

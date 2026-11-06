@@ -15,7 +15,7 @@ policy needed by a separate helper.
 - `helper_client.*`: starts the helper and interprets its output.
 - `src/helper/main.cpp`: validates requests and reports progress.
 - `src/core/restore_protocol.*`: shared argument and message parsing.
-- `src/core/restore_steps.*`: the restore step plan both sides number steps by.
+- `src/core/restore_message.*`: the restore step plan both sides number steps by.
 
 Keep enumeration and restore separate so the helper does not need the GUI or
 `LinuxDiskService`.

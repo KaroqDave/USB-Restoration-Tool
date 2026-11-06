@@ -1,5 +1,7 @@
 #include "linux/sysfs.h"
 
+#include "core/safety.h"
+
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -112,6 +114,22 @@ DeviceNumber readDeviceNumber(const QString &sysfsPath)
     return parseDeviceNumber(readSysfsAttribute(QStringLiteral("%1/dev").arg(sysfsPath)));
 }
 
+QVector<DeviceNumber> deviceNumbersOnDisk(const QString &diskName)
+{
+    QVector<DeviceNumber> owned;
+    const DeviceNumber diskNumber = readDeviceNumber(QStringLiteral("%1/%2").arg(SysBlock, diskName));
+    if (diskNumber.isValid()) {
+        owned.append(diskNumber);
+    }
+    for (const QString &partition : listPartitionNames(diskName)) {
+        const DeviceNumber number = readDeviceNumber(QStringLiteral("%1/%2/%3").arg(SysBlock, diskName, partition));
+        if (number.isValid()) {
+            owned.append(number);
+        }
+    }
+    return owned;
+}
+
 QVector<MountEntry> readMounts()
 {
     QVector<MountEntry> mounts;
@@ -133,7 +151,6 @@ QVector<MountEntry> readMounts()
         MountEntry entry;
         entry.device = parseDeviceNumber(fields.at(2));
         entry.mountPoint = unescapeMountField(fields.at(4));
-        entry.readOnly = fields.at(5).split(QLatin1Char(',')).contains(QStringLiteral("ro"));
 
         const int separator = fields.indexOf(QStringLiteral("-"));
         if (separator >= 0 && separator + 2 < fields.size()) {
@@ -164,47 +181,48 @@ bool isUsbBlockDevice(const QString &diskName)
     return false;
 }
 
-QString stableDeviceIdLink(const QString &diskName)
+namespace {
+
+// The first entry in a /dev/disk/by-* directory that links to the device, preferring names that
+// start with preferredPrefix; stops at the first preferred match.
+QString linkTo(const QString &directory, const QString &deviceName, const QString &preferredPrefix = {})
 {
-    const QDir byId(QStringLiteral("/dev/disk/by-id"));
-    if (!byId.exists()) {
+    const QDir links(directory);
+    if (!links.exists()) {
         return {};
     }
 
-    const QString target = QStringLiteral("/dev/%1").arg(diskName);
+    const QString target = QStringLiteral("/dev/%1").arg(deviceName);
     QString fallback;
-    const auto entries = byId.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot);
+    const auto entries = links.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot);
     for (const QString &entry : entries) {
-        const QFileInfo info(byId.absoluteFilePath(entry));
-        if (info.canonicalFilePath() != target) {
+        const bool preferred = entry.startsWith(preferredPrefix);
+        if (!preferred && !fallback.isEmpty()) {
             continue;
         }
-        if (entry.startsWith(QStringLiteral("usb-"))) {
+        if (QFileInfo(links.absoluteFilePath(entry)).canonicalFilePath() != target) {
+            continue;
+        }
+        if (preferred) {
             return entry;
         }
-        if (fallback.isEmpty()) {
-            fallback = entry;
-        }
+        fallback = entry;
     }
     return fallback;
 }
 
+} // namespace
+
+QString stableDeviceIdLink(const QString &diskName)
+{
+    // A usb- prefixed id is stable across reboots, unlike the bus path some sticks offer.
+    return linkTo(QStringLiteral("/dev/disk/by-id"), diskName, QStringLiteral("usb-"));
+}
+
 QString labelForPartition(const QString &partitionName)
 {
-    const QDir byLabel(QStringLiteral("/dev/disk/by-label"));
-    if (!byLabel.exists()) {
-        return {};
-    }
-
-    const QString target = QStringLiteral("/dev/%1").arg(partitionName);
-    const auto entries = byLabel.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot);
-    for (const QString &entry : entries) {
-        if (QFileInfo(byLabel.absoluteFilePath(entry)).canonicalFilePath() == target) {
-            // by-label names are escaped the same way mount fields are.
-            return unescapeMountField(entry);
-        }
-    }
-    return {};
+    // by-label names are escaped the same way mount fields are.
+    return unescapeMountField(linkTo(QStringLiteral("/dev/disk/by-label"), partitionName));
 }
 
 QString parentDiskName(const QString &partitionName)
@@ -297,7 +315,7 @@ PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSiz
         return partitionStyleFromUdevDatabase(devicePath);
     }
 
-    const qint64 sector = sectorSize == 0 ? 512 : sectorSize;
+    const qint64 sector = effectiveSectorSize(sectorSize);
     const QByteArray first = device.read(sector);
     if (first.size() < 512) {
         return PartitionStyle::Unknown;
@@ -316,6 +334,27 @@ PartitionStyle detectPartitionStyle(const QString &devicePath, quint32 sectorSiz
     }
 
     return PartitionStyle::Unknown;
+}
+
+QString findSystemExecutable(const QString &name)
+{
+    static const QStringList directories = {
+        QStringLiteral("/usr/sbin"),
+        QStringLiteral("/sbin"),
+        QStringLiteral("/usr/bin"),
+        QStringLiteral("/bin"),
+        QStringLiteral("/usr/local/sbin"),
+        QStringLiteral("/usr/local/bin"),
+    };
+
+    for (const QString &directory : directories) {
+        const QString candidate = QStringLiteral("%1/%2").arg(directory, name);
+        const QFileInfo info(candidate);
+        if (info.exists() && info.isExecutable() && !info.isDir()) {
+            return candidate;
+        }
+    }
+    return {};
 }
 
 } // namespace usbrestore

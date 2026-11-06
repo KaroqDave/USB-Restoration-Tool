@@ -1,7 +1,6 @@
 #include "linux/block_device.h"
 
 #include "core/safety.h"
-#include "linux/sysfs.h"
 #include "linux/linux_enumerate.h"
 
 #include <QFileInfo>
@@ -9,6 +8,7 @@
 
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <linux/loop.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -82,11 +82,6 @@ RestoreMessage deviceErrorMessage(const RestoreMessage &context, int errorNumber
         .arg(context, reason, errorNumber, advice);
 }
 
-QString deviceErrorText(const QString &context, int errorNumber)
-{
-    return deviceErrorMessage(context, errorNumber).english;
-}
-
 BlockDevice::BlockDevice(QString devicePath) : m_devicePath(std::move(devicePath)) {}
 
 BlockDevice::~BlockDevice()
@@ -110,24 +105,22 @@ bool BlockDevice::open(Access access, QString *error, QString *displayError)
     m_fd = ::open(m_devicePath.toLocal8Bit().constData(), flags);
     if (m_fd < 0) {
         const int errorNumber = errno;
-        if (error || displayError) {
-            if (access == Access::Exclusive && errorNumber == EBUSY) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    restoreText(QT_TRANSLATE_NOOP(
-                                    "usbrestore::Backend",
-                                    "%1 is still in use. Close anything reading from the drive, make sure every "
-                                    "partition is unmounted, and try again."))
-                        .arg(m_devicePath));
-            } else {
-                setRestoreError(
-                    error,
-                    displayError,
-                    deviceErrorMessage(
-                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open %1")).arg(m_devicePath),
-                        errorNumber));
-            }
+        if (access == Access::Exclusive && errorNumber == EBUSY) {
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "%1 is still in use. Close anything reading from the drive, make sure every "
+                                "partition is unmounted, and try again."))
+                    .arg(m_devicePath));
+        } else {
+            setRestoreError(
+                error,
+                displayError,
+                deviceErrorMessage(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not open %1")).arg(m_devicePath),
+                    errorNumber));
         }
         return false;
     }
@@ -158,20 +151,12 @@ quint32 BlockDevice::logicalSectorSize() const
     return static_cast<quint32>(sectorSize);
 }
 
-bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QString *displayError)
+bool BlockDevice::blockDeviceNumber(DeviceNumber *number, QString *error, QString *displayError) const
 {
     const auto refuse = [error, displayError](const RestoreMessage &text) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, text);
-        }
+        setRestoreError(error, displayError, text);
         return false;
     };
-
-    if (m_fd < 0) {
-        return refuse(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not open, so nothing could be checked on it."))
-                .arg(m_devicePath));
-    }
 
     struct stat status = {};
     if (::fstat(m_fd, &status) != 0) {
@@ -184,6 +169,28 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
     if (!S_ISBLK(status.st_mode)) {
         return refuse(
             restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not a disk device.")).arg(m_devicePath));
+    }
+    number->major = static_cast<quint32>(major(status.st_rdev));
+    number->minor = static_cast<quint32>(minor(status.st_rdev));
+    return true;
+}
+
+bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QString *displayError)
+{
+    const auto refuse = [error, displayError](const RestoreMessage &text) {
+        setRestoreError(error, displayError, text);
+        return false;
+    };
+
+    if (m_fd < 0) {
+        return refuse(
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not open, so nothing could be checked on it."))
+                .arg(m_devicePath));
+    }
+
+    DeviceNumber actual;
+    if (!blockDeviceNumber(&actual, error, displayError)) {
+        return false;
     }
 
     std::uint64_t sequence = 0;
@@ -215,9 +222,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
     }
 
     // Catches a node re-created since the scan to point somewhere else.
-    const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
-    const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
-    if (actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
+    if (actual != expectedNumber) {
         return refuse(
             restoreText(QT_TRANSLATE_NOOP(
                             "usbrestore::Backend",
@@ -239,10 +244,7 @@ bool BlockDevice::verifyIdentity(const DiskInfo &expected, QString *error, QStri
                             "usbrestore::Backend",
                             "%1 now holds a %2 drive, not the %3 that was selected. Refresh and select the "
                             "USB again."))
-                .arg(
-                    m_devicePath,
-                    RestoreMessage{formatByteSize(reportedSize), formatByteSize(reportedSize, TextMode::Display)},
-                    RestoreMessage{formatByteSize(expected.size), formatByteSize(expected.size, TextMode::Display)}));
+                .arg(m_devicePath, formatByteSizeMessage(reportedSize), formatByteSizeMessage(expected.size)));
     }
 
     const quint32 reportedSector = logicalSectorSize();
@@ -298,9 +300,7 @@ bool BlockDevice::verifyPartitionOf(
     QString *displayError) const
 {
     const auto refuse = [error, displayError](const RestoreMessage &text) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, text);
-        }
+        setRestoreError(error, displayError, text);
         return false;
     };
 
@@ -311,26 +311,16 @@ bool BlockDevice::verifyPartitionOf(
                 .arg(m_devicePath));
     }
 
-    struct stat status = {};
-    if (::fstat(m_fd, &status) != 0) {
-        const int errorNumber = errno;
-        return refuse(deviceErrorMessage(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not read the device information of %1"))
-                .arg(m_devicePath),
-            errorNumber));
-    }
-    if (!S_ISBLK(status.st_mode)) {
-        return refuse(
-            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not a disk device.")).arg(m_devicePath));
+    DeviceNumber actual;
+    if (!blockDeviceNumber(&actual, error, displayError)) {
+        return false;
     }
 
     // Only the owning disk lists the partition under /sys/block/<disk>/.
     const QString partitionName = QFileInfo(m_devicePath).fileName();
     const DeviceNumber expectedNumber =
         readDeviceNumber(QStringLiteral("/sys/block/%1/%2").arg(diskName, partitionName));
-    const auto actualMajor = static_cast<quint32>(major(status.st_rdev));
-    const auto actualMinor = static_cast<quint32>(minor(status.st_rdev));
-    if (!expectedNumber.isValid() || actualMajor != expectedNumber.major || actualMinor != expectedNumber.minor) {
+    if (!expectedNumber.isValid() || actual != expectedNumber) {
         return refuse(
             restoreText(QT_TRANSLATE_NOOP(
                             "usbrestore::Backend",
@@ -357,14 +347,11 @@ bool BlockDevice::verifyPartitionOf(
 bool BlockDevice::writeAt(std::uint64_t offset, const QByteArray &data, QString *error, QString *displayError)
 {
     if (m_fd < 0) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(
-                    QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not open, so nothing could be written to it."))
-                    .arg(m_devicePath));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1 is not open, so nothing could be written to it."))
+                .arg(m_devicePath));
         return false;
     }
 
@@ -380,28 +367,23 @@ bool BlockDevice::writeAt(std::uint64_t offset, const QByteArray &data, QString 
                 continue;
             }
             const int errorNumber = errno;
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    deviceErrorMessage(
-                        restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not write to %1"))
-                            .arg(m_devicePath),
-                        errorNumber));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                deviceErrorMessage(
+                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not write to %1")).arg(m_devicePath),
+                    errorNumber));
             return false;
         }
         if (result == 0) {
-            if (error || displayError) {
-                setRestoreError(
-                    error,
-                    displayError,
-                    restoreText(QT_TRANSLATE_NOOP(
-                                    "usbrestore::Backend",
-                                    "%1 stopped accepting data part way through the write. Unplug the drive, "
-                                    "plug it back in and try again; if it keeps happening the drive is damaged."))
-                        .arg(m_devicePath));
-            }
+            setRestoreError(
+                error,
+                displayError,
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "%1 stopped accepting data part way through the write. Unplug the drive, "
+                                "plug it back in and try again; if it keeps happening the drive is damaged."))
+                    .arg(m_devicePath));
             return false;
         }
         written += result;
@@ -420,9 +402,7 @@ bool BlockDevice::writeZeros(
         unalignedZeroRangeError(offset, bytes, sectorSize),
         unalignedZeroRangeError(offset, bytes, sectorSize, TextMode::Display)};
     if (!unaligned.english.isEmpty()) {
-        if (error || displayError) {
-            setRestoreError(error, displayError, unaligned);
-        }
+        setRestoreError(error, displayError, unaligned);
         return false;
     }
 
@@ -451,15 +431,13 @@ bool BlockDevice::flush(QString *error, QString *displayError)
     }
     if (::fsync(m_fd) != 0) {
         const int errorNumber = errno;
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                deviceErrorMessage(
-                    restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not save the changes to %1"))
-                        .arg(m_devicePath),
-                    errorNumber));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            deviceErrorMessage(
+                restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not save the changes to %1"))
+                    .arg(m_devicePath),
+                errorNumber));
         return false;
     }
     // Drop the cached copy so the partition scan reads the new table, not the old one.
@@ -470,33 +448,275 @@ bool BlockDevice::flush(QString *error, QString *displayError)
 bool BlockDevice::rereadPartitionTable(QString *error, QString *displayError)
 {
     if (m_fd < 0) {
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                restoreText(QT_TRANSLATE_NOOP(
-                                "usbrestore::Backend", "%1 is not open, so its partition table could not be re-read."))
-                    .arg(m_devicePath));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                            "usbrestore::Backend", "%1 is not open, so its partition table could not be re-read."))
+                .arg(m_devicePath));
         return false;
     }
 
     if (::ioctl(m_fd, BLKRRPART, 0) != 0) {
         const int errorNumber = errno;
-        if (error || displayError) {
-            setRestoreError(
-                error,
-                displayError,
-                deviceErrorMessage(
-                    restoreText(QT_TRANSLATE_NOOP(
-                                    "usbrestore::Backend",
-                                    "The new partition table was written to %1, but the system would not re-scan it"))
-                        .arg(m_devicePath),
-                    errorNumber));
-        }
+        setRestoreError(
+            error,
+            displayError,
+            deviceErrorMessage(
+                restoreText(QT_TRANSLATE_NOOP(
+                                "usbrestore::Backend",
+                                "The new partition table was written to %1, but the system would not re-scan it"))
+                    .arg(m_devicePath),
+                errorNumber));
         return false;
     }
     return true;
+}
+
+// A loop-control or mapping failure is a kernel loop-driver problem, not a USB
+// stick problem, except EIO, which comes from the drive underneath. The caller supplies
+// the action, without a final full stop.
+RestoreMessage loopErrorMessage(const RestoreMessage &operation, int errorNumber, const RestoreMessage &advice)
+{
+    RestoreMessage reason;
+    switch (errorNumber) {
+    case EBUSY:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the loop driver is busy with another mapping"));
+        break;
+    case EACCES:
+    case EPERM:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the system refused access to the loop driver"));
+        break;
+    case ENODEV:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the loop driver is not available"));
+        break;
+    case ENXIO:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the loop device went away"));
+        break;
+    case EINVAL:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the loop mapping was rejected"));
+        break;
+    case EIO:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the drive failed while writing"));
+        break;
+    case ENOSPC:
+        reason = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "the loop mapping ran out of room"));
+        break;
+    default:
+        reason = QString::fromLocal8Bit(std::strerror(errorNumber));
+        break;
+    }
+
+    return restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "%1: %2 (errno %3). %4."))
+        .arg(operation, reason, errorNumber, advice);
+}
+
+namespace {
+// The loop device is an internal detail; say what it was being used for and what
+// the user can do about it, rather than naming a loop node as if it were the drive.
+bool loopError(
+    QString *error,
+    int errorNumber,
+    const RestoreMessage &operation,
+    const RestoreMessage &advice,
+    QString *displayError)
+{
+    setRestoreError(error, displayError, loopErrorMessage(operation, errorNumber, advice));
+    return false;
+}
+} // namespace
+
+LoopDevice::~LoopDevice()
+{
+    detach(nullptr);
+}
+
+bool LoopDevice::configure(
+    int backingDescriptor,
+    std::uint64_t offset,
+    std::uint64_t length,
+    quint32 sectorSize,
+    QString *error,
+    QString *displayError)
+{
+    if (m_fd >= 0 || m_claimFd >= 0) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "A formatting area is already set up for this drive. Unplug the drive, plug it "
+                "back in and try again.")));
+        return false;
+    }
+    struct stat status = {};
+    if (::fstat(backingDescriptor, &status) != 0) {
+        const int errorNumber = errno;
+        return loopError(
+            error,
+            errorNumber,
+            restoreText(
+                QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not read the drive through the formatting area")),
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Try the restore again")),
+            displayError);
+    }
+    std::uint64_t size = 0;
+    if (S_ISREG(status.st_mode)) {
+        size = static_cast<std::uint64_t>(status.st_size);
+    } else if (!S_ISBLK(status.st_mode) || ::ioctl(backingDescriptor, BLKGETSIZE64, &size) != 0) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "The drive could not be read for formatting. Unplug it, plug it back in and try "
+                "again.")));
+        return false;
+    }
+    if (!isValidDeviceRange(size, offset, length, sectorSize)) {
+        setRestoreError(
+            error,
+            displayError,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "The space set aside for the new volume is outside the drive or is not aligned to "
+                "its sectors. Refresh the list and select the drive again.")));
+        return false;
+    }
+    const int control = ::open("/dev/loop-control", O_RDWR | O_CLOEXEC);
+    if (control < 0) {
+        const int errorNumber = errno;
+        return loopError(
+            error,
+            errorNumber,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "Could not reach the Linux loop driver at /dev/loop-control, which formatting needs")),
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "Make sure the loop module is loaded (modprobe loop) and try again")),
+            displayError);
+    }
+    bool busy = false;
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        // GET_FREE returns the lowest unbound node, so after one is busy it would return the
+        // same one again; a negative ADD allocates a new node instead.
+        const int number = busy ? ::ioctl(control, LOOP_CTL_ADD, -1L) : ::ioctl(control, LOOP_CTL_GET_FREE);
+        if (number < 0) {
+            break;
+        }
+        m_path = QStringLiteral("/dev/loop%1").arg(number);
+        m_claimFd = ::open(m_path.toLocal8Bit().constData(), O_RDWR | O_EXCL | O_CLOEXEC);
+        if (m_claimFd < 0) {
+            busy = errno == EBUSY;
+            if (busy) {
+                continue;
+            }
+            break;
+        }
+        struct loop_config config = {};
+        config.fd = static_cast<quint32>(backingDescriptor);
+        config.block_size = sectorSize;
+        config.info.lo_offset = offset;
+        config.info.lo_sizelimit = length;
+        config.info.lo_flags = LO_FLAGS_AUTOCLEAR;
+        if (::ioctl(m_claimFd, LOOP_CONFIGURE, &config) == 0) {
+            m_fd = ::open(m_path.toLocal8Bit().constData(), O_RDWR | O_CLOEXEC);
+            if (m_fd >= 0) {
+                ::close(control);
+                return true;
+            }
+            const int code = errno;
+            ::ioctl(m_claimFd, LOOP_CLR_FD, 0);
+            ::close(m_claimFd);
+            m_claimFd = -1;
+            errno = code;
+            break;
+        }
+        const int code = errno;
+        ::close(m_claimFd);
+        m_claimFd = -1;
+        errno = code;
+        busy = code == EBUSY;
+        if (!busy) {
+            break;
+        }
+    }
+    const int errorNumber = errno;
+    ::close(control);
+    m_path.clear();
+    return loopError(
+        error,
+        errorNumber,
+        restoreText(
+            QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not set up the temporary area used to format the drive")),
+        restoreText(QT_TRANSLATE_NOOP(
+            "usbrestore::Backend",
+            "Close other disk tools that may be holding loop devices, such as GNOME Disks, and try again")),
+        displayError);
+}
+
+bool LoopDevice::prepareForFormatting(QString *error, QString *displayError)
+{
+    // The raw writer changed the backing sectors after this mapping was created.
+    if (m_fd < 0 || ::ioctl(m_fd, BLKFLSBUF, 0) != 0) {
+        const int errorNumber = errno;
+        return loopError(
+            error,
+            errorNumber,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "Could not make the new partition available to the formatter")),
+            restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "Unplug the drive, plug it back in and try again")),
+            displayError);
+    }
+    releaseClaim();
+    return true;
+}
+
+void LoopDevice::releaseClaim()
+{
+    if (m_claimFd >= 0) {
+        ::close(m_claimFd);
+        m_claimFd = -1;
+    }
+}
+
+bool LoopDevice::detach(QString *error, QString *displayError)
+{
+    if (m_fd < 0) {
+        releaseClaim();
+        return true;
+    }
+    bool ok = true;
+    if (::fsync(m_fd) != 0) {
+        const int errorNumber = errno;
+        ok = loopError(
+            error,
+            errorNumber,
+            restoreText(
+                QT_TRANSLATE_NOOP("usbrestore::Backend", "Could not finish writing the new volume to the drive")),
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "Unplug the drive, plug it back in and check whether the volume appears; if it does not, "
+                "run the restore again")),
+            displayError);
+    }
+    releaseClaim();
+    if (::ioctl(m_fd, LOOP_CLR_FD, 0) != 0 && ok) {
+        const int errorNumber = errno;
+        ok = loopError(
+            error,
+            errorNumber,
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend",
+                "The new volume was written, but its temporary formatting area could not be closed")),
+            restoreText(QT_TRANSLATE_NOOP(
+                "usbrestore::Backend", "Unplug the drive and plug it back in; this does not damage the drive")),
+            displayError);
+    }
+    ::close(m_fd);
+    m_fd = -1;
+    m_path.clear();
+    return ok;
 }
 
 } // namespace usbrestore

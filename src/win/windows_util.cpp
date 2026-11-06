@@ -1,6 +1,10 @@
 #include "win/windows_util.h"
 
+#include "core/safety.h"
+#include "platform/startup.h"
+
 #include <QByteArray>
+#include <QVector>
 #include <QtGlobal>
 
 #include <shellapi.h>
@@ -32,16 +36,6 @@ QString windowsErrorMessage(DWORD error)
         return QStringLiteral("Windows error %1").arg(error);
     }
     return QStringLiteral("%1 (error %2)").arg(message).arg(error);
-}
-
-QString windowsErrorMessage()
-{
-    return windowsErrorMessage(GetLastError());
-}
-
-QString windowsErrorMessage(const QString &context, DWORD error)
-{
-    return QStringLiteral("%1: %2").arg(context, windowsErrorMessage(error));
 }
 
 RestoreMessage windowsDeviceErrorMessage(const RestoreMessage &context, DWORD error)
@@ -131,16 +125,6 @@ RestoreMessage windowsErrorDetails(const RestoreMessage &context, DWORD error)
     return RestoreMessage{QStringLiteral("%1: %2"), QStringLiteral("%1: %2")}.arg(context, windowsErrorMessage(error));
 }
 
-QString windowsDeviceErrorText(const QString &context, DWORD error)
-{
-    return windowsDeviceErrorMessage(context, error).english;
-}
-
-QString windowsRestoreErrorText(const QString &context, const QString &detail, const QString &advice)
-{
-    return windowsRestoreErrorMessage(context, detail, advice).english;
-}
-
 QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
 {
     for (int code = 'D'; code <= 'Z'; ++code) {
@@ -152,10 +136,13 @@ QString firstAvailableDriveLetter(quint32 logicalDrivesMask)
     return {};
 }
 
-bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
+namespace {
+
+QVector<quint32> volumeDiskNumbers(HANDLE volumeHandle)
 {
+    QVector<quint32> numbers;
     if (volumeHandle == INVALID_HANDLE_VALUE) {
-        return false;
+        return numbers;
     }
 
     QByteArray buffer(static_cast<int>(sizeof(VOLUME_DISK_EXTENTS)), '\0');
@@ -171,44 +158,84 @@ bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
             &returned,
             nullptr);
         if (ok) {
-            constexpr DWORD headerSize = offsetof(VOLUME_DISK_EXTENTS, Extents);
-            if (returned < headerSize) {
-                return false;
-            }
-
             const auto *extents = reinterpret_cast<const VOLUME_DISK_EXTENTS *>(buffer.constData());
-            // The driver's count is bounded by the bytes returned so it cannot overrun the buffer.
-            const DWORD fits = (returned - headerSize) / sizeof(DISK_EXTENT);
-            const DWORD count = qMin(extents->NumberOfDiskExtents, fits);
-            for (DWORD i = 0; i < count; ++i) {
-                if (extents->Extents[i].DiskNumber == diskNumber) {
-                    return true;
-                }
+            const std::uint32_t count = boundedEntryCount(
+                extents->NumberOfDiskExtents, returned, offsetof(VOLUME_DISK_EXTENTS, Extents), sizeof(DISK_EXTENT));
+            for (std::uint32_t i = 0; i < count; ++i) {
+                numbers.append(extents->Extents[i].DiskNumber);
             }
-            return false;
+            return numbers;
         }
 
         const DWORD code = GetLastError();
         if (code != ERROR_MORE_DATA && code != ERROR_INSUFFICIENT_BUFFER) {
-            return false;
+            return numbers;
         }
         buffer.resize(buffer.size() + static_cast<int>(sizeof(DISK_EXTENT)) * 16);
     }
 
-    return false;
+    return numbers;
 }
 
-HANDLE openVolumeForQuery(QChar driveLetter)
+} // namespace
+
+HANDLE openVolumePath(const QString &path, DWORD access)
 {
-    const QString path = QStringLiteral("\\\\.\\%1:").arg(driveLetter);
     return CreateFileW(
         reinterpret_cast<LPCWSTR>(path.utf16()),
-        0,
+        access,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr,
         OPEN_EXISTING,
         0,
         nullptr);
+}
+
+bool volumeHasDiskExtent(HANDLE volumeHandle, quint32 diskNumber)
+{
+    return volumeDiskNumbers(volumeHandle).contains(diskNumber);
+}
+
+bool volumePathIsOnDisk(const QString &path, quint32 diskNumber, DWORD *openError)
+{
+    const HANDLE handle = openVolumePath(path, 0);
+    if (handle == INVALID_HANDLE_VALUE) {
+        if (openError) {
+            const DWORD code = GetLastError();
+            *openError = code == ERROR_SUCCESS ? ERROR_OPEN_FAILED : code;
+        }
+        return false;
+    }
+    if (openError) {
+        *openError = ERROR_SUCCESS;
+    }
+    const bool belongs = volumeHasDiskExtent(handle, diskNumber);
+    CloseHandle(handle);
+    return belongs;
+}
+
+QHash<quint32, QStringList> driveLettersByDisk()
+{
+    QHash<quint32, QStringList> letters;
+    const DWORD drives = GetLogicalDrives();
+    for (wchar_t letter = L'A'; letter <= L'Z'; ++letter) {
+        if ((drives & (1u << (letter - L'A'))) == 0) {
+            continue;
+        }
+        const QString name = QStringLiteral("%1:").arg(QChar(letter));
+        const HANDLE handle = openVolumePath(QStringLiteral("\\\\.\\") + name, 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        const QVector<quint32> disks = volumeDiskNumbers(handle);
+        CloseHandle(handle);
+        for (const quint32 disk : disks) {
+            if (!letters[disk].contains(name)) {
+                letters[disk].append(name);
+            }
+        }
+    }
+    return letters;
 }
 
 QStringList protectedSystemDriveLetters()
@@ -260,6 +287,31 @@ bool openAsInvokingUser(const QString &target)
     info.nShow = SW_SHOWNORMAL;
 
     return ShellExecuteExW(&info) != FALSE;
+}
+
+bool isProcessElevated()
+{
+    BOOL isAdmin = FALSE;
+    PSID adminGroup = nullptr;
+    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
+    if (AllocateAndInitializeSid(
+            &ntAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &adminGroup)) {
+        if (!CheckTokenMembership(nullptr, adminGroup, &isAdmin)) {
+            isAdmin = FALSE;
+        }
+        FreeSid(adminGroup);
+    }
+    return isAdmin == TRUE;
+}
+
+void hardenProcessStartup()
+{
+    // Excludes the current directory and %PATH%, the easiest for an unprivileged user to plant in.
+    if (!SetDefaultDllDirectories(
+            LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS)) {
+        // Fallback for older systems: at least drops the current directory.
+        SetDllDirectoryW(L"");
+    }
 }
 
 } // namespace usbrestore

@@ -1,5 +1,4 @@
 #include "gui/main_window.h"
-
 #include "core/safety.h"
 #include "gui/restore_dialog.h"
 #include "platform/restore_worker.h"
@@ -14,7 +13,6 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEvent>
@@ -76,6 +74,14 @@ QLabel *fieldLabel()
 {
     auto *label = new QLabel;
     label->setObjectName(QStringLiteral("fieldLabel"));
+    return label;
+}
+
+QLabel *footnoteLabel()
+{
+    auto *label = new QLabel;
+    label->setObjectName(QStringLiteral("footnote"));
+    label->setWordWrap(true);
     return label;
 }
 
@@ -246,22 +252,17 @@ QLayout *MainWindow::buildHeaderLayout()
 
     auto *headerButtons = new QHBoxLayout();
     headerButtons->setSpacing(4);
-    m_activityButton = styledButton("text");
-    m_activityButton->setObjectName(QStringLiteral("activity"));
-    connect(m_activityButton, &QPushButton::clicked, this, &MainWindow::showActivity);
-    m_languageButton = styledButton("text");
-    m_languageButton->setObjectName(QStringLiteral("language"));
-    connect(m_languageButton, &QPushButton::clicked, this, &MainWindow::cycleLanguage);
-    m_themeButton = styledButton("text");
-    m_themeButton->setObjectName(QStringLiteral("theme"));
-    connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
-    m_aboutButton = styledButton("text");
-    m_aboutButton->setObjectName(QStringLiteral("about"));
-    connect(m_aboutButton, &QPushButton::clicked, this, &MainWindow::showAbout);
-    headerButtons->addWidget(m_activityButton);
-    headerButtons->addWidget(m_languageButton);
-    headerButtons->addWidget(m_themeButton);
-    headerButtons->addWidget(m_aboutButton);
+    const auto headerButton = [this, headerButtons](const char *name, void (MainWindow::*slot)()) {
+        QPushButton *button = styledButton("text");
+        button->setObjectName(QLatin1String(name));
+        connect(button, &QPushButton::clicked, this, slot);
+        headerButtons->addWidget(button);
+        return button;
+    };
+    m_activityButton = headerButton("activity", &MainWindow::showActivity);
+    m_languageButton = headerButton("language", &MainWindow::cycleLanguage);
+    m_themeButton = headerButton("theme", &MainWindow::toggleTheme);
+    m_aboutButton = headerButton("about", &MainWindow::showAbout);
 
     auto *utilities = new QVBoxLayout;
     utilities->setSpacing(6);
@@ -292,9 +293,7 @@ QWidget *MainWindow::buildDiskSection()
     m_diskList->setSelectionMode(QAbstractItemView::SingleSelection);
     connect(m_diskList, &QListWidget::currentRowChanged, this, &MainWindow::onSelectionChanged);
 
-    m_diskCount = new QLabel;
-    m_diskCount->setObjectName(QStringLiteral("footnote"));
-    m_diskCount->setWordWrap(true);
+    m_diskCount = footnoteLabel();
 
     m_refreshButton = styledButton("secondary");
     connect(m_refreshButton, &QPushButton::clicked, this, &MainWindow::refreshDisks);
@@ -348,18 +347,14 @@ QWidget *MainWindow::buildRestoreSection()
     styleComboPopup(m_fileSystemCombo);
     connect(m_fileSystemCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateRestoreState);
 
-    m_planLabel = new QLabel;
-    m_planLabel->setObjectName(QStringLiteral("footnote"));
-    m_planLabel->setWordWrap(true);
+    m_planLabel = footnoteLabel();
 
     m_statusLabel = new QLabel;
     m_statusLabel->setObjectName(QStringLiteral("statusBadge"));
     m_statusLabel->setWordWrap(true);
     m_statusLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
-    m_detailLabel = new QLabel;
-    m_detailLabel->setObjectName(QStringLiteral("footnote"));
-    m_detailLabel->setWordWrap(true);
+    m_detailLabel = footnoteLabel();
 
     m_restoreButton = styledButton("danger");
     m_restoreButton->setObjectName(QStringLiteral("restoreUsb"));
@@ -392,9 +387,7 @@ QWidget *MainWindow::buildFooterWarning()
     m_warningTitle = new QLabel;
     m_warningTitle->setObjectName(QStringLiteral("warningTitle"));
     m_warningTitle->setWordWrap(true);
-    m_warningDetail = new QLabel;
-    m_warningDetail->setObjectName(QStringLiteral("footnote"));
-    m_warningDetail->setWordWrap(true);
+    m_warningDetail = footnoteLabel();
     layout->addWidget(m_warningTitle);
     layout->addWidget(m_warningDetail);
     return banner;
@@ -414,9 +407,7 @@ QDialog *MainWindow::activityDialog()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
-    m_activityCaption = new QLabel;
-    m_activityCaption->setObjectName(QStringLiteral("footnote"));
-    m_activityCaption->setWordWrap(true);
+    m_activityCaption = footnoteLabel();
     layout->addWidget(m_activityCaption);
     layout->addWidget(m_log, 1);
     m_log->show();
@@ -447,7 +438,6 @@ void MainWindow::showActivity()
 void MainWindow::loadSettings()
 {
     m_settings = loadAppSettings();
-    m_settings.theme = m_theme;
     if (!m_settings.geometry.isEmpty()) {
         restoreGeometry(m_settings.geometry);
     }
@@ -489,14 +479,7 @@ FileSystemType MainWindow::selectedFileSystem() const
         return FileSystemType::ExFat;
     }
     const auto type = static_cast<FileSystemType>(m_fileSystemCombo->currentData().toInt());
-    switch (type) {
-    case FileSystemType::ExFat:
-    case FileSystemType::Fat32:
-    case FileSystemType::Ntfs:
-    case FileSystemType::Ext4:
-        return type;
-    }
-    return FileSystemType::ExFat;
+    return isKnownFileSystem(type) ? type : FileSystemType::ExFat;
 }
 
 void MainWindow::refreshDisks()

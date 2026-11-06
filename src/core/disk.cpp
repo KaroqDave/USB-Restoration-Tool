@@ -5,6 +5,50 @@
 
 namespace usbrestore {
 
+namespace {
+
+// One row per filesystem, so the display name, the drop-down label, the wire token
+// and the parser cannot drift apart.
+struct FileSystemNames {
+    FileSystemType type;
+    const char *name;
+    const char *label;
+    const char *token;
+};
+
+constexpr FileSystemNames FileSystemNamesTable[] = {
+    {FileSystemType::ExFat, "exFAT", QT_TRANSLATE_NOOP("usbrestore::Disk", "exFAT (recommended)"), "exfat"},
+    {FileSystemType::Fat32, "FAT32", QT_TRANSLATE_NOOP("usbrestore::Disk", "FAT32 (older devices)"), "fat32"},
+    {FileSystemType::Ntfs, "NTFS", QT_TRANSLATE_NOOP("usbrestore::Disk", "NTFS"), "ntfs"},
+    {FileSystemType::Ext4, "ext4", QT_TRANSLATE_NOOP("usbrestore::Disk", "ext4 (Linux)"), "ext4"},
+};
+
+// MSFT_Disk.BusType values; only the ones a USB stick can plausibly report plus the
+// neighbours Windows documents.
+struct BusTypeName {
+    quint32 value;
+    const char *name;
+};
+
+constexpr BusTypeName BusTypeNames[] = {
+    {1, "SCSI"},
+    {2, "ATAPI"},
+    {3, "ATA"},
+    {4, "1394"},
+    {5, "SSA"},
+    {6, "Fibre Channel"},
+    {UsbBusType, "USB"},
+    {8, "RAID"},
+    {9, "iSCSI"},
+    {10, "SAS"},
+    {11, "SATA"},
+    {12, "SD"},
+    {13, "MMC"},
+    {17, "NVMe"},
+};
+
+} // namespace
+
 QString formatByteSize(std::uint64_t bytes, TextMode mode)
 {
     static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
@@ -35,53 +79,14 @@ QString partitionStyleName(quint16 style, TextMode mode)
     return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "RAW / unknown"), mode);
 }
 
-QString healthStatusName(quint16 status, TextMode mode)
-{
-    switch (static_cast<HealthStatus>(status)) {
-    case HealthStatus::Healthy:
-        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Healthy"), mode);
-    case HealthStatus::Warning:
-        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Warning"), mode);
-    case HealthStatus::Unhealthy:
-        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unhealthy"), mode);
-    }
-    return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
-}
-
 QString busTypeName(quint32 busType, TextMode mode)
 {
-    switch (busType) {
-    case 1:
-        return QStringLiteral("SCSI");
-    case 2:
-        return QStringLiteral("ATAPI");
-    case 3:
-        return QStringLiteral("ATA");
-    case 4:
-        return QStringLiteral("1394");
-    case 5:
-        return QStringLiteral("SSA");
-    case 6:
-        return QStringLiteral("Fibre Channel");
-    case UsbBusType:
-        return QStringLiteral("USB");
-    case 8:
-        return QStringLiteral("RAID");
-    case 9:
-        return QStringLiteral("iSCSI");
-    case 10:
-        return QStringLiteral("SAS");
-    case 11:
-        return QStringLiteral("SATA");
-    case 12:
-        return QStringLiteral("SD");
-    case 13:
-        return QStringLiteral("MMC");
-    case 17:
-        return QStringLiteral("NVMe");
-    default:
-        return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
+    for (const BusTypeName &entry : BusTypeNames) {
+        if (entry.value == busType) {
+            return QString::fromLatin1(entry.name);
+        }
     }
+    return coreText(QT_TRANSLATE_NOOP("usbrestore::Core", "Unknown"), mode);
 }
 
 QString partitionStyleLabel(PartitionStyle style, TextMode mode)
@@ -99,67 +104,55 @@ QString partitionStyleLabel(PartitionStyle style, TextMode mode)
 
 QString fileSystemTypeName(FileSystemType type)
 {
-    switch (type) {
-    case FileSystemType::ExFat:
-        return QStringLiteral("exFAT");
-    case FileSystemType::Fat32:
-        return QStringLiteral("FAT32");
-    case FileSystemType::Ntfs:
-        return QStringLiteral("NTFS");
-    case FileSystemType::Ext4:
-        return QStringLiteral("ext4");
+    for (const FileSystemNames &entry : FileSystemNamesTable) {
+        if (entry.type == type) {
+            return QString::fromLatin1(entry.name);
+        }
     }
     return QStringLiteral("Unknown");
 }
 
 QString fileSystemTypeLabel(FileSystemType type)
 {
-    switch (type) {
-    case FileSystemType::ExFat:
-        return QCoreApplication::translate("usbrestore::Disk", "exFAT (recommended)");
-    case FileSystemType::Fat32:
-        return QCoreApplication::translate("usbrestore::Disk", "FAT32 (older devices)");
-    case FileSystemType::Ntfs:
-        return QCoreApplication::translate("usbrestore::Disk", "NTFS");
-    case FileSystemType::Ext4:
-        return QCoreApplication::translate("usbrestore::Disk", "ext4 (Linux)");
+    for (const FileSystemNames &entry : FileSystemNamesTable) {
+        if (entry.type == type) {
+            return QCoreApplication::translate("usbrestore::Disk", entry.label);
+        }
     }
     return QCoreApplication::translate("usbrestore::Disk", "Unknown");
 }
 
 QString fileSystemTypeToken(FileSystemType type)
 {
-    switch (type) {
-    case FileSystemType::ExFat:
-        return QStringLiteral("exfat");
-    case FileSystemType::Fat32:
-        return QStringLiteral("fat32");
-    case FileSystemType::Ntfs:
-        return QStringLiteral("ntfs");
-    case FileSystemType::Ext4:
-        return QStringLiteral("ext4");
+    for (const FileSystemNames &entry : FileSystemNamesTable) {
+        if (entry.type == type) {
+            return QString::fromLatin1(entry.token);
+        }
     }
     return {};
 }
 
 bool parseFileSystemType(const QString &token, FileSystemType *type)
 {
-    FileSystemType parsed = FileSystemType::ExFat;
-    if (token == QLatin1String("exfat")) {
-        parsed = FileSystemType::ExFat;
-    } else if (token == QLatin1String("fat32")) {
-        parsed = FileSystemType::Fat32;
-    } else if (token == QLatin1String("ntfs")) {
-        parsed = FileSystemType::Ntfs;
-    } else if (token == QLatin1String("ext4")) {
-        parsed = FileSystemType::Ext4;
-    } else {
-        return false;
+    for (const FileSystemNames &entry : FileSystemNamesTable) {
+        if (token == QLatin1String(entry.token)) {
+            if (type) {
+                *type = entry.type;
+            }
+            return true;
+        }
     }
-    if (type) {
-        *type = parsed;
+    return false;
+}
+
+bool isKnownFileSystem(FileSystemType type)
+{
+    for (const FileSystemNames &entry : FileSystemNamesTable) {
+        if (entry.type == type) {
+            return true;
+        }
     }
-    return true;
+    return false;
 }
 
 QString describeDisk(const DiskInfo &disk, TextMode mode)

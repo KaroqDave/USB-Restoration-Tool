@@ -80,16 +80,6 @@ const QVector<RestoreStep> &LinuxDiskService::restorePlan() const
     return linuxRestorePlan();
 }
 
-int LinuxDiskService::totalRestoreSteps() const
-{
-    return static_cast<int>(linuxRestorePlan().size());
-}
-
-int LinuxDiskService::firstDestructiveStep() const
-{
-    return firstDestructiveStepOf(linuxRestorePlan());
-}
-
 bool LinuxDiskService::restore(
     const RestoreRequest &request,
     RestoreReporter &reporter,

@@ -68,6 +68,9 @@ bool fail(QString *error, const QString &text)
     return false;
 }
 
+// One spelling for an invalid or missing --language value, refused in two places.
+const QString LanguageUsage = QStringLiteral("--language must be \"en\" or \"de\".");
+
 } // namespace
 
 bool isPlausibleDeviceNodePath(const QString &path)
@@ -119,15 +122,15 @@ QStringList buildRestoreArguments(
     Language language)
 {
     QStringList arguments;
-    arguments << QStringLiteral("--device") << disk.deviceId;
-    arguments << QStringLiteral("--style")
+    arguments << QLatin1String(DeviceFlag) << disk.deviceId;
+    arguments << QLatin1String(StyleFlag)
               << (style == PartitionStyle::Mbr ? QStringLiteral("mbr") : QStringLiteral("gpt"));
-    arguments << QStringLiteral("--filesystem") << fileSystemTypeToken(fileSystem);
-    arguments << QStringLiteral("--label") << volumeLabel;
-    arguments << QStringLiteral("--expect-size") << QString::number(disk.size);
-    arguments << QStringLiteral("--expect-sector-size") << QString::number(disk.sectorSize);
+    arguments << QLatin1String(FileSystemFlag) << fileSystemTypeToken(fileSystem);
+    arguments << QLatin1String(LabelFlag) << volumeLabel;
+    arguments << QLatin1String(ExpectSizeFlag) << QString::number(disk.size);
+    arguments << QLatin1String(ExpectSectorSizeFlag) << QString::number(disk.sectorSize);
     if (disk.deviceSequence) {
-        arguments << QStringLiteral("--expect-sequence") << QString::number(*disk.deviceSequence);
+        arguments << QLatin1String(ExpectSequenceFlag) << QString::number(*disk.deviceSequence);
     }
 
     // isSameRestoreTarget() skips an identifier the selection lacks, so omitting
@@ -137,14 +140,14 @@ QStringList buildRestoreArguments(
             arguments << flag << value;
         }
     };
-    appendIfKnown(QStringLiteral("--expect-serial"), disk.serialNumber);
-    appendIfKnown(QStringLiteral("--expect-unique-id"), disk.uniqueId);
-    appendIfKnown(QStringLiteral("--expect-path"), disk.path);
-    appendIfKnown(QStringLiteral("--expect-name"), disk.name);
+    appendIfKnown(QLatin1String(ExpectSerialFlag), disk.serialNumber);
+    appendIfKnown(QLatin1String(ExpectUniqueIdFlag), disk.uniqueId);
+    appendIfKnown(QLatin1String(ExpectPathFlag), disk.path);
+    appendIfKnown(QLatin1String(ExpectNameFlag), disk.name);
 
     // Resolved here so a System preference cannot cross pkexec, which clears the environment.
     const Language resolved = resolveLanguage(language);
-    arguments << QStringLiteral("--language")
+    arguments << QLatin1String(LanguageFlag)
               << (resolved == Language::German ? QStringLiteral("de") : QStringLiteral("en"));
 
     return arguments;
@@ -172,39 +175,39 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
         }
         seen.append(flag);
 
-        if (flag == QStringLiteral("--device")) {
+        if (flag == QLatin1String(DeviceFlag)) {
             device = value;
-        } else if (flag == QStringLiteral("--style")) {
+        } else if (flag == QLatin1String(StyleFlag)) {
             style = value;
-        } else if (flag == QStringLiteral("--filesystem")) {
+        } else if (flag == QLatin1String(FileSystemFlag)) {
             fileSystem = value;
-        } else if (flag == QStringLiteral("--label")) {
+        } else if (flag == QLatin1String(LabelFlag)) {
             result.volumeLabel = value;
-        } else if (flag == QStringLiteral("--expect-size")) {
+        } else if (flag == QLatin1String(ExpectSizeFlag)) {
             size = value;
-        } else if (flag == QStringLiteral("--expect-sector-size")) {
+        } else if (flag == QLatin1String(ExpectSectorSizeFlag)) {
             sectorSize = value;
-        } else if (flag == QStringLiteral("--expect-sequence")) {
+        } else if (flag == QLatin1String(ExpectSequenceFlag)) {
             std::uint64_t sequence = 0;
             if (!parseDecimal(value, std::numeric_limits<std::uint64_t>::max(), &sequence) || sequence == 0) {
                 return fail(error, QStringLiteral("--expect-sequence must be a positive disk sequence number."));
             }
             result.expected.deviceSequence = sequence;
-        } else if (flag == QStringLiteral("--expect-serial")) {
+        } else if (flag == QLatin1String(ExpectSerialFlag)) {
             result.expected.serialNumber = value;
-        } else if (flag == QStringLiteral("--expect-unique-id")) {
+        } else if (flag == QLatin1String(ExpectUniqueIdFlag)) {
             result.expected.uniqueId = value;
-        } else if (flag == QStringLiteral("--expect-path")) {
+        } else if (flag == QLatin1String(ExpectPathFlag)) {
             result.expected.path = value;
-        } else if (flag == QStringLiteral("--expect-name")) {
+        } else if (flag == QLatin1String(ExpectNameFlag)) {
             result.expected.name = value;
-        } else if (flag == QStringLiteral("--language")) {
+        } else if (flag == QLatin1String(LanguageFlag)) {
             if (value == QStringLiteral("en")) {
                 result.displayLanguage = Language::English;
             } else if (value == QStringLiteral("de")) {
                 result.displayLanguage = Language::German;
             } else {
-                return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+                return fail(error, LanguageUsage);
             }
             sawLanguage = true;
         } else {
@@ -243,7 +246,7 @@ bool parseRestoreArguments(const QStringList &arguments, RestoreArguments *parse
     result.expected.sectorSize = static_cast<quint32>(number);
 
     if (!sawLanguage) {
-        return fail(error, QStringLiteral("--language must be \"en\" or \"de\"."));
+        return fail(error, LanguageUsage);
     }
 
     result.expected.deviceId = device;
@@ -362,7 +365,7 @@ HelperRunVerdict judgeHelperRun(const HelperRunObservation &run, QString *error,
         return HelperRunVerdict::Cancelled;
     }
     if (run.exitCode != RestoreExitSuccess) {
-        // Reaching here means the version line was accepted. A rejected helper cannot supply the UI text.
+        // Checked again so the UI text stays trusted-only even if the early returns above change.
         if (mode == TextMode::Display && run.versionAccepted && !run.displayFailure.isEmpty()) {
             return failWith(run.displayFailure);
         }

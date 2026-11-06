@@ -3,7 +3,6 @@
 #include <QtGlobal>
 
 #include <array>
-#include <cstring>
 
 namespace usbrestore {
 
@@ -47,7 +46,7 @@ void writeBytes(QByteArray &buffer, int offset, const QByteArray &value, int len
 
 quint64 sectorCount(const PartitionTableRequest &request)
 {
-    const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint64 sector = effectiveSectorSize(request.sectorSize);
     return request.diskSize / sector;
 }
 
@@ -87,7 +86,7 @@ QByteArray buildEntryArray(const PartitionTableRequest &request)
 {
     QByteArray entries(static_cast<int>(GptEntryCount * GptEntrySize), '\0');
 
-    const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint64 sector = effectiveSectorSize(request.sectorSize);
     const quint64 firstLba = request.layout.startOffset / sector;
     // Inclusive, as GPT defines it.
     const quint64 lastLba = (request.layout.startOffset + request.layout.length) / sector - 1;
@@ -109,7 +108,7 @@ QByteArray buildEntryArray(const PartitionTableRequest &request)
 
 QByteArray buildHeader(const PartitionTableRequest &request, const QByteArray &entries, bool primary)
 {
-    const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint32 sector = effectiveSectorSize(request.sectorSize);
     const auto geometry = gptGeometry(request);
     const quint64 lastLba = geometry.lastLba;
 
@@ -186,49 +185,13 @@ QByteArray basicDataPartitionTypeGuid()
 {
     // EBD0A0A2-B9E5-4433-87C0-68B6B72699C7: first three groups little-endian,
     // the last two as written.
-    static const char bytes[16] = {
-        static_cast<char>(0xA2),
-        static_cast<char>(0xA0),
-        static_cast<char>(0xD0),
-        static_cast<char>(0xEB),
-        static_cast<char>(0xE5),
-        static_cast<char>(0xB9),
-        static_cast<char>(0x33),
-        static_cast<char>(0x44),
-        static_cast<char>(0x87),
-        static_cast<char>(0xC0),
-        static_cast<char>(0x68),
-        static_cast<char>(0xB6),
-        static_cast<char>(0xB7),
-        static_cast<char>(0x26),
-        static_cast<char>(0x99),
-        static_cast<char>(0xC7),
-    };
-    return QByteArray(bytes, 16);
+    return QByteArray::fromHex("a2a0d0ebe5b9334487c068b6b72699c7");
 }
 
 QByteArray linuxFilesystemPartitionTypeGuid()
 {
     // 0FC63DAF-8483-4772-8E79-3D69D8477DE4, mixed-endian as above.
-    static const char bytes[16] = {
-        static_cast<char>(0xAF),
-        static_cast<char>(0x3D),
-        static_cast<char>(0xC6),
-        static_cast<char>(0x0F),
-        static_cast<char>(0x83),
-        static_cast<char>(0x84),
-        static_cast<char>(0x72),
-        static_cast<char>(0x47),
-        static_cast<char>(0x8E),
-        static_cast<char>(0x79),
-        static_cast<char>(0x3D),
-        static_cast<char>(0x69),
-        static_cast<char>(0xD8),
-        static_cast<char>(0x47),
-        static_cast<char>(0x7D),
-        static_cast<char>(0xE4),
-    };
-    return QByteArray(bytes, 16);
+    return QByteArray::fromHex("af3dc60f838472478e793d69d8477de4");
 }
 
 QByteArray gptPartitionTypeGuid(FileSystemType fileSystem)
@@ -307,7 +270,7 @@ bool isWritablePartitionRequest(const PartitionTableRequest &request, QString *r
 
 QByteArray buildGptPrimary(const PartitionTableRequest &request)
 {
-    const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint32 sector = effectiveSectorSize(request.sectorSize);
     const quint64 sectors = sectorCount(request);
     const QByteArray entries = buildEntryArray(request);
     const QByteArray header = buildHeader(request, entries, true);
@@ -340,7 +303,7 @@ QByteArray buildGptPrimary(const PartitionTableRequest &request)
 
 QByteArray buildGptBackup(const PartitionTableRequest &request)
 {
-    const quint32 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint32 sector = effectiveSectorSize(request.sectorSize);
     const QByteArray entries = buildEntryArray(request);
     const QByteArray header = buildHeader(request, entries, false);
 
@@ -355,7 +318,7 @@ QByteArray buildGptBackup(const PartitionTableRequest &request)
 
 std::uint64_t gptBackupOffset(const PartitionTableRequest &request)
 {
-    const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint64 sector = effectiveSectorSize(request.sectorSize);
     const auto geometry = gptGeometry(request);
     if (!geometry.fits) {
         return 0;
@@ -365,7 +328,7 @@ std::uint64_t gptBackupOffset(const PartitionTableRequest &request)
 
 QByteArray buildMbr(const PartitionTableRequest &request)
 {
-    const quint64 sector = request.sectorSize == 0 ? 512 : request.sectorSize;
+    const quint64 sector = effectiveSectorSize(request.sectorSize);
     const quint64 firstLba = request.layout.startOffset / sector;
     const quint64 sectorSpan = request.layout.length / sector;
     const quint64 lastLba = firstLba + sectorSpan - 1;

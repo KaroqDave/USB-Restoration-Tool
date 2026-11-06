@@ -9,7 +9,8 @@
     {
       "name": "windows",
       "displayName": "Windows (Release)",
-      "description": "Visual Studio build. Set the CMAKE_PREFIX_PATH environment variable to your Qt msvc kit (for example C:\\Qt\\6.11.1\\msvc2022_64) if Qt is not auto-detected.",
+      "description": "MSVC with Ninja Multi-Config; run from a Developer PowerShell for Visual Studio. Set the CMAKE_PREFIX_PATH environment variable to your Qt msvc kit (for example C:\\Qt\\6.11.1\\msvc2022_64) if Qt is not auto-detected.",
+      "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Release;Debug"

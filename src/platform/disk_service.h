@@ -2,11 +2,9 @@
 
 #include "core/disk.h"
 #include "core/restore_message.h"
-#include "core/restore_steps.h"
 #include "core/safety.h"
 
 #include <QString>
-#include <QStringList>
 #include <QVector>
 
 #include <memory>
@@ -95,11 +93,11 @@ class DiskService {
         QString *displayReason = nullptr) const = 0;
 
     virtual const QVector<RestoreStep> &restorePlan() const = 0;
-    virtual int totalRestoreSteps() const = 0;
+    int totalRestoreSteps() const { return static_cast<int>(restorePlan().size()); }
 
-    // 1-based, from the backend's plan in core/restore_steps.cpp. The GUI tells the user
+    // 1-based, from the backend's plan in core/restore_message.cpp. The GUI tells the user
     // whether unplugging is still safe from this.
-    virtual int firstDestructiveStep() const = 0;
+    int firstDestructiveStep() const { return firstDestructiveStepOf(restorePlan()); }
 
     // error is always English; displayError is optional UI text with the same diagnostic details.
     virtual bool restore(

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/disk.h"
-#include "core/restore_steps.h"
+#include "core/restore_message.h"
 
 #include <QString>
 #include <QStringList>
@@ -15,6 +15,21 @@ namespace usbrestore {
 inline constexpr int RestoreProtocolVersion = 5;
 
 inline constexpr char ProtocolVersionFlag[] = "--protocol-version";
+
+// The argument names, shared by buildRestoreArguments() and parseRestoreArguments().
+// They cross the helper's trust boundary, so a spelling is written once.
+inline constexpr char DeviceFlag[] = "--device";
+inline constexpr char StyleFlag[] = "--style";
+inline constexpr char FileSystemFlag[] = "--filesystem";
+inline constexpr char LabelFlag[] = "--label";
+inline constexpr char ExpectSizeFlag[] = "--expect-size";
+inline constexpr char ExpectSectorSizeFlag[] = "--expect-sector-size";
+inline constexpr char ExpectSequenceFlag[] = "--expect-sequence";
+inline constexpr char ExpectSerialFlag[] = "--expect-serial";
+inline constexpr char ExpectUniqueIdFlag[] = "--expect-unique-id";
+inline constexpr char ExpectPathFlag[] = "--expect-path";
+inline constexpr char ExpectNameFlag[] = "--expect-name";
+inline constexpr char LanguageFlag[] = "--language";
 
 inline constexpr int RestoreExitSuccess = 0;
 // Refused or failed; one line on stderr says which.
