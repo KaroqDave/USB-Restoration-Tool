@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
-## 1.9.5 - 2026-11-05
+## 1.9.5 - 2026-11-06
 
 A responsive disk scan and a cleanup of duplicated code. Safety checks, restore
 steps and the helper protocol are unchanged.

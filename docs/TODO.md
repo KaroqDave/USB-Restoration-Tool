@@ -4,19 +4,18 @@
 
 - On Windows, run `./scripts/build-standalone.ps1` with `pwsh` from an unelevated
   shell. CI cannot cover this: its runners are elevated.
-- On Windows, configure, build and test with the `windows` preset, now Ninja
-  Multi-Config, from a Developer PowerShell. CI configures without the preset.
-- Run the Linux loop tests as root: items 9 and 11 touched `BlockDevice` and
-  `LoopDevice`, which only those tests exercise.
+- On Windows, configure, build and test with the `windows` preset from a local
+  Developer PowerShell. CI's `build-windows-preset` job covers the same steps.
 
 ### 1.9.5 release
 
-All 24 cleanup items are done: 1–22 and 24 in PR #13, 23 in PR #14, and the
-release commit on `release/1.9.5`, stacked on #14. To ship: merge #13, #14 and the
-release branch in that order, re-date the 1.9.5 changelog heading if needed, and
-tag `v1.9.5` on `main`.
+PRs #13, #14 and #15 are merged into `main`. To ship: tag `v1.9.5` on `main`.
 
 ## Recently completed
+
+- 2026-11-06: Re-dated the 1.9.5 changelog heading and merged #13, #14 and #15
+  into `main` in order. The Linux loop tests passed as root on 2026-11-05, and a
+  restore on a disposable USB drive succeeded.
 
 - 2026-11-05: Item 23, the disk scan, runs on a `QThread` (PR #14). Restore,
   Refresh and both drop-downs stay disabled while it runs, a second Refresh is
