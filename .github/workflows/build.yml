@@ -68,7 +68,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: usb-restoration-tool-windows
-          path: standalone/*.zip
+          path: |
+            standalone/*.zip
+            standalone/*.zip.sha256
           if-no-files-found: error
 
   # The windows preset uses Ninja Multi-Config with MSVC from a Developer
