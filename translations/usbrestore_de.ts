@@ -1303,6 +1303,10 @@ Eingehängt unter: %5
 Volume-Namen: %6</translation>
     </message>
     <message>
+        <source>Scanning for USB disks...</source>
+        <translation>Suche nach USB-Laufwerken...</translation>
+    </message>
+    <message>
         <source>Erases all contents. Creates one %1 partition formatted %2, labelled %3.</source>
         <translation>Löscht alle Inhalte. Erstellt eine %1-Partition mit dem Dateisystem %2 und dem Namen %3.</translation>
     </message>

@@ -39,6 +39,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <memory>
+
 #ifndef USBRESTORE_APP_VERSION
 #define USBRESTORE_APP_VERSION "0.0.0-dev"
 #endif
@@ -146,8 +148,6 @@ MainWindow::MainWindow(DiskService &service, Theme initialTheme, Translations *t
     setMinimumSize(MinimumWindowWidth, MinimumWindowHeight);
     resize(960, 680);
 
-    m_guard = m_service.restoreGuard();
-
     buildUi();
     loadSettings();
     applyCurrentTheme();
@@ -155,11 +155,7 @@ MainWindow::MainWindow(DiskService &service, Theme initialTheme, Translations *t
     connect(&m_logger, &Logger::lineWritten, this, &MainWindow::appendLog);
 
     auto *refreshShortcut = new QShortcut(QKeySequence(QKeySequence::Refresh), this);
-    connect(refreshShortcut, &QShortcut::activated, this, [this]() {
-        if (!m_restoreRunning) {
-            refreshDisks();
-        }
-    });
+    connect(refreshShortcut, &QShortcut::activated, this, &MainWindow::refreshDisks);
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     if (auto *hints = QApplication::styleHints()) {
@@ -296,6 +292,7 @@ QWidget *MainWindow::buildDiskSection()
     m_diskCount = footnoteLabel();
 
     m_refreshButton = styledButton("secondary");
+    m_refreshButton->setObjectName(QStringLiteral("refreshDisks"));
     connect(m_refreshButton, &QPushButton::clicked, this, &MainWindow::refreshDisks);
 
     layout->addWidget(m_diskList, 0, 0, 1, 2);
@@ -482,22 +479,62 @@ FileSystemType MainWindow::selectedFileSystem() const
     return isKnownFileSystem(type) ? type : FileSystemType::ExFat;
 }
 
+MainWindow::~MainWindow()
+{
+    // The scan reads through m_service; it must not outlive the window that started it.
+    if (m_scanThread) {
+        m_scanThread->wait();
+    }
+}
+
 void MainWindow::refreshDisks()
 {
-    if (m_restoreRunning) {
+    if (m_restoreRunning || m_scanning) {
         return;
     }
 
+    m_scanning = true;
+    m_refreshButton->setEnabled(false);
+    m_diskList->setEnabled(false);
+    updateRestoreState();
+
+    struct ScanResult {
+        QVector<DiskInfo> disks;
+        RestoreMessage error;
+        RestoreGuard guard;
+    };
+    const auto result = std::make_shared<ScanResult>();
+    const DiskService &service = m_service;
+    QThread *thread = QThread::create([&service, result]() {
+        result->guard = service.restoreGuard();
+        result->disks = service.listUsbDisks(&result->error);
+    });
+    thread->setParent(this);
+    m_scanThread = thread;
+    connect(thread, &QThread::finished, this, [this, thread, result]() {
+        thread->deleteLater();
+        applyScan(std::move(result->disks), result->error, result->guard);
+    });
+    thread->start();
+}
+
+void MainWindow::applyScan(QVector<DiskInfo> disks, const RestoreMessage &error, const RestoreGuard &guard)
+{
+    m_scanning = false;
+    m_refreshButton->setEnabled(!m_restoreRunning);
+    m_diskList->setEnabled(!m_restoreRunning);
+
     const QSignalBlocker blocker(*m_diskList);
-    m_guard = m_service.restoreGuard();
-    m_scanError = {};
-    m_disks = m_service.listUsbDisks(&m_scanError);
+    m_guard = guard;
+    m_scanError = error;
+    m_disks = std::move(disks);
     renderDisks();
     onSelectionChanged();
 
     if (!m_scanError.english.isEmpty()) {
         m_logger.log(QStringLiteral("Scan failed: %1").arg(m_scanError.english));
     }
+    emit scanFinished();
 }
 
 void MainWindow::renderDisks()
@@ -566,6 +603,13 @@ void MainWindow::updateRestoreState()
     if (m_restoreRunning) {
         return;
     }
+    if (m_scanning) {
+        m_styleCombo->setEnabled(false);
+        m_fileSystemCombo->setEnabled(false);
+        m_restoreButton->setEnabled(false);
+        setStatus(StatusKind::Info, tr("Scanning for USB disks..."));
+        return;
+    }
 
     const QString style = partitionStyleLabel(selectedPartitionStyle());
     const QString fileSystem = fileSystemTypeName(selectedFileSystem());
@@ -626,7 +670,7 @@ void MainWindow::updateRestoreState()
 
 void MainWindow::startRestore()
 {
-    if (m_restoreRunning) {
+    if (m_restoreRunning || m_scanning) {
         return;
     }
     if (m_restoreDialog && m_restoreDialog->isVisible()) {

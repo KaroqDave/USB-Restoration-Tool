@@ -121,6 +121,12 @@ QString textOf(QWidget &root, const char *name, std::source_location where = std
     return textOf<T>(&root, name, where);
 }
 
+// The scan runs on its own thread; its result arrives through the event loop.
+bool waitForScan(MainWindow &window)
+{
+    return QTest::qWaitFor([&window]() { return !window.isScanning(); }, 5000);
+}
+
 void confirmErase(RestoreDialog &dialog)
 {
     find<QCheckBox>(dialog, "eraseAcknowledgement")->setChecked(true);
@@ -140,12 +146,14 @@ QFrame *stepRow(RestoreDialog &dialog, int step)
 class ExampleService : public DiskService {
   public:
     std::atomic_int restores{0};
+    std::atomic_bool holdScan{false};
+    std::atomic_bool releaseHeldScan{false};
     int outcome = 0;
     RestoreRequest received;
     DiskInfo disk = exampleDisk();
     QVector<DiskInfo> extraDisks;
     mutable int formatChecks = 0;
-    mutable int scans = 0;
+    mutable std::atomic_int scans{0};
     bool diskPresent = true;
     RestoreMessage scanError;
     bool reportMessages = false;
@@ -160,6 +168,11 @@ class ExampleService : public DiskService {
     QVector<DiskInfo> listUsbDisks(RestoreMessage *error) const override
     {
         ++scans;
+        QElapsedTimer timeout;
+        timeout.start();
+        while (holdScan.load() && !releaseHeldScan.load() && timeout.elapsed() < 15000) {
+            QThread::msleep(1);
+        }
         *error = scanError;
         return diskPresent && scanError.english.isEmpty() ? QVector<DiskInfo>{disk} + extraDisks : QVector<DiskInfo>{};
     }
@@ -364,6 +377,7 @@ class GuiTests : public QObject {
         QVERIFY(translations.load(Language::English));
         ExampleService service;
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *language = find<QPushButton>(window, "language");
         QVERIFY(language);
@@ -414,6 +428,7 @@ class GuiTests : public QObject {
         QVERIFY(translations.load(start));
         ExampleService service;
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.resize(window.minimumWidth(), window.height());
         window.show();
         QCoreApplication::processEvents();
@@ -454,6 +469,7 @@ class GuiTests : public QObject {
         second.displayId = QStringLiteral("example-second");
         service.extraDisks = {second};
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *disks = window.findChild<QListWidget *>();
         auto *language = find<QPushButton>(window, "language");
@@ -484,6 +500,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.holdRestore = true;
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *language = find<QPushButton>(window, "language");
         QVERIFY(language);
@@ -510,6 +527,46 @@ class GuiTests : public QObject {
         QVERIFY(language->isEnabled());
         QCOMPARE(translations.language(), Language::English);
         dialog->accept();
+        window.close();
+    }
+
+    // The scan left the window frozen while WMI answered; it now runs on its own thread.
+    void keepsRestoreAndRefreshDisabledWhileScanning()
+    {
+        Translations translations;
+        QVERIFY(translations.load(Language::English));
+        ExampleService service;
+        service.holdScan = true;
+        MainWindow window(service, Theme::Light, &translations);
+        // A failed check must not leave the window waiting out the held scan.
+        const auto release = qScopeGuard([&service]() { service.releaseHeldScan = true; });
+        window.show();
+        auto *restore = find<QPushButton>(window, "restoreUsb");
+        auto *refresh = find<QPushButton>(window, "refreshDisks");
+        auto *language = find<QPushButton>(window, "language");
+        QVERIFY(window.isScanning());
+        QVERIFY(!restore->isEnabled());
+        QVERIFY(!refresh->isEnabled());
+        QVERIFY(textOf<QLabel>(window, "statusBadge").contains(QStringLiteral("Scanning for USB disks")));
+
+        // Neither a language change nor a direct request may start anything mid-scan.
+        language->click();
+        QCoreApplication::processEvents();
+        QVERIFY(!restore->isEnabled());
+        const QString scanning = QCoreApplication::translate("usbrestore::MainWindow", "Scanning for USB disks...");
+        QVERIFY(textOf<QLabel>(window, "statusBadge").contains(scanning));
+        QVERIFY(QMetaObject::invokeMethod(&window, "startRestore"));
+        QVERIFY(!window.findChild<RestoreDialog *>());
+        QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
+        QCOMPARE(service.scans.load(), 1);
+
+        service.releaseHeldScan = true;
+        QVERIFY(waitForScan(window));
+        QCOMPARE(service.scans.load(), 1);
+        QVERIFY(restore->isEnabled());
+        QVERIFY(refresh->isEnabled());
+        QVERIFY(!textOf<QLabel>(window, "statusBadge").contains(scanning));
+        QCOMPARE(service.restores.load(), 0);
         window.close();
     }
 
@@ -540,6 +597,7 @@ class GuiTests : public QObject {
                     QStringLiteral("errno 5"));
         service.scanError = failure;
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *status = find<QLabel>(window, "statusBadge");
         auto *restore = find<QPushButton>(window, "restoreUsb");
@@ -582,6 +640,7 @@ class GuiTests : public QObject {
 
         service.diskPresent = diskPresentAfterRefresh;
         QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
+        QVERIFY(waitForScan(window));
         QVERIFY(!status->text().contains(QStringLiteral("Could not scan for USB disks.")));
         QVERIFY(detail->text() != failure.english);
         QCOMPARE(restore->isEnabled(), diskPresentAfterRefresh);
@@ -676,6 +735,7 @@ class GuiTests : public QObject {
         if (scenario == 3)
             service.disk.size = LargeRestoreTargetBytes;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         if (scenario == 2) {
             for (auto *combo : window.findChildren<QComboBox *>()) {
@@ -1144,6 +1204,7 @@ class GuiTests : public QObject {
         QFETCH(bool, checked);
         ExampleService service;
         MainWindow window(service, Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QVERIFY(QMetaObject::invokeMethod(&window, "startRestore", Qt::DirectConnection));
         auto *dialog = window.findChild<RestoreDialog *>();
@@ -1222,6 +1283,7 @@ class GuiTests : public QObject {
     {
         ExampleService service;
         MainWindow window(service, Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QComboBox *style = nullptr;
         for (auto *combo : window.findChildren<QComboBox *>()) {
@@ -1252,6 +1314,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.outcome = outcome;
         MainWindow window(service, Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QVERIFY(QMetaObject::invokeMethod(&window, "startRestore", Qt::DirectConnection));
         auto *dialog = window.findChild<RestoreDialog *>();
@@ -1321,6 +1384,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.outcome = outcome;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *restore = find<QPushButton>(window, "restoreUsb");
         auto *status = find<QLabel>(window, "statusBadge");
@@ -1343,6 +1407,7 @@ class GuiTests : public QObject {
                               : outcome == 1 ? QStringLiteral("Restore failed")
                                              : QStringLiteral("Restore cancelled");
         QTRY_COMPARE(dialog->windowTitle(), title);
+        QVERIFY(waitForScan(window));
         QVERIFY(dialog->isVisible());
         QCOMPARE(status->text(), readyStatus);
         QCOMPARE(service.restores.load(), 1);
@@ -1381,6 +1446,7 @@ class GuiTests : public QObject {
         QCOMPARE(service.restores.load(), 1);
         confirmErase(*dialog);
         QTRY_COMPARE(dialog->windowTitle(), QStringLiteral("Restore complete"));
+        QVERIFY(waitForScan(window));
         QCOMPARE(service.restores.load(), 2);
         QCOMPARE(status->text(), readyStatus);
         dialog->accept();
@@ -1406,6 +1472,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.outcome = outcome;
         MainWindow window(service, Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         auto *restore = find<QPushButton>(window, "restoreUsb");
         restore->click();
@@ -1423,6 +1490,7 @@ class GuiTests : public QObject {
             dialog->findChild<QPushButton *>(QStringLiteral("cancelRestore"))->click();
         }
         QTRY_VERIFY(dialog->findChild<QPushButton *>(QStringLiteral("restoreDone"))->isVisible());
+        QVERIFY(waitForScan(window));
         const QString status = textOf<QLabel>(window, "statusBadge");
         QVERIFY(status.contains(
             problem == QStringLiteral("missing")  ? QStringLiteral("Select a USB disk")
@@ -1595,6 +1663,7 @@ class GuiTests : public QObject {
         applyTheme(*qApp, dark ? Theme::Dark : Theme::Light);
         ExampleService service;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QTest::qWait(80);
         settleLayout(window);
@@ -1650,6 +1719,7 @@ class GuiTests : public QObject {
         QVERIFY(translations.load(Language::German));
         ExampleService service;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QVERIFY(QMetaObject::invokeMethod(&window, "showActivity"));
         QDialog *activity = nullptr;
@@ -1690,6 +1760,7 @@ class GuiTests : public QObject {
 
         service.scanError = QStringLiteral("Example scan failure: errno 5");
         QVERIFY(QMetaObject::invokeMethod(&window, "refreshDisks"));
+        QVERIFY(waitForScan(window));
         QVERIFY(
             find<QLabel>(window, "statusBadge")
                 ->text()
@@ -1723,6 +1794,7 @@ class GuiTests : public QObject {
             service.backendError = restoreText(QT_TRANSLATE_NOOP("usbrestore::Backend", "The restore failed."));
         }
         MainWindow window(service, Theme::Light, &translations);
+        QVERIFY(waitForScan(window));
         window.show();
         find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
@@ -1770,6 +1842,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.disk = installerDisk();
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         find<QPushButton>(window, "restoreUsb")->click();
         auto *dialog = window.findChild<RestoreDialog *>();
@@ -1892,6 +1965,7 @@ class GuiTests : public QObject {
         QFETCH(bool, dark);
         ExampleService service;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         const QString version = QString::fromLatin1(USBRESTORE_APP_VERSION);
         QCOMPARE(textOf<QLabel>(window, "version"), QStringLiteral("v%1").arg(version));
@@ -2017,6 +2091,7 @@ class GuiTests : public QObject {
         ExampleService service;
         service.outcome = outcome;
         MainWindow window(service, dark ? Theme::Dark : Theme::Light);
+        QVERIFY(waitForScan(window));
         window.show();
         QVERIFY(QMetaObject::invokeMethod(&window, "startRestore", Qt::DirectConnection));
         auto *dialog = window.findChild<RestoreDialog *>();
