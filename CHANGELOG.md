@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Added
+
+- The Windows release zip has a `.zip.sha256` checksum beside it, like the
+  AppImage, `.deb` and `.rpm`.
+
 ## 1.9.5 - 2026-11-06
 
 A responsive disk scan and a cleanup of duplicated code. Safety checks, restore

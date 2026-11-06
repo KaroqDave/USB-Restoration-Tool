@@ -11,7 +11,8 @@
       3. Optionally Authenticode-sign the executable.
       4. Write README.txt and SHA256SUMS.txt covering every bundled file, so a
          download can be verified without trusting the archive.
-      5. Zip the folder to standalone/USB-Restoration-Tool-<version>.zip.
+      5. Zip the folder to standalone/USB-Restoration-Tool-<version>.zip and
+         write its checksum beside it, as the Linux package scripts do.
 
     The standalone/ folder is gitignored; it is regenerated from scratch on each
     run and is meant to be published via Releases rather than committed.
@@ -184,7 +185,13 @@ if (Test-Path -LiteralPath $zipPath) {
 }
 Compress-Archive -Path $AppDir -DestinationPath $zipPath -CompressionLevel Optimal
 
+# sha256sum format with LF endings, so `sha256sum -c` accepts it on Linux too.
+$zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+$zipSumPath = "$zipPath.sha256"
+[System.IO.File]::WriteAllText($zipSumPath, "$zipHash  $(Split-Path -Leaf $zipPath)`n")
+
 Write-Step "Done"
 Write-Host "Bundle  : $AppDir" -ForegroundColor Green
 Write-Host "Archive : $zipPath" -ForegroundColor Green
+Write-Host "Zip hash: $zipHash" -ForegroundColor Green
 Write-Host "Exe hash: $((Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant())" -ForegroundColor Green

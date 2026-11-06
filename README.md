@@ -52,8 +52,10 @@ Get a build from [Releases](https://github.com/KaroqDave/USB-Restoration-Tool/re
 1. Download and extract `USB-Restoration-Tool-<version>.zip`.
 2. Run `usb-restoration-tool.exe` and approve the Administrator prompt.
 
-Keep the bundled DLLs and plugin folders beside the executable. `SHA256SUMS.txt`
-contains checksums for the bundle. Unsigned builds may show a SmartScreen warning.
+Keep the bundled DLLs and plugin folders beside the executable. Check the
+download against `USB-Restoration-Tool-<version>.zip.sha256` with
+`Get-FileHash USB-Restoration-Tool-<version>.zip`; `SHA256SUMS.txt` inside the
+archive covers each bundled file. Unsigned builds may show a SmartScreen warning.
 If runtime DLLs are missing, install the
 [Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 
